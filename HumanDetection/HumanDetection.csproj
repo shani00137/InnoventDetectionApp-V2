@@ -1,0 +1,157 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net8.0-windows</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<UseWPF>true</UseWPF>
+		<PlatformTarget>x64</PlatformTarget>
+		<UseWPF>true</UseWPF>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Remove="Assets\boxes.png" />
+		<None Remove="Assets\boxvideo.mp4" />
+		<None Remove="Assets\ocrvideo.mp4" />
+		<None Remove="Assets\receipt.png" />
+		<None Remove="Assets\Weights\customBoxCount.onnx" />
+		<None Remove="Assets\Weights\YoloBox.onnx" />
+		<None Remove="Images\innovent.ico" />
+		<None Remove="Resources\Audio\warning.wav" />
+		<None Remove="Resources\Images\camera.png" />
+		<None Remove="Resources\Images\clock.png" />
+		<None Remove="Resources\Images\close.png" />
+		<None Remove="Resources\Images\dotnet_bot.png" />
+		<None Remove="Resources\Images\human.png" />
+		<None Remove="Resources\Images\humidity.png" />
+		<None Remove="Resources\Images\motor.png" />
+		<None Remove="Resources\Images\off_indicator.png" />
+		<None Remove="Resources\Images\on_indicator.png" />
+		<None Remove="Resources\Images\open.png" />
+		<None Remove="Resources\Images\palet.png" />
+		<None Remove="Resources\Images\sensor.png" />
+		<None Remove="Resources\Images\temperature.png" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Content Include="Assets\boxes.png">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Assets\boxvideo.mp4">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Assets\ocrvideo.mp4">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Assets\receipt.png">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Assets\Weights\YoloBox.onnx">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Images\innovent.ico">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
+
+	<ItemGroup>
+		<Content Include="Resources\Audio\warning.wav">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Resources\Images\temperature.png">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
+
+	<ItemGroup>
+		<Content Include="Resources\Images\camera.png">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Resources\Images\clock.png">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Resources\Images\close.png">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Resources\Images\dotnet_bot.png">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Resources\Images\human.png">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Resources\Images\humidity.png">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Resources\Images\motor.png">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Resources\Images\off_indicator.png">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Resources\Images\on_indicator.png">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Resources\Images\open.png">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Resources\Images\palet.png">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Resources\Images\sensor.png">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
+	<ItemGroup>
+		    <PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" Version="1.14.0" />
+
+
+		<PackageReference Include="NAudio" Version="2.2.1" />
+		<PackageReference Include="SixLabors.ImageSharp.Drawing" Version="1.0.0-beta14" />
+		<PackageReference Include="OpenCvSharp4" Version="4.11.0.20250507" />
+		<PackageReference Include="OpenCvSharp4.runtime.win" Version="4.11.0.20250507" />
+		<PackageReference Include="OpenCvSharp4.WpfExtensions" Version="4.11.0.20250507" />
+		<PackageReference Include="OpenCvSharp4.Extensions" Version="4.11.0.20250507" />
+		<PackageReference Include="SixLabors.ImageSharp" Version="3.1.8" />
+		<PackageReference Include="Tesseract" Version="4.1.1" />
+		<PackageReference Include="Tesseract.Data.English" Version="4.0.0" />
+		<PackageReference Include="Yolov5Net" Version="1.1.0" />
+		<PackageReference Include="Material.Icons.WPF" Version="2.1.10" />
+		<PackageReference Include="MaterialDesignThemes" Version="5.1.0" />
+	</ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\src\Yolov5Net.Scorer\Yolov5Net.Scorer.csproj" />
+	</ItemGroup>
+
+
+	<ItemGroup>
+		<None Update="Assets\test.jpg">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="Assets\Weights\yolov5n.onnx">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="Assets\Weights\yolov5n6.onnx">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="Assets\Weights\yolov5s.onnx">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+
+
+
+	<ItemGroup>
+		<Content Include="Assets\Weights\customBoxCount.onnx">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
+
+
+
+	<ItemGroup>
+	  <Reference Include="Basler.Pylon">
+	    <HintPath>C:\Program Files\Basler\pylon\Development\Assemblies\Basler.Pylon\net8.0\x64\Basler.Pylon.dll</HintPath>
+	  </Reference>
+	</ItemGroup>
+</Project>
