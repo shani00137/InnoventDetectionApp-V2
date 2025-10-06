@@ -118,6 +118,7 @@
 		<PackageReference Include="Yolov5Net" Version="1.1.0" />
 		<PackageReference Include="Material.Icons.WPF" Version="2.1.10" />
 		<PackageReference Include="MaterialDesignThemes" Version="5.1.0" />
+		<PackageReference Include="Dynamsoft.DotNet.CaptureVision.Bundle" Version="3.0.6000" />
 	</ItemGroup>
 	<ItemGroup>
 		<ProjectReference Include="..\src\Yolov5Net.Scorer\Yolov5Net.Scorer.csproj" />

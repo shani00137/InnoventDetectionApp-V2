@@ -1,5 +1,9 @@
 ﻿
 using Basler.Pylon;
+using Dynamsoft.Core;
+using Dynamsoft.CVR;
+using Dynamsoft.License;
+using Dynamsoft.Utility;
 using HumanDetection.Model;
 using HumanDetection.Utilites.Animation;
 using HumanDetection.Utilites.Audio;
@@ -70,6 +74,7 @@ namespace HumanDetection
         private Camera camera;
         private CancellationTokenSource _processingCts;
         private bool _isProcessing = false;
+        private CaptureVisionRouter? cvRouter;
         public MainWindow()
         {
             InitializeComponent();
@@ -98,7 +103,7 @@ namespace HumanDetection
                 // Show loading indicator
                 LoadingOverlay.Visibility = Visibility.Visible;
                 await Task.Delay(1); // Ensure UI updates
-
+                InitializeDynamsoft2();
                 // Initialize camera and models in background
                 await Task.Run(async () =>
                 {
@@ -108,10 +113,10 @@ namespace HumanDetection
                 });
                 LoadingOverlay.Visibility = Visibility.Collapsed;
                 // Start processing
-               var boxTask = Task.Run(ProcessBoxWithPylonCamera);
-               //var extractTextask = Task.Run(ReadTextFromIPCamera);
+               //var boxTask = Task.Run(ProcessBoxWithPylonCamera);
+                var extractTextask = Task.Run(ReadTextFromBaslerCamera);
                 //var humanDetections = Task.Run(ProcessHumanDetection);
-                await Task.WhenAll(boxTask);
+                await Task.WhenAll(extractTextask);
             }
             catch (Exception ex)
             {
@@ -148,8 +153,9 @@ namespace HumanDetection
 
             var fontPath = "C:/Windows/Fonts/consola.ttf";
             _font = new SixLabors.Fonts.Font(new FontCollection().Add(fontPath), 16);
+            
 
-           
+
         }
 
 
@@ -339,6 +345,169 @@ namespace HumanDetection
                 });
             }
         }
+        private void InitializeDynamsoft2()
+        {
+            try
+            {
+                System.IO.Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
+
+                int errorCode = Dynamsoft.License.LicenseManager.InitLicense("t0160pgQAAHH+80VZPgVcgrgeEzXZn5NtSwGoe3j2Vb2ZdszposhChRqHvNWN/0UCwn8WbQBMA6Xwnqo1XPH7omOcjkytQg8B4iYgiNh9eJhFIcvnba5j9mesyzFdD+MniKLJAab2N7ea2k0eW9N5P+uT9ybyKZocYGp/M++zzVQnr2qf6Ts2mxxgan+z2OdfJs7tuLXo9fJDsMFZpwxvMAryBw==;t0159pgQAALBuAkleU1UNMkpkWXNXke0lL9BImrJu2OBq6YfaTc6sEd6li/uzglypOkCx6DLyhKU9Zo01LobsyVgj2EKHq5guAoIZyYeHWQlZv6c5j0nv+Gye4nM3/oIomjrAZH9zq6ndNPuu57Ge9anXJvIpmjrAZH8z77PNpJNXtc/4HZtNHWCyv1ns85Z5pDFtLXqefgg2OOuo4Q03//IQ", out string errorMsg);
+
+                if (errorCode != (int)EnumErrorCode.EC_OK && errorCode != (int)EnumErrorCode.EC_LICENSE_WARNING)
+                {
+                    MessageBox.Show($"Dynamsoft License Error\n\nError Code: {errorCode}\nError Message: {errorMsg}\n\nBarcode scanning will not work.",
+                                   "License Error",
+                                   MessageBoxButton.OK,
+                                   MessageBoxImage.Error);
+                    return;
+                }
+
+                cvRouter = new CaptureVisionRouter();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to initialize Dynamsoft:\n\n{ex.Message}",
+                               "Initialization Error",
+                               MessageBoxButton.OK,
+                               MessageBoxImage.Error);
+            }
+        }
+
+
+
+
+        private async void ReadTextFromBaslerCamera()
+        {
+            try
+            {
+                Dispatcher.BeginInvoke(() =>
+                {
+                    _ocrResults.Clear();
+                    TextExtractionStatusText.Text = "Connecting to Basler camera OCR...";
+                    TextExtractionStatusText.Visibility = Visibility.Visible;
+                });
+
+                // 🔐 Initialize Dynamsoft License
+                int errorCode = LicenseManager.InitLicense("t0160pgQAAHH+80VZPgVcgrgeEzXZn5NtSwGoe3j2Vb2ZdszposhChRqHvNWN/0UCwn8WbQBMA6Xwnqo1XPH7omOcjkytQg8B4iYgiNh9eJhFIcvnba5j9mesyzFdD+MniKLJAab2N7ea2k0eW9N5P+uT9ybyKZocYGp/M++zzVQnr2qf6Ts2mxxgan+z2OdfJs7tuLXo9fJDsMFZpwxvMAryBw==;t0159pgQAALBuAkleU1UNMkpkWXNXke0lL9BImrJu2OBq6YfaTc6sEd6li/uzglypOkCx6DLyhKU9Zo01LobsyVgj2EKHq5guAoIZyYeHWQlZv6c5j0nv+Gye4nM3/oIomjrAZH9zq6ndNPuu57Ge9anXJvIpmjrAZH8z77PNpJNXtc/4HZtNHWCyv1ns85Z5pDFtLXqefgg2OOuo4Q03//IQ", out string errorMsg);
+                if (errorCode != (int)EnumErrorCode.EC_OK && errorCode != (int)EnumErrorCode.EC_LICENSE_WARNING)
+                {
+                    MessageBox.Show($"Dynamsoft License error: {errorMsg}");
+                    return;
+                }
+
+                using var cvRouter = new CaptureVisionRouter();
+                using var imageIo = new ImageIO();
+                using var camera = new Camera();
+
+                camera.CameraOpened += Basler.Pylon.Configuration.AcquireContinuous;
+                camera.Open();
+                camera.Parameters[PLCameraInstance.MaxNumBuffer].SetValue(5);
+
+                _processingCts = new CancellationTokenSource();
+                var token = _processingCts.Token;
+                Dispatcher.BeginInvoke(() =>
+                {
+                    
+                    TextExtractionStatusText.Visibility = Visibility.Collapsed;
+                });
+                camera.StreamGrabber.Start();
+               
+                await Task.Run(async () =>
+                {
+                    int frameCounter = 0;
+
+                    while (!token.IsCancellationRequested)
+                    {
+                        try
+                        {
+                            IGrabResult grabResult = camera.StreamGrabber.RetrieveResult(5000, TimeoutHandling.ThrowException);
+                            using (grabResult)
+                            {
+                                if (!grabResult.GrabSucceeded)
+                                    continue;
+
+                                // Convert camera frame to Bitmap
+                                Mat frameMat = GrabResultToMat(grabResult);
+                                using var bitmap = BitmapConverter.ToBitmap(frameMat);
+
+                                // Optionally show image in UI
+                                
+
+                                // Save to temp file for Dynamsoft input
+                                string tempImagePath = Path.Combine(Path.GetTempPath(), $"frame_{frameCounter++}.png");
+                                bitmap.Save(tempImagePath, System.Drawing.Imaging.ImageFormat.Png);
+                                await Task.Delay(100);
+
+                                // Process the image with full OCR pipeline
+                                CapturedResult[] results = cvRouter.CaptureMultiPages(tempImagePath, PresetTemplate.PT_DETECT_AND_NORMALIZE_DOCUMENT);
+
+                                if (results != null && results.Length > 0)
+                                {
+                                    var outputText = new StringBuilder();
+
+                                    foreach (var result in results)
+                                    {
+                                        if (result.GetErrorCode() == (int)EnumErrorCode.EC_OK)
+                                        {
+                                            var textResults = result.GetRecognizedTextLinesResult();
+                                            if (textResults != null && textResults.Count > 0)
+                                            {
+                                                outputText.AppendLine("[OCR Text]");
+                                                foreach (var textItem in textResults)
+                                                {
+                                                    outputText.AppendLine(textItem.GetText().Trim());
+                                                }
+                                            }
+                                            else
+                                            {
+                                                outputText.AppendLine("No OCR text found in this frame.");
+                                            }
+                                        }
+                                        else
+                                        {
+                                            outputText.AppendLine($"Dynamsoft Error: {result.GetErrorString()}");
+                                        }
+                                    }
+
+                                    if (outputText.Length > 0)
+                                    {
+                                        Dispatcher.BeginInvoke(() =>
+                                        {
+                                            OcrText.Text = outputText.ToString();
+                                        });
+                                    }
+                                }
+                                Dispatcher.BeginInvoke(() =>
+                                {
+                                    LastImage.Source = ConvertBitmapToImageSource(bitmap);
+
+                                });
+                                await Task.Delay(500, token); // Adjust frame delay
+                            }
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            break;
+                        }
+                        catch (Exception ex)
+                        {
+                            Dispatcher.BeginInvoke(() =>
+                            {
+                                MessageBox.Show("Dynamsoft OCR Error:\n" + ex.Message);
+                            });
+                        }
+                    }
+                }, token);
+            }
+            catch (Exception ex)
+            {
+                Dispatcher.BeginInvoke(() =>
+                {
+                    MessageBox.Show("Unexpected error:\n" + ex.Message);
+                });
+            }
+        }
+
 
 
 
@@ -365,15 +534,21 @@ namespace HumanDetection
 
         private BitmapImage ConvertBitmapToImageSource(Bitmap bitmap)
         {
-            using (MemoryStream memory = new MemoryStream())
+            // Clone the original bitmap to release any underlying locks (thread-safety)
+            using (var clonedBitmap = new Bitmap(bitmap))
+            using (var memory = new MemoryStream())
             {
-                bitmap.Save(memory, System.Drawing.Imaging.ImageFormat.Png);
+                // Save cloned bitmap to memory stream
+                clonedBitmap.Save(memory, System.Drawing.Imaging.ImageFormat.Png);
                 memory.Position = 0;
-                BitmapImage bitmapImage = new BitmapImage();
+
+                // Load BitmapImage fully from the stream BEFORE disposing it
+                var bitmapImage = new BitmapImage();
                 bitmapImage.BeginInit();
-                bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
-                bitmapImage.StreamSource = memory;
+                bitmapImage.CacheOption = BitmapCacheOption.OnLoad; // Important: Load into memory
+                bitmapImage.StreamSource = new MemoryStream(memory.ToArray()); // Independent stream
                 bitmapImage.EndInit();
+                bitmapImage.Freeze(); // Optional: Makes it cross-thread accessible
                 return bitmapImage;
             }
         }
@@ -722,7 +897,7 @@ namespace HumanDetection
 
                                 // YOLOv5 ONNX inference
                                 var predictions = _scorerBoxCountingModel.Predict(image);
-                                var filtered = predictions.Where(p => p.Score >= 0.25f).ToList();
+                                var filtered = predictions.Where(p => p.Score >= 0.50f).ToList();
 
                                 // Draw predictions using OpenCvSharp
                                 foreach (var pred in filtered)
