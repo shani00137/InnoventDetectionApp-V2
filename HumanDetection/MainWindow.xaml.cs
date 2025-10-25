@@ -1,5 +1,5 @@
 ﻿
-using Basler.Pylon;
+//using Basler.Pylon;
 using HumanDetection.Model;
 using HumanDetection.Utilites.Animation;
 using HumanDetection.Utilites.Audio;
@@ -67,7 +67,7 @@ namespace HumanDetection
         private const int DetectionHeight = 360;
         private DispatcherTimer timer;
         private int remainingSeconds = 60;
-        private Camera camera;
+        //private Camera camera;
         private CancellationTokenSource _processingCts;
         private bool _isProcessing = false;
         public MainWindow()
@@ -108,10 +108,10 @@ namespace HumanDetection
                 });
                 LoadingOverlay.Visibility = Visibility.Collapsed;
                 // Start processing
-               var boxTask = Task.Run(ProcessBoxWithPylonCamera);
+               //var boxTask = Task.Run(ProcessBoxWithPylonCamera);
                //var extractTextask = Task.Run(ReadTextFromIPCamera);
                 //var humanDetections = Task.Run(ProcessHumanDetection);
-                await Task.WhenAll(boxTask);
+                //await Task.WhenAll(boxTask);
             }
             catch (Exception ex)
             {
@@ -419,8 +419,7 @@ namespace HumanDetection
 
         private void ProcessHumanDetection()
         {
-            string IPAddress = "http://192.168.1.49:8080/video";
-            _capture = new VideoCapture(IPAddress);
+            _capture = new VideoCapture(0);
             ShowStatus(HumanDetectionStatusText, "Connecting to IP 192.168.0.81...");
             Thread.Sleep(500);
             ShowStatus(HumanDetectionStatusText, "Connected. Getting preview...");
@@ -662,160 +661,160 @@ namespace HumanDetection
             });
         }
 
-        private void ProcessBoxWithPylonCamera()
-        {
-            try
-            {
+        //private void ProcessBoxWithPylonCamera()
+        //{
+        //    try
+        //    {
 
-                ShowStatus(BoxCountingStatusText, "Connecting to Basler camera...");
-                Task.Delay(1000);
-                HideStatus(BoxCountingStatusText);
-                if (_isProcessing) return;
-                _isProcessing = true;
-                _processingCts = new CancellationTokenSource();
-                using (Camera camera = new Camera())
-                {
-                    Console.WriteLine("Using device: {0}", camera.CameraInfo[CameraInfoKey.ModelName]);
-                    Console.WriteLine();
+        //        ShowStatus(BoxCountingStatusText, "Connecting to Basler camera...");
+        //        Task.Delay(1000);
+        //        HideStatus(BoxCountingStatusText);
+        //        if (_isProcessing) return;
+        //        _isProcessing = true;
+        //        _processingCts = new CancellationTokenSource();
+        //        using (Camera camera = new Camera())
+        //        {
+        //            Console.WriteLine("Using device: {0}", camera.CameraInfo[CameraInfoKey.ModelName]);
+        //            Console.WriteLine();
 
-                    camera.CameraOpened += Basler.Pylon.Configuration.AcquireContinuous;
-                    camera.Open();
-                    camera.Parameters[PLCameraInstance.MaxNumBuffer].SetValue(5);
+        //            camera.CameraOpened += Basler.Pylon.Configuration.AcquireContinuous;
+        //            camera.Open();
+        //            camera.Parameters[PLCameraInstance.MaxNumBuffer].SetValue(5);
 
-                    // Create cancellation token source for the processing task
-                    var cts = new CancellationTokenSource();
-                    bool isRunning = true;
+        //            // Create cancellation token source for the processing task
+        //            var cts = new CancellationTokenSource();
+        //            bool isRunning = true;
 
-                    // Start the processing task
-                    Task processingTask = Task.Run(() =>
-                    {
-                        while (isRunning && !cts.Token.IsCancellationRequested)
-                        {
-                            // This will be replaced with the grab result processing
-                            Thread.Sleep(10);
-                        }
-                    });
+        //            // Start the processing task
+        //            Task processingTask = Task.Run(() =>
+        //            {
+        //                while (isRunning && !cts.Token.IsCancellationRequested)
+        //                {
+        //                    // This will be replaced with the grab result processing
+        //                    Thread.Sleep(10);
+        //                }
+        //            });
 
-                    camera.StreamGrabber.Start();
+        //            camera.StreamGrabber.Start();
 
-                    while (!_processingCts.Token.IsCancellationRequested)
-                    {
-                        IGrabResult grabResult = camera.StreamGrabber.RetrieveResult(5000, TimeoutHandling.ThrowException);
-                        using (grabResult)
-                        {
-                            if (grabResult.GrabSucceeded)
-                            {
-                                // Convert the grab result to OpenCV Mat
-                                Mat frame = GrabResultToMat(grabResult);
+        //            while (!_processingCts.Token.IsCancellationRequested)
+        //            {
+        //                IGrabResult grabResult = camera.StreamGrabber.RetrieveResult(5000, TimeoutHandling.ThrowException);
+        //                using (grabResult)
+        //                {
+        //                    if (grabResult.GrabSucceeded)
+        //                    {
+        //                        // Convert the grab result to OpenCV Mat
+        //                        Mat frame = GrabResultToMat(grabResult);
 
-                                // Skip every other frame for performance
-                                ;
+        //                        // Skip every other frame for performance
+        //                        ;
 
-                                using var cloned = frame.Clone();
-                                var bitmap = cloned.ToBitmap();
+        //                        using var cloned = frame.Clone();
+        //                        var bitmap = cloned.ToBitmap();
 
-                                // Convert to ImageSharp image
-                                using var ms = new MemoryStream();
-                                bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Bmp);
-                                ms.Position = 0;
-                                using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(ms);
+        //                        // Convert to ImageSharp image
+        //                        using var ms = new MemoryStream();
+        //                        bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Bmp);
+        //                        ms.Position = 0;
+        //                        using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(ms);
 
-                                // YOLOv5 ONNX inference
-                                var predictions = _scorerBoxCountingModel.Predict(image);
-                                var filtered = predictions.Where(p => p.Score >= 0.25f).ToList();
+        //                        // YOLOv5 ONNX inference
+        //                        var predictions = _scorerBoxCountingModel.Predict(image);
+        //                        var filtered = predictions.Where(p => p.Score >= 0.25f).ToList();
 
-                                // Draw predictions using OpenCvSharp
-                                foreach (var pred in filtered)
-                                {
-                                    var rect = new OpenCvSharp.Rect(
-                                        (int)pred.Rectangle.Left,
-                                        (int)pred.Rectangle.Top,
-                                        (int)pred.Rectangle.Width,
-                                        (int)pred.Rectangle.Height
-                                    );
-                                    Scalar color = Scalar.Yellow;
-                                    Cv2.Rectangle(cloned, rect, color, 2);
+        //                        // Draw predictions using OpenCvSharp
+        //                        foreach (var pred in filtered)
+        //                        {
+        //                            var rect = new OpenCvSharp.Rect(
+        //                                (int)pred.Rectangle.Left,
+        //                                (int)pred.Rectangle.Top,
+        //                                (int)pred.Rectangle.Width,
+        //                                (int)pred.Rectangle.Height
+        //                            );
+        //                            Scalar color = Scalar.Yellow;
+        //                            Cv2.Rectangle(cloned, rect, color, 2);
 
-                                    Cv2.PutText(
-                                        cloned,
-                                        $"{pred.Label.Name} ({Math.Round(pred.Score * 100)}%)",
-                                        new OpenCvSharp.Point(rect.X, rect.Y - 10),
-                                        HersheyFonts.HersheySimplex,
-                                        0.5,
-                                        color,
-                                        1);
+        //                            Cv2.PutText(
+        //                                cloned,
+        //                                $"{pred.Label.Name} ({Math.Round(pred.Score * 100)}%)",
+        //                                new OpenCvSharp.Point(rect.X, rect.Y - 10),
+        //                                HersheyFonts.HersheySimplex,
+        //                                0.5,
+        //                                color,
+        //                                1);
 
-                                }
+        //                        }
 
-                                // Convert frame to WPF BitmapImage
-                                var bitmapImage = cloned.ToBitmapSource();
-                                bitmapImage.Freeze();
+        //                        // Convert frame to WPF BitmapImage
+        //                        var bitmapImage = cloned.ToBitmapSource();
+        //                        bitmapImage.Freeze();
 
-                                // Update WPF UI
-                                Dispatcher.Invoke(() =>
-                                {
-                                    BoxCountingCameraFeed.Source = bitmapImage;
-                                    NoBoxTxt.Text = $"Boxes Detected: {filtered.Count}";
+        //                        // Update WPF UI
+        //                        Dispatcher.Invoke(() =>
+        //                        {
+        //                            BoxCountingCameraFeed.Source = bitmapImage;
+        //                            NoBoxTxt.Text = $"Boxes Detected: {filtered.Count}";
 
-                                    var pallet = filtered.FirstOrDefault(p => p.Label.Name.ToLower() == "pallet");
-                                    if (pallet != null)
-                                    {
-                                        int heightPixels = (int)(pallet.Rectangle.Bottom - pallet.Rectangle.Top);
-                                        double mmPerPixel = 2.0; // Calibration value
-                                        double palletHeightMeters = (heightPixels * mmPerPixel) / 1000.0;
-                                        //PalletHeightTxt.Text = $"{palletHeightMeters:F2} m";
-                                    }
-                                });
-                            }
-                            else
-                            {
-                                Console.WriteLine("Error: {0} {1}", grabResult.ErrorCode, grabResult.ErrorDescription);
-                            }
-                        }
-                    }
+        //                            var pallet = filtered.FirstOrDefault(p => p.Label.Name.ToLower() == "pallet");
+        //                            if (pallet != null)
+        //                            {
+        //                                int heightPixels = (int)(pallet.Rectangle.Bottom - pallet.Rectangle.Top);
+        //                                double mmPerPixel = 2.0; // Calibration value
+        //                                double palletHeightMeters = (heightPixels * mmPerPixel) / 1000.0;
+        //                                //PalletHeightTxt.Text = $"{palletHeightMeters:F2} m";
+        //                            }
+        //                        });
+        //                    }
+        //                    else
+        //                    {
+        //                        Console.WriteLine("Error: {0} {1}", grabResult.ErrorCode, grabResult.ErrorDescription);
+        //                    }
+        //                }
+        //            }
 
-                    // Clean up
-                    isRunning = false;
-                    cts.Cancel();
-                    processingTask.Wait();
+        //            // Clean up
+        //            isRunning = false;
+        //            cts.Cancel();
+        //            processingTask.Wait();
 
-                    camera.StreamGrabber.Stop();
-                    camera.Close();
-                }
-            }
-            catch (Exception e)
-            {
-                Console.Error.WriteLine("Exception: {0}", e.Message);
+        //            camera.StreamGrabber.Stop();
+        //            camera.Close();
+        //        }
+        //    }
+        //    catch (Exception e)
+        //    {
+        //        Console.Error.WriteLine("Exception: {0}", e.Message);
 
-            }
-            finally
-            {
-                Console.Error.WriteLine("\nPress enter to exit.");
-                Console.ReadLine();
-            }
-        }
-        private Mat GrabResultToMat(IGrabResult grabResult)
-        {
-            // Get the pixel data as byte array
-            byte[] buffer = (byte[])grabResult.PixelData;
+        //    }
+        //    finally
+        //    {
+        //        Console.Error.WriteLine("\nPress enter to exit.");
+        //        Console.ReadLine();
+        //    }
+        //}
+        //private Mat GrabResultToMat(IGrabResult grabResult)
+        //{
+        //    // Get the pixel data as byte array
+        //    byte[] buffer = (byte[])grabResult.PixelData;
 
-            // Create empty mat with correct dimensions
-            Mat mat = new Mat(grabResult.Height, grabResult.Width, MatType.CV_8UC1);
+        //    // Create empty mat with correct dimensions
+        //    Mat mat = new Mat(grabResult.Height, grabResult.Width, MatType.CV_8UC1);
 
-            // Copy data using Marshal (safe approach)
-            Marshal.Copy(buffer, 0, mat.Data, buffer.Length);
+        //    // Copy data using Marshal (safe approach)
+        //    Marshal.Copy(buffer, 0, mat.Data, buffer.Length);
 
-            // Convert grayscale to color (BGR)
-            Mat colorMat = new Mat();
-            Cv2.CvtColor(mat, colorMat, ColorConversionCodes.GRAY2BGR);
+        //    // Convert grayscale to color (BGR)
+        //    Mat colorMat = new Mat();
+        //    Cv2.CvtColor(mat, colorMat, ColorConversionCodes.GRAY2BGR);
 
-            // Optional: Apply color map for visualization (requires OpenCvSharp 4.x)
-            // Mat colored = new Mat();
-            // Cv2.ApplyColorMap(colorMat, colored, ColormapTypes.Jet);
-            // return colored;
+        //    // Optional: Apply color map for visualization (requires OpenCvSharp 4.x)
+        //    // Mat colored = new Mat();
+        //    // Cv2.ApplyColorMap(colorMat, colored, ColormapTypes.Jet);
+        //    // return colored;
 
-            return colorMat;
-        }
+        //    return colorMat;
+        //}
 
         private void ProcessBoxFromLiveCamera()
         {
