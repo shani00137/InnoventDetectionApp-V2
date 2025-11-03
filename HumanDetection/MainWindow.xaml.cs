@@ -7,6 +7,7 @@ using Dynamsoft.Utility;
 using HumanDetection.Model;
 using HumanDetection.Utilites.Animation;
 using HumanDetection.Utilites.Audio;
+using MaterialDesignThemes.Wpf;
 using Microsoft.ML.OnnxRuntime;
 using OpenCvSharp;
 using OpenCvSharp.Extensions;
@@ -29,6 +30,7 @@ using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
@@ -37,6 +39,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 using Tesseract;
 using Yolov5Net.Scorer;
@@ -44,8 +47,11 @@ using Yolov5Net.Scorer.Models;
 
 using static System.Net.Mime.MediaTypeNames;
 using static System.Windows.Forms.Design.AxImporter;
+using Color = SixLabors.ImageSharp.Color;
 using FlipMode = OpenCvSharp.FlipMode;
+using Font = SixLabors.Fonts.Font;
 using Point = SixLabors.ImageSharp.PointF;
+using Size = SixLabors.ImageSharp.Size;
 
 
 
@@ -59,6 +65,8 @@ namespace HumanDetection
    
         private Mat _frame;
         private bool _isRunning = true;
+        private bool _isRunning2 = true;
+        
         private YoloScorer<YoloCocoP5Model> _scorerHumanModel;
         private YoloScorer<YoloCustomModel> _scorerBoxCountingModel;
         private SixLabors.Fonts.Font _font;
@@ -71,10 +79,13 @@ namespace HumanDetection
         private const int DetectionHeight = 360;
         private DispatcherTimer timer;
         private int remainingSeconds = 60;
-        private Camera camera;
+       
         private CancellationTokenSource _processingCts;
         private bool _isProcessing = false;
         private CaptureVisionRouter? cvRouter;
+        public ObservableCollection<BitmapImage> CapturedImages { get; set; }
+
+
         public MainWindow()
         {
             InitializeComponent();
@@ -83,10 +94,11 @@ namespace HumanDetection
         Closed += (s, e) => _isRunning = false;
           
             audioManager = new AudioManager();
-          
-            
+            CapturedImages = new ObservableCollection<BitmapImage>();
+            DataContext = this;
+
             //  LoadCamera();
-           
+
         }
 
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -103,32 +115,65 @@ namespace HumanDetection
                 // Show loading indicator
                 LoadingOverlay.Visibility = Visibility.Visible;
                 await Task.Delay(1); // Ensure UI updates
-                InitializeDynamsoft2();
-                // Initialize camera and models in background
-                await Task.Run(async () =>
+
+                await Task.Run(() =>
                 {
                     _capture = new VideoCapture(0);
                     _frame = new Mat();
                     LoadModels();
                 });
+
+                // Enumerate all Basler cameras
+                var allCameras = CameraFinder.Enumerate();
+                int cameraCount = allCameras.Count;
+
+                if (cameraCount == 0)
+                {
+                    MessageBox.Show("No Basler cameras detected.", "Camera Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                else if (cameraCount < 3)
+                {
+                    MessageBox.Show($"Only {cameraCount} camera(s) detected. Please connect all 3 cameras.",
+                                    "Camera Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    // Optionally return or continue with available cameras
+                    // return;
+                }
+
+                Console.WriteLine($"Detected {cameraCount} Basler camera(s).");
+
                 LoadingOverlay.Visibility = Visibility.Collapsed;
-                // Start processing
-               //var boxTask = Task.Run(ProcessBoxWithPylonCamera);
-                var extractTextask = Task.Run(ReadTextFromBaslerCamera);
-                //var humanDetections = Task.Run(ProcessHumanDetection);
-                await Task.WhenAll(extractTextask);
+
+                // Start tasks for each camera (up to 3)
+                List<Task> cameraTasks = new List<Task>();
+
+                if (cameraCount > 0)
+                    SetCameraUI(CamFrontLightPulse, cameraCount >= 1);
+                await Task.Delay(1000);
+               
+                cameraTasks.Add(Task.Run(() => CheckPalletStatus(allCameras[0])));
+
+                if (cameraCount > 1)
+                    //cameraTasks.Add(Task.Run(() => ReadTextFromBaslerCamera(allCameras[1])));
+                    SetCameraUI(CamLeftLightPulse, cameraCount >= 1);
+                
+
+                    if (cameraCount > 2)
+                    SetCameraUI(CamRightLightPulse, cameraCount >= 1);
+
+                await Task.WhenAll(cameraTasks);
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Initialization failed: {ex.Message}", "Error",
-                              MessageBoxButton.OK, MessageBoxImage.Error);
+                                MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
-                // Hide loading indicator
                 LoadingOverlay.Visibility = Visibility.Collapsed;
             }
         }
+
         private async void LoadModels()
         {
             var sessionOptions = new Microsoft.ML.OnnxRuntime.SessionOptions();
@@ -144,10 +189,10 @@ namespace HumanDetection
             }
             var providers = OrtEnv.Instance().GetAvailableProviders();
             Console.WriteLine("Available providers: " + string.Join(", ", providers));
-            var modelPathBoxCounting = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets/Weights/customBoxCount.onnx");
+            var modelPathBoxCounting = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets/Weights/customBoxCount.onnx");
             _scorerBoxCountingModel = new YoloScorer<YoloCustomModel>(modelPathBoxCounting, sessionOptions);
 
-            var modelPathHumanDetection = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets/Weights/yolov5s.onnx");
+            var modelPathHumanDetection = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets/Weights/yolov5s.onnx");
             _scorerHumanModel = new YoloScorer<YoloCocoP5Model>(modelPathHumanDetection, sessionOptions);
 
 
@@ -163,6 +208,333 @@ namespace HumanDetection
 
         private CancellationTokenSource _ocrCancellationTokenSource;
 
+        #region AIModel Detection
+        private async void CheckPalletStatus(ICameraInfo cameraInfo)
+        {
+            try
+            {
+                _processingCts = new CancellationTokenSource();
+                _isProcessing = true;
+
+                using (Camera camera = new Camera(cameraInfo))
+                {
+                    camera.CameraOpened += Basler.Pylon.Configuration.AcquireContinuous;
+                    camera.Open();
+                    camera.Parameters[PLCameraInstance.MaxNumBuffer].SetValue(50);
+                    camera.StreamGrabber.Start();
+
+                    Console.WriteLine($"Camera started: {camera.CameraInfo[CameraInfoKey.ModelName]}");
+
+                    bool palletDetected = false;
+
+                    while (!_processingCts.Token.IsCancellationRequested && !palletDetected)
+                    {
+                        try
+                        {
+                            FlashCamera(FrontFlashEllipse);
+
+                            using IGrabResult grabResult = camera.StreamGrabber.RetrieveResult(5000, TimeoutHandling.ThrowException);
+                            if (!grabResult.GrabSucceeded)
+                                continue;
+
+                            // Convert frame to ImageSharp
+                            using Mat frame = GrabResultToMat(grabResult);
+                            using var ms = new MemoryStream();
+                            frame.ToBitmap().Save(ms, System.Drawing.Imaging.ImageFormat.Bmp);
+                            ms.Position = 0;
+
+                            using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(ms);
+                            var predictions = _scorerBoxCountingModel.Predict(image)
+                                .Where(p => p.Score >= 0.30f)
+                                .ToList();
+
+                            if (predictions.Any(p => p.Label.Name.Equals("box", StringComparison.OrdinalIgnoreCase)))
+                            {
+                                palletDetected = true;
+
+                                // UI updates must happen on main thread
+                                await Dispatcher.InvokeAsync(async () =>
+                                {
+                                    ShowPalletFromLeft();
+                                    await Task.Delay(1000);
+                                    await PalletDetectedSoundStart();
+                                    await Task.Delay(1000);
+                                    await CaptureAndDisplayAllCamerasAsync();
+                                });
+
+                                Console.WriteLine("✅ Pallet detected! Stopping camera...");
+                            }
+                        }
+                        catch (TimeoutException)
+                        {
+                            Console.WriteLine("[Camera] Timeout — continuing...");
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[Camera] Frame error: {ex.Message}");
+                        }
+                    }
+
+                    // Stop camera safely
+                    camera.StreamGrabber.Stop();
+                    camera.Close();
+
+                    Console.WriteLine("[Camera] Stream stopped and camera closed.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Camera] Exception: {ex.Message}");
+            }
+            finally
+            {
+                _isProcessing = false;
+                Console.WriteLine("[Camera] Process stopped.");
+            }
+        }
+        private async Task CaptureAndDisplayAllCamerasAsync()
+        {
+            var cameraList  = CameraFinder.Enumerate();
+
+            var images = await CaptureSingleFrameFromAllCamerasAsync(cameraList);
+
+            Dispatcher.Invoke(() =>
+            {
+                CapturedImages.Clear();
+                foreach (var img in images)
+                    CapturedImages.Add(img);
+            });
+            LoadingOverlay.Visibility = Visibility.Visible;
+            ProgressTxt.Text = "Please Wait.."
+;           await RunAllAIDetectionsAsync(images);
+            LoadingOverlay.Visibility = Visibility.Collapsed;
+
+        }
+        public async Task<List<BitmapImage>> CaptureSingleFrameFromAllCamerasAsync(List<ICameraInfo> cameraInfos)
+        {
+            var capturedImages = new List<BitmapImage>();
+
+            await Task.Run(() =>
+            {
+                foreach (var camInfo in cameraInfos)
+                {
+                    try
+                    {
+                        using (var camera = new Camera(camInfo))
+                        {
+                            camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
+                            camera.Open();
+                            FlashCamera(FrontFlashEllipse);
+                            FlashCamera(LeftFlashEllipse);
+                            FlashCamera(RightFlashEllipse);
+                            PlayShutterSound();
+                             Task.Delay(500);
+                            using (IGrabResult grabResult = camera.StreamGrabber.GrabOne(3000, TimeoutHandling.ThrowException))
+                            {
+                                if (grabResult.GrabSucceeded)
+                                {
+                                    using Mat frame = GrabResultToMat(grabResult);
+                                    var bmp = frame.ToBitmap();
+                                    var bitmapImage = ConvertBitmapToImageSource(bmp);
+                                    bitmapImage.Freeze();
+
+                                    capturedImages.Add(bitmapImage);
+                                }
+                            }
+
+                            camera.Close();
+                            Console.WriteLine($"✅ Captured one frame from {camInfo[CameraInfoKey.ModelName]}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"⚠️ Failed to capture from {camInfo[CameraInfoKey.ModelName]}: {ex.Message}");
+                    }
+                }
+            });
+
+            return capturedImages;
+        }
+        private async Task RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
+        {
+            if (capturedImages == null || capturedImages.Count < 3)
+            {
+                Console.WriteLine("❌ Not enough images to process AI models.");
+                return;
+            }
+            int NumberOfBox = 0;
+            double PalletHeight = 0;
+            // Convert BitmapImages to ImageSharp format for inference
+            var imageSharpList = capturedImages.Select(img => BitmapImageToImageSharp(img)).ToList();
+            for (int i = 0; i < imageSharpList.Count; i++)
+            {
+                // 🧩 Parallel run — each model runs independently
+                var boxTask = Task.Run(() => RunBoxCountingModel(imageSharpList[i]));
+                var humanTask = Task.Run(() => RunHumanDetectionModel(imageSharpList[i]));
+                var ocrTask = Task.Run(() => RunOCRModel(imageSharpList[i]));
+
+                await Task.WhenAll(boxTask, humanTask, ocrTask);
+
+                var boxResult = boxTask.Result;
+                var humanResult = humanTask.Result;
+                var ocrResult = ocrTask.Result;
+                NumberOfBox += boxResult.BoxesDetected;
+                PalletHeight= boxResult.PalletHeight;
+            }
+            
+          
+
+            // 🔔 Update UI with combined results
+            Dispatcher.Invoke(() =>
+            {
+                NoBoxTxt.Text = $"Boxes: {NumberOfBox}";
+                PalletHeightTxt.Text = $" {PalletHeight:F2} m";
+
+                //HumanDetectionStatusText.Text = humanResult.HumanDetected ? "✅ Human Detected" : "❌ No Human";
+                //TextExtractionStatusText.Text = $"OCR: {ocrResult.ExtractedText}";
+            });
+        }
+        private (int BoxesDetected, double PalletHeight) RunBoxCountingModel(Image<Rgba32> image)
+        {
+            // ✅ Step 1: Preprocess image (resize to 640x640 YOLOv5 input)
+            using var resizedImage = image.Clone(ctx =>
+                ctx.Resize(new ResizeOptions
+                {
+                    Size = new Size(640, 640),
+                  
+                    PadColor = Color.Black
+                }));
+
+            // ✅ Step 2: Run YOLOv5 ONNX model inference
+            var predictions = _scorerBoxCountingModel.Predict(resizedImage)
+                .Where(p => p.Score >= 0.30f)
+                .ToList();
+
+            int boxCount = predictions.Count(p => p.Label.Name.Equals("box", StringComparison.OrdinalIgnoreCase));
+            var pallet = predictions.FirstOrDefault(p => p.Label.Name.Equals("pallet", StringComparison.OrdinalIgnoreCase));
+
+            double palletHeightMeters = 0.0;
+            if (pallet != null)
+            {
+                int heightPixels = (int)(pallet.Rectangle.Bottom - pallet.Rectangle.Top);
+                double mmPerPixel = 2.0;
+                palletHeightMeters = (heightPixels * mmPerPixel) / 1000.0;
+            }
+
+            // ✅ Step 3: Draw detection boxes on image
+            using (var annotated = resizedImage.Clone())
+            {
+                var colorBox = new Rgba32(0, 255, 0);    // Green for box
+                var colorPallet = new Rgba32(255, 64, 64); // Soft red for pallet
+                var font = SixLabors.Fonts.SystemFonts.CreateFont("Arial", 14, SixLabors.Fonts.FontStyle.Bold);
+
+                foreach (var p in predictions)
+                {
+                    var color = p.Label.Name.Equals("pallet", StringComparison.OrdinalIgnoreCase) ? colorPallet : colorBox;
+
+                    annotated.Mutate(x =>
+                    {
+                        // ✅ Draw bold box (thicker)
+                        x.Draw(color, 6, p.Rectangle);
+
+                        // ✅ Label with background rectangle for readability
+                        var labelText = $"{p.Label.Name} {p.Score:P1}";
+                        var textLocation = new SixLabors.ImageSharp.PointF(p.Rectangle.X + 5, p.Rectangle.Y - 25);
+                        var textBgRect = new SixLabors.ImageSharp.RectangleF(
+                            textLocation.X - 3, textLocation.Y - 3,
+                            labelText.Length * 9, 22);
+
+                        x.Fill(SixLabors.ImageSharp.Color.FromRgba(0, 0, 0, 180), textBgRect);
+                        x.DrawText(labelText, font, color, textLocation);
+                    });
+                }
+
+                // ✅ Step 4: Convert annotated image to BitmapImage for WPF display
+                using (var ms = new MemoryStream())
+                {
+                    annotated.SaveAsPng(ms);
+                    ms.Seek(0, SeekOrigin.Begin);
+
+                    var bitmap = new BitmapImage();
+                    bitmap.BeginInit();
+                    bitmap.StreamSource = ms;
+                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                    bitmap.EndInit();
+                    bitmap.Freeze();
+
+                    // ✅ Step 5: Add to WPF UI list safely
+                    App.Current.Dispatcher.Invoke(() =>
+                    {
+                        CapturedImages.Add(bitmap);
+                    });
+                }
+            }
+
+            return (boxCount, palletHeightMeters);
+        }
+
+
+        private bool RunHumanDetectionModel(Image<Rgba32> image)
+        {
+            var predictions = _scorerHumanModel.Predict(image);
+
+            bool humanDetected = predictions.Any(p =>
+                p.Label.Name.Equals("person", StringComparison.OrdinalIgnoreCase) ||
+                p.Label.Name.Equals("human", StringComparison.OrdinalIgnoreCase) ||
+                p.Label.Name.Equals("man", StringComparison.OrdinalIgnoreCase) ||
+                p.Label.Name.Equals("woman", StringComparison.OrdinalIgnoreCase));
+
+            return humanDetected;
+        }
+
+        private string RunOCRModel(Image<Rgba32> image)
+        {
+            try
+            {
+                using var tempStream = new MemoryStream();
+                image.SaveAsPng(tempStream);
+                tempStream.Position = 0;
+
+                string tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"ocr_{Guid.NewGuid()}.png");
+                File.WriteAllBytes(tempPath, tempStream.ToArray());
+
+                string text = ExtractTextToJson(tempPath); // existing OCR call
+                return text;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[OCR] Error: {ex.Message}");
+                return "Error reading text";
+            }
+        }
+
+        private Image<Rgba32> BitmapImageToImageSharp(BitmapImage bitmapImage)
+        {
+            using var memory = new MemoryStream();
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bitmapImage));
+            encoder.Save(memory);
+            memory.Position = 0;
+            return SixLabors.ImageSharp.Image.Load<Rgba32>(memory);
+        }
+
+        private void Image_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is Border border && border.Child is System.Windows.Controls.Image img)
+            {
+                DialogImage.Source = img.Source;
+                ImageDialogHost.IsOpen = true; // ✅ show popup
+            }
+        }
+
+        private void CloseDialog_Click(object sender, RoutedEventArgs e)
+        {
+            ImageDialogHost.IsOpen = false; // ✅ close popup
+        }
+
+
+        #endregion
+
         private async void ReadTextFromImage()
         {
             
@@ -173,12 +545,12 @@ namespace HumanDetection
             {
                 Dispatcher.Invoke(() =>
                 {
-                    _ocrResults.Clear();
-                    TextExtractionStatusText.Text = "Initializing OCR...";
-                    TextExtractionStatusText.Visibility = Visibility.Visible;
+                    //_ocrResults.Clear();
+                    //TextExtractionStatusText.Text = "Initializing OCR...";
+                    //TextExtractionStatusText.Visibility = Visibility.Visible;
                 });
 
-                string tessDataPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tessdata");
+                string tessDataPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tessdata");
 
                 using var engine = new TesseractEngine(tessDataPath, "eng", EngineMode.Default);
                 using var capture = new VideoCapture(0); // 0 or 1 depending on your webcam
@@ -197,7 +569,7 @@ namespace HumanDetection
                 Dispatcher.Invoke(() =>
                 {
 
-                    TextExtractionStatusText.Text = "Scanning";
+                    //TextExtractionStatusText.Text = "Scanning";
 
                 });
                 while (!token.IsCancellationRequested)
@@ -214,7 +586,7 @@ namespace HumanDetection
                     // Update UI - non-blocking
                     Dispatcher.Invoke(() =>
                     {
-                        LastImage.Source = ConvertBitmapToImageSource(BitmapConverter.ToBitmap(clonedForDisplay));
+                        //LastImage.Source = ConvertBitmapToImageSource(BitmapConverter.ToBitmap(clonedForDisplay));
                     });
 
                     // OCR only every Nth frame to reduce CPU load
@@ -243,7 +615,7 @@ namespace HumanDetection
                                     Console.WriteLine($"OCR Detected:\n{text}");
                                     Dispatcher.Invoke(() =>
                                     {
-                                        OcrText.Text = text;
+                                        //OcrText.Text = text;
                                     });
                                 }
                             }
@@ -267,124 +639,16 @@ namespace HumanDetection
             }
         }
 
-        private async void ReadTextFromIPCamera()
-        {
-            string ipCameraUrl = "http://192.168.1.83:8080/video";
-            try
-            {
-                Dispatcher.Invoke(() =>
-                {
-                    _ocrResults.Clear();
-                    TextExtractionStatusText.Text = "Connecting to IP Camera...";
-                    TextExtractionStatusText.Visibility = Visibility.Visible;
-                });
-
-                StringBuilder allResults = new StringBuilder();
-                string tessDataPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tessdata");
-
-                using var engine = new TesseractEngine(tessDataPath, "eng", EngineMode.Default);
-                using var capture = new VideoCapture(ipCameraUrl);
-
-                if (!capture.IsOpened())
-                {
-                    MessageBox.Show("Failed to open IP camera stream.");
-                    return;
-                }
-
-                using var frameMat = new Mat();
-                int frameIntervalMs = 1000;
-
-                while (true)
-                {
-                    capture.Read(frameMat);
-                    if (frameMat.Empty())
-                        continue;
-
-                    // OPTIONAL: Preprocessing
-                    Cv2.CvtColor(frameMat, frameMat, ColorConversionCodes.BGR2GRAY);
-                    Cv2.GaussianBlur(frameMat, frameMat, new OpenCvSharp.Size(3, 3), 0);
-                    Cv2.Threshold(frameMat, frameMat, 0, 255, ThresholdTypes.Otsu | ThresholdTypes.Binary);
-
-                    using var bitmap = BitmapConverter.ToBitmap(frameMat);
-
-                    Dispatcher.Invoke(() =>
-                    {
-                        LastImage.Source = ConvertBitmapToImageSource(bitmap);
-                        TextExtractionStatusText.Text = "Processing IP camera frame...";
-                    });
-
-                    using var ms = new MemoryStream();
-                    bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-                    ms.Position = 0;
-
-                    using var pix = Pix.LoadFromMemory(ms.ToArray());
-                    using var page = engine.Process(pix);
-                    string text = page.GetText().Trim();
-
-                    if (!string.IsNullOrWhiteSpace(text))
-                    {
-                        Console.WriteLine($"OCR from IP Camera:\n{text}");
-                        allResults.AppendLine("[Frame]");
-                        allResults.AppendLine(text);
-                        allResults.AppendLine();
-
-                        Dispatcher.Invoke(() =>
-                        {
-                            OcrText.Text = text;
-                        });
-                    }
-
-                    await Task.Delay(frameIntervalMs);
-                }
-            }
-            catch (Exception ex)
-            {
-                Dispatcher.Invoke(() =>
-                {
-                    MessageBox.Show("IP Camera OCR error:\n" + ex.Message);
-                });
-            }
-        }
-        private void InitializeDynamsoft2()
-        {
-            try
-            {
-                System.IO.Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
-
-                int errorCode = Dynamsoft.License.LicenseManager.InitLicense("t0160pgQAAHH+80VZPgVcgrgeEzXZn5NtSwGoe3j2Vb2ZdszposhChRqHvNWN/0UCwn8WbQBMA6Xwnqo1XPH7omOcjkytQg8B4iYgiNh9eJhFIcvnba5j9mesyzFdD+MniKLJAab2N7ea2k0eW9N5P+uT9ybyKZocYGp/M++zzVQnr2qf6Ts2mxxgan+z2OdfJs7tuLXo9fJDsMFZpwxvMAryBw==;t0159pgQAALBuAkleU1UNMkpkWXNXke0lL9BImrJu2OBq6YfaTc6sEd6li/uzglypOkCx6DLyhKU9Zo01LobsyVgj2EKHq5guAoIZyYeHWQlZv6c5j0nv+Gye4nM3/oIomjrAZH9zq6ndNPuu57Ge9anXJvIpmjrAZH8z77PNpJNXtc/4HZtNHWCyv1ns85Z5pDFtLXqefgg2OOuo4Q03//IQ", out string errorMsg);
-
-                if (errorCode != (int)EnumErrorCode.EC_OK && errorCode != (int)EnumErrorCode.EC_LICENSE_WARNING)
-                {
-                    MessageBox.Show($"Dynamsoft License Error\n\nError Code: {errorCode}\nError Message: {errorMsg}\n\nBarcode scanning will not work.",
-                                   "License Error",
-                                   MessageBoxButton.OK,
-                                   MessageBoxImage.Error);
-                    return;
-                }
-
-                cvRouter = new CaptureVisionRouter();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Failed to initialize Dynamsoft:\n\n{ex.Message}",
-                               "Initialization Error",
-                               MessageBoxButton.OK,
-                               MessageBoxImage.Error);
-            }
-        }
-
-
-
-
-        private async void ReadTextFromBaslerCamera()
+        
+        private async void ReadTextFromBaslerCamera(ICameraInfo cameraInfo)
         {
             try
             {
                 Dispatcher.BeginInvoke(() =>
                 {
-                    _ocrResults.Clear();
-                    TextExtractionStatusText.Text = "Connecting to Basler camera OCR...";
-                    TextExtractionStatusText.Visibility = Visibility.Visible;
+                    //_ocrResults.Clear();
+                    //TextExtractionStatusText.Text = "Connecting to Basler camera OCR...";
+                    //TextExtractionStatusText.Visibility = Visibility.Visible;
                 });
 
                 // 🔐 Initialize Dynamsoft License
@@ -394,110 +658,75 @@ namespace HumanDetection
                     MessageBox.Show($"Dynamsoft License error: {errorMsg}");
                     return;
                 }
-
+               
                 using var cvRouter = new CaptureVisionRouter();
                 using var imageIo = new ImageIO();
-                using var camera = new Camera();
-
-                camera.CameraOpened += Basler.Pylon.Configuration.AcquireContinuous;
-                camera.Open();
-                camera.Parameters[PLCameraInstance.MaxNumBuffer].SetValue(5);
-
-                _processingCts = new CancellationTokenSource();
-                var token = _processingCts.Token;
-                Dispatcher.BeginInvoke(() =>
+                using (Camera camera = new Camera(cameraInfo))
                 {
-                    
-                    TextExtractionStatusText.Visibility = Visibility.Collapsed;
-                });
-                camera.StreamGrabber.Start();
-               
-                await Task.Run(async () =>
-                {
-                    int frameCounter = 0;
 
-                    while (!token.IsCancellationRequested)
+                    camera.CameraOpened += Basler.Pylon.Configuration.AcquireContinuous;
+                    camera.Open();
+                    camera.Parameters[PLCameraInstance.MaxNumBuffer].SetValue(5);
+
+                    _processingCts = new CancellationTokenSource();
+                    var token = _processingCts.Token;
+                    Dispatcher.BeginInvoke(() =>
                     {
-                        try
+
+                        //TextExtractionStatusText.Visibility = Visibility.Collapsed;
+                    });
+                    camera.StreamGrabber.Start();
+
+                    await Task.Run(async () =>
+                    {
+                        int frameCounter = 0;
+
+                        while (!token.IsCancellationRequested)
                         {
-                            IGrabResult grabResult = camera.StreamGrabber.RetrieveResult(5000, TimeoutHandling.ThrowException);
-                            using (grabResult)
+                            try
                             {
-                                if (!grabResult.GrabSucceeded)
-                                    continue;
-
-                                // Convert camera frame to Bitmap
-                                Mat frameMat = GrabResultToMat(grabResult);
-                                using var bitmap = BitmapConverter.ToBitmap(frameMat);
-
-                                // Optionally show image in UI
-                                
-
-                                // Save to temp file for Dynamsoft input
-                                string tempImagePath = Path.Combine(Path.GetTempPath(), $"frame_{frameCounter++}.png");
-                                bitmap.Save(tempImagePath, System.Drawing.Imaging.ImageFormat.Png);
-                                await Task.Delay(100);
-
-                                // Process the image with full OCR pipeline
-                                CapturedResult[] results = cvRouter.CaptureMultiPages(tempImagePath, PresetTemplate.PT_DETECT_AND_NORMALIZE_DOCUMENT);
-
-                                if (results != null && results.Length > 0)
+                                IGrabResult grabResult = camera.StreamGrabber.RetrieveResult(5000, TimeoutHandling.ThrowException);
+                                using (grabResult)
                                 {
-                                    var outputText = new StringBuilder();
+                                    if (!grabResult.GrabSucceeded)
+                                        continue;
 
-                                    foreach (var result in results)
-                                    {
-                                        if (result.GetErrorCode() == (int)EnumErrorCode.EC_OK)
-                                        {
-                                            var textResults = result.GetRecognizedTextLinesResult();
-                                            if (textResults != null && textResults.Count > 0)
-                                            {
-                                                outputText.AppendLine("[OCR Text]");
-                                                foreach (var textItem in textResults)
-                                                {
-                                                    outputText.AppendLine(textItem.GetText().Trim());
-                                                }
-                                            }
-                                            else
-                                            {
-                                                outputText.AppendLine("No OCR text found in this frame.");
-                                            }
-                                        }
-                                        else
-                                        {
-                                            outputText.AppendLine($"Dynamsoft Error: {result.GetErrorString()}");
-                                        }
-                                    }
+                                    // Convert camera frame to Bitmap
+                                    Mat frameMat = GrabResultToMat(grabResult);
+                                    using var bitmap = BitmapConverter.ToBitmap(frameMat);
 
-                                    if (outputText.Length > 0)
+                                    // Optionally show image in UI
+
+
+                                    // Save to temp file for Dynamsoft input
+                                    string tempImagePath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"frame_{frameCounter++}.png");
+                                    bitmap.Save(tempImagePath, System.Drawing.Imaging.ImageFormat.Png);
+                                    await Task.Delay(1000);
+                                    ExtractTextToJson(tempImagePath);
+
+
+                                    Dispatcher.BeginInvoke(() =>
                                     {
-                                        Dispatcher.BeginInvoke(() =>
-                                        {
-                                            OcrText.Text = outputText.ToString();
-                                        });
-                                    }
+                                        //LastImage.Source = ConvertBitmapToImageSource(bitmap);
+
+                                    });
+                                    await Task.Delay(500, token); // Adjust frame delay
                                 }
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                break;
+                            }
+                            catch (Exception ex)
+                            {
                                 Dispatcher.BeginInvoke(() =>
                                 {
-                                    LastImage.Source = ConvertBitmapToImageSource(bitmap);
-
+                                    MessageBox.Show("Dynamsoft OCR Error:\n" + ex.Message);
                                 });
-                                await Task.Delay(500, token); // Adjust frame delay
                             }
                         }
-                        catch (OperationCanceledException)
-                        {
-                            break;
-                        }
-                        catch (Exception ex)
-                        {
-                            Dispatcher.BeginInvoke(() =>
-                            {
-                                MessageBox.Show("Dynamsoft OCR Error:\n" + ex.Message);
-                            });
-                        }
-                    }
-                }, token);
+                    }, token);
+                }
             }
             catch (Exception ex)
             {
@@ -509,8 +738,53 @@ namespace HumanDetection
         }
 
 
+        public string ExtractTextToJson(string imagePath)
+        {
+            try
+            {
+                string pythonExe = @"C:\Users\Abhishaik Sharma\AppData\Local\Programs\Python\Python313\python.exe"; // Python path
 
+                var scriptPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "reader.py");
 
+                string ocrText = RunOCR(pythonExe, scriptPath, imagePath);
+
+                return ocrText;
+            }
+            catch (Exception ex)
+            {
+                // Handle exception or log it
+                // You can return an empty string or an error message
+                return $"Error during OCR: {ex.Message}";
+            }
+        }
+
+        public string RunOCR(string pythonExe, string scriptPath, string imagePath)
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = pythonExe,
+                Arguments = $"\"{scriptPath}\" \"{imagePath}\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using (var process = Process.Start(psi))
+            {
+                string output = process.StandardOutput.ReadToEnd();
+                string errors = process.StandardError.ReadToEnd();
+
+                process.WaitForExit();
+
+                if (!string.IsNullOrEmpty(errors))
+                {
+                    throw new Exception("Python OCR Error: " + errors);
+                }
+
+                return output.Trim();
+            }
+        }
         private string CleanOcrText(string rawText)
         {
             string[] keywords = new[]
@@ -592,76 +866,104 @@ namespace HumanDetection
             return bmpImage;
         }
 
-        private void ProcessHumanDetection()
+        private void ProcessHumanDetection(ICameraInfo cameraInfo)
         {
-            string IPAddress = "http://192.168.1.49:8080/video";
-            _capture = new VideoCapture(IPAddress);
-            ShowStatus(HumanDetectionStatusText, "Connecting to IP 192.168.0.81...");
-            Thread.Sleep(500);
-            ShowStatus(HumanDetectionStatusText, "Connected. Getting preview...");
-            Thread.Sleep(500);
-            ShowStatus(HumanDetectionStatusText, "Preview ready. Starting object detection...");
-            Thread.Sleep(1000);
-            HideStatus(HumanDetectionStatusText);
-          
-            while (_isRunning)
+            try
             {
-                _capture.Read(_frame);
-                if (_frame.Empty()) continue;
+                //Dispatcher.Invoke(() => ShowStatus(HumanDetectionStatusText, "Connecting to Basler camera..."));
+                //Thread.Sleep(500);
+                //Dispatcher.Invoke(() => HideStatus(HumanDetectionStatusText));
 
-                using var cloned = _frame.Clone();
-                var bitmap = cloned.ToBitmap(); // System.Drawing.Bitmap
-                using var ms = new MemoryStream();
-                bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Bmp);
-                ms.Position = 0;
-
-                using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(ms);
-                var predictions = _scorerHumanModel.Predict(image);
-                bool humanDetected = false;
-                foreach (var prediction in predictions)
+                using (Camera camera3 = new Camera(cameraInfo))
                 {
-                    var label = prediction.Label.Name.ToLower();
-                    var score = Math.Round(prediction.Score, 2);
-                    var (x, y) = (prediction.Rectangle.Left - 3, prediction.Rectangle.Top - 23);
+                    camera3.CameraOpened += Basler.Pylon.Configuration.AcquireContinuous;
+                    camera3.Open();
+                    camera3.Parameters[PLCameraInstance.MaxNumBuffer].SetValue(20);
+                    camera3.StreamGrabber.Start();
 
-                    image.Mutate(ctx => ctx.DrawPolygon(new SixLabors.ImageSharp.Drawing.Processing.Pen(prediction.Label.Color, 2),
-                        new Point(prediction.Rectangle.Left, prediction.Rectangle.Top),
-                        new Point(prediction.Rectangle.Right, prediction.Rectangle.Top),
-                        new Point(prediction.Rectangle.Right, prediction.Rectangle.Bottom),
-                        new Point(prediction.Rectangle.Left, prediction.Rectangle.Bottom)));
-                    if (label == "person" || label == "man" || label == "woman" || label == "human" || label == "child")
+                    Console.WriteLine($"Human Detection Camera started: {camera3.CameraInfo[CameraInfoKey.ModelName]}");
+                    _isRunning2 = true;
+
+                    while (_isRunning2)
                     {
-                        humanDetected = true;
+                        try
+                        {
+                            using IGrabResult grabResult = camera3.StreamGrabber.RetrieveResult(5000, TimeoutHandling.ThrowException);
+                            if (!grabResult.GrabSucceeded) continue;
 
+                            Mat frame = GrabResultToMat(grabResult);
+                            using var cloned = frame.Clone();
+
+                            using var ms = new MemoryStream();
+                            cloned.ToBitmap().Save(ms, System.Drawing.Imaging.ImageFormat.Bmp);
+                            ms.Position = 0;
+                            using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(ms);
+
+                            var predictions = _scorerHumanModel.Predict(image);
+                            bool humanDetected = false;
+
+                            foreach (var pred in predictions)
+                            {
+                                var label = pred.Label.Name.ToLower();
+                                if (label is "person" or "man" or "woman" or "human" or "child")
+                                    humanDetected = true;
+
+                                var rect = pred.Rectangle;
+                                image.Mutate(ctx =>
+                                {
+                                    ctx.DrawPolygon(new SixLabors.ImageSharp.Drawing.Processing.Pen(pred.Label.Color, 2),
+                                        new Point(rect.Left, rect.Top),
+                                        new Point(rect.Right, rect.Top),
+                                        new Point(rect.Right, rect.Bottom),
+                                        new Point(rect.Left, rect.Bottom));
+                                    ctx.DrawText($"{pred.Label.Name} ({Math.Round(pred.Score, 2)})",
+                                        _font, pred.Label.Color, new Point(rect.Left, rect.Top - 20));
+                                });
+                            }
+
+                            Dispatcher.Invoke(async () =>
+                            {
+                                await TriggerHumanDetectedEffectAsync(humanDetected);
+                            });
+
+                            using var outStream = new MemoryStream();
+                            image.SaveAsBmp(outStream);
+                            outStream.Position = 0;
+
+                            var bitmapImage = new BitmapImage();
+                            bitmapImage.BeginInit();
+                            bitmapImage.StreamSource = outStream;
+                            bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+                            bitmapImage.EndInit();
+                            bitmapImage.Freeze();
+
+                            Dispatcher.Invoke(() =>
+                            {
+                                
+                                //HumanDetectionCameraFeed.Source = bitmapImage;
+                            });
+                        }
+                        catch (TimeoutException)
+                        {
+                            Console.WriteLine("[Human] Timeout — continuing...");
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[Human] Frame error: {ex.Message}");
+                        }
                     }
-                    else { }
 
-                    image.Mutate(ctx => ctx.DrawText(
-                        $"{prediction.Label.Name} ({score})",
-                        _font, prediction.Label.Color, new Point(x, y)));
+                    camera3.StreamGrabber.Stop();
+                    camera3.Close();
                 }
-                Dispatcher.Invoke(async () =>
-                {
-                    await TriggerHumanDetectedEffectAsync(humanDetected);
-                });
-
-                using var outStream = new MemoryStream();
-                image.SaveAsBmp(outStream);
-                outStream.Position = 0;
-
-                var bitmapImage = new BitmapImage();
-                bitmapImage.BeginInit();
-                bitmapImage.StreamSource = outStream;
-                bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
-                bitmapImage.EndInit();
-                bitmapImage.Freeze();
-
-                Dispatcher.Invoke(() =>
-                {
-                    HumanDetectionCameraFeed.Source = bitmapImage;
-                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Human] Exception: {ex.Message}");
+                //Dispatcher.Invoke(() => ShowStatus(HumanDetectionStatusText, "Error: " + ex.Message));
             }
         }
+
 
         private void ProcessBoxCount()
         {
@@ -713,262 +1015,113 @@ namespace HumanDetection
 
                 Dispatcher.Invoke(() =>
                 {
-                    BoxCountingCameraFeed.Source = bitmapImage;
+                    
                 });
             }
         }
         private CancellationTokenSource _cts;
         private Task _processingTask;
 
-        private void ProcessBoxWithVideoFile()
-        {
-
-            //string videoPath = "Assets/boxvideo.mp4";
-            //var videoCapture = new VideoCapture(videoPath);
-
-            //if (!videoCapture.IsOpened())
-            //{
-            //    MessageBox.Show("Failed to open video file!");
-            //    return;
-            //}
-
-            //_cts = new CancellationTokenSource();
-
-            //string IPAddress = "http://192.168.1.93:8080/video";
-            ShowStatus(BoxCountingStatusText, "Connecting to webcam...");
-            Thread.Sleep(1000);
-            ShowStatus(BoxCountingStatusText, "Video loaded. Initializing detection...");
-            Thread.Sleep(500);
-            var videoCapture = new VideoCapture(1); // Use default webcam
-
-            if (!videoCapture.IsOpened())
-            {
-                MessageBox.Show("Failed to open webcam!");
-                return;
-            }
-            HideStatus(BoxCountingStatusText);
-            StartCountdown();
-            _cts = new CancellationTokenSource();
-            _isRunning = true;
-
-            _processingTask = Task.Run(() =>
-            {
-                Mat frame = new Mat();
-                
-                int frameSkipCounter = 0;
-
-                while (_isRunning && !_cts.Token.IsCancellationRequested)
-                {
-                    if (!videoCapture.Read(frame) || frame.Empty()) continue;
-
-                    // Skip every other frame for performance
-                    if (++frameSkipCounter % 2 != 0) continue;
-
-                    using var cloned = frame.Clone();
-                    //if (frame.Width > frame.Height)
-                    //{
-                    //    // Rotate 90 degrees counter-clockwise to portrait mode
-                    //    Cv2.Transpose(cloned, cloned);        // Transpose
-                    //    Cv2.Flip(cloned, cloned, FlipMode.Y); // Vertical flip
-                    //}
-                    var bitmap = cloned.ToBitmap();
-
-                    // Convert to ImageSharp image
-                    using var ms = new MemoryStream();
-                    bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Bmp);
-                    ms.Position = 0;
-                    using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(ms);
-
-                    // YOLOv5 ONNX inference
-                    var predictions = _scorerBoxCountingModel.Predict(image);
-                    var filtered = predictions.Where(p => p.Score >= 0.25f).ToList();
-
-                    // Draw predictions using OpenCvSharp
-                    foreach (var pred in filtered)
-                    {
-                        // Fix for CS1503: Convert 'float' to 'int' explicitly when using RectangleF properties
-                        var rect = new OpenCvSharp.Rect(
-                            (int)pred.Rectangle.Left,
-                            (int)pred.Rectangle.Top,
-                            (int)pred.Rectangle.Width,
-                            (int)pred.Rectangle.Height
-                        );
-                        Scalar color = Scalar.Yellow;
-                        Cv2.Rectangle(cloned, rect, color, 2);
-
-                        Cv2.PutText(
-                         cloned,
-                         $"{pred.Label.Name} ({Math.Round(pred.Score * 100)}%)",
-                         new OpenCvSharp.Point(rect.X, rect.Y - 10),
-                         HersheyFonts.HersheySimplex,
-                         0.5,
-                         color,
-                         1);
-
-                    }
-
-                    // Convert frame to WPF BitmapImage
-                    var bitmapImage = cloned.ToBitmapSource();
-                    bitmapImage.Freeze();
-
-                    // Update WPF UI
-                    Dispatcher.Invoke(() =>
-                    {
-                        BoxCountingCameraFeed.Source = bitmapImage;
-                        NoBoxTxt.Text = $"Boxes Detected: {filtered.Count}";
-
-                        var pallet = filtered.FirstOrDefault(p => p.Label.Name.ToLower() == "pallet");
-                        if (pallet != null)
-                        {
-                            // Fix for CS0266: Explicitly cast 'float' to 'int' when calculating heightPixels
-                            int heightPixels = (int)(pallet.Rectangle.Bottom - pallet.Rectangle.Top);
-                            double mmPerPixel = 2.0; // Calibration value
-                            double palletHeightMeters = (heightPixels * mmPerPixel) / 1000.0;
-                            //PalletHeightTxt.Text = $"{palletHeightMeters:F2} m";
-                        }
-                    });
-
-                    // ~30 FPS throttle
-                    Thread.Sleep(30);
-                }
-
-                videoCapture.Release();
-                _isRunning = false;
-            });
-        }
-
-        private void ProcessBoxWithPylonCamera()
+       
+        private void ProcessBoxWithPylonCamera(ICameraInfo cameraInfo)
         {
             try
             {
+                
 
-                ShowStatus(BoxCountingStatusText, "Connecting to Basler camera...");
-                Task.Delay(1000);
-                HideStatus(BoxCountingStatusText);
-                if (_isProcessing) return;
-                _isProcessing = true;
                 _processingCts = new CancellationTokenSource();
-                using (Camera camera = new Camera())
+                _isProcessing = true;
+
+                using (Camera camera2 = new Camera(cameraInfo))
                 {
-                    Console.WriteLine("Using device: {0}", camera.CameraInfo[CameraInfoKey.ModelName]);
-                    Console.WriteLine();
+                    camera2.CameraOpened += Basler.Pylon.Configuration.AcquireContinuous;
+                    camera2.Open();
+                    camera2.Parameters[PLCameraInstance.MaxNumBuffer].SetValue(50);
+                    camera2.StreamGrabber.Start();
 
-                    camera.CameraOpened += Basler.Pylon.Configuration.AcquireContinuous;
-                    camera.Open();
-                    camera.Parameters[PLCameraInstance.MaxNumBuffer].SetValue(5);
-
-                    // Create cancellation token source for the processing task
-                    var cts = new CancellationTokenSource();
-                    bool isRunning = true;
-
-                    // Start the processing task
-                    Task processingTask = Task.Run(() =>
-                    {
-                        while (isRunning && !cts.Token.IsCancellationRequested)
-                        {
-                            // This will be replaced with the grab result processing
-                            Thread.Sleep(10);
-                        }
-                    });
-
-                    camera.StreamGrabber.Start();
-
+                    Console.WriteLine($"Box Camera started: {camera2.CameraInfo[CameraInfoKey.ModelName]}");
+                    
                     while (!_processingCts.Token.IsCancellationRequested)
                     {
-                        IGrabResult grabResult = camera.StreamGrabber.RetrieveResult(5000, TimeoutHandling.ThrowException);
-                        using (grabResult)
+                        try
                         {
-                            if (grabResult.GrabSucceeded)
+                            FlashCamera(FrontFlashEllipse);
+                            ShowPalletFromLeft();
+                            ;
+
+                            using IGrabResult grabResult = camera2.StreamGrabber.RetrieveResult(5000, TimeoutHandling.ThrowException);
+                            if (!grabResult.GrabSucceeded) continue;
+
+                            Mat frame = GrabResultToMat(grabResult);
+                            using var cloned = frame.Clone();
+
+                            // Convert to ImageSharp
+                            using var ms = new MemoryStream();
+                            cloned.ToBitmap().Save(ms, System.Drawing.Imaging.ImageFormat.Bmp);
+                            ms.Position = 0;
+                            using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(ms);
+
+                            var predictions = _scorerBoxCountingModel.Predict(image)
+                                .Where(p => p.Score >= 0.30f).ToList();
+
+                            foreach (var pred in predictions)
                             {
-                                // Convert the grab result to OpenCV Mat
-                                Mat frame = GrabResultToMat(grabResult);
+                                var rect = new OpenCvSharp.Rect(
+                                    (int)pred.Rectangle.Left,
+                                    (int)pred.Rectangle.Top,
+                                    (int)pred.Rectangle.Width,
+                                    (int)pred.Rectangle.Height
+                                );
+                                Cv2.Rectangle(cloned, rect, Scalar.Yellow, 2);
+                                Cv2.PutText(cloned, $"{pred.Label.Name} ({Math.Round(pred.Score * 100)}%)",
+                                    new OpenCvSharp.Point(rect.X, rect.Y - 10), HersheyFonts.HersheySimplex,
+                                    0.5, Scalar.Yellow, 1);
+                            }
 
-                                // Skip every other frame for performance
-                                ;
+                            var bitmapImage = cloned.ToBitmapSource();
+                            bitmapImage.Freeze();
 
-                                using var cloned = frame.Clone();
-                                var bitmap = cloned.ToBitmap();
-
-                                // Convert to ImageSharp image
-                                using var ms = new MemoryStream();
-                                bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Bmp);
-                                ms.Position = 0;
-                                using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(ms);
-
-                                // YOLOv5 ONNX inference
-                                var predictions = _scorerBoxCountingModel.Predict(image);
-                                var filtered = predictions.Where(p => p.Score >= 0.50f).ToList();
-
-                                // Draw predictions using OpenCvSharp
-                                foreach (var pred in filtered)
+                            Dispatcher.Invoke(() =>
+                            {
+                                //BoxCountingCameraFeed.Source = bitmapImage;
+                                NoBoxTxt.Text = $"Boxes Detected: {predictions.Count}";
+                                var pallet = predictions.FirstOrDefault(p => p.Label.Name.ToLower() == "pallet");
+                                if (pallet != null)
                                 {
-                                    var rect = new OpenCvSharp.Rect(
-                                        (int)pred.Rectangle.Left,
-                                        (int)pred.Rectangle.Top,
-                                        (int)pred.Rectangle.Width,
-                                        (int)pred.Rectangle.Height
-                                    );
-                                    Scalar color = Scalar.Yellow;
-                                    Cv2.Rectangle(cloned, rect, color, 2);
-
-                                    Cv2.PutText(
-                                        cloned,
-                                        $"{pred.Label.Name} ({Math.Round(pred.Score * 100)}%)",
-                                        new OpenCvSharp.Point(rect.X, rect.Y - 10),
-                                        HersheyFonts.HersheySimplex,
-                                        0.5,
-                                        color,
-                                        1);
-
+                                    // Fix for CS0266: Explicitly cast 'float' to 'int' when calculating heightPixels
+                                    int heightPixels = (int)(pallet.Rectangle.Bottom - pallet.Rectangle.Top);
+                                    double mmPerPixel = 2.0; // Calibration value
+                                    double palletHeightMeters = (heightPixels * mmPerPixel) / 1000.0;
+                                    PalletHeightTxt.Text = $"{palletHeightMeters:F2} m";
                                 }
-
-                                // Convert frame to WPF BitmapImage
-                                var bitmapImage = cloned.ToBitmapSource();
-                                bitmapImage.Freeze();
-
-                                // Update WPF UI
-                                Dispatcher.Invoke(() =>
-                                {
-                                    BoxCountingCameraFeed.Source = bitmapImage;
-                                    NoBoxTxt.Text = $"Boxes Detected: {filtered.Count}";
-
-                                    var pallet = filtered.FirstOrDefault(p => p.Label.Name.ToLower() == "pallet");
-                                    if (pallet != null)
-                                    {
-                                        int heightPixels = (int)(pallet.Rectangle.Bottom - pallet.Rectangle.Top);
-                                        double mmPerPixel = 2.0; // Calibration value
-                                        double palletHeightMeters = (heightPixels * mmPerPixel) / 1000.0;
-                                        //PalletHeightTxt.Text = $"{palletHeightMeters:F2} m";
-                                    }
-                                });
-                            }
-                            else
-                            {
-                                Console.WriteLine("Error: {0} {1}", grabResult.ErrorCode, grabResult.ErrorDescription);
-                            }
+                            });
+                        }
+                        catch (TimeoutException)
+                        {
+                            Console.WriteLine("[Box] Timeout — continuing...");
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[Box] Frame error: {ex.Message}");
                         }
                     }
 
-                    // Clean up
-                    isRunning = false;
-                    cts.Cancel();
-                    processingTask.Wait();
-
-                    camera.StreamGrabber.Stop();
-                    camera.Close();
+                    camera2.StreamGrabber.Stop();
+                    camera2.Close();
                 }
             }
-            catch (Exception e)
+            catch (Exception ex)
             {
-                Console.Error.WriteLine("Exception: {0}", e.Message);
-
+                Console.WriteLine($"[Box] Exception: {ex.Message}");
             }
             finally
             {
-                Console.Error.WriteLine("\nPress enter to exit.");
-                Console.ReadLine();
+                _isProcessing = false;
+                Console.WriteLine("[Box] Process stopped.");
             }
         }
+
+
         private Mat GrabResultToMat(IGrabResult grabResult)
         {
             // Get the pixel data as byte array
@@ -996,19 +1149,19 @@ namespace HumanDetection
         {
             string rtspUrl = "rtsp://admin:ChShani%40786@192.168.24.110:554/Streaming/Channels/102/";
 
-            ShowStatus(BoxCountingStatusText, "Connecting to camera...");
+            //ShowStatus(BoxCountingStatusText, "Connecting to camera...");
             Thread.Sleep(500);
 
             var videoCapture = new VideoCapture(rtspUrl);
             if (!videoCapture.IsOpened())
             {
-                ShowStatus(BoxCountingStatusText, "Failed to connect to RTSP sub-stream.");
+                //ShowStatus(BoxCountingStatusText, "Failed to connect to RTSP sub-stream.");
                 return;
             }
 
-            ShowStatus(BoxCountingStatusText, "Connected. Starting detection...");
-            Thread.Sleep(1000);
-            HideStatus(BoxCountingStatusText);
+            //ShowStatus(BoxCountingStatusText, "Connected. Starting detection...");
+            //Thread.Sleep(1000);
+            //HideStatus(BoxCountingStatusText);
 
             _isRunning = true;
             _frame = new Mat();
@@ -1083,8 +1236,8 @@ namespace HumanDetection
 
                 Dispatcher.Invoke(() =>
                 {
-                    BoxCountingCameraFeed.Source = bitmapImage;
-                    NoBoxTxt.Text = $"Boxes Detected: {filtered.Count}";
+                    //BoxCountingCameraFeed.Source = bitmapImage;
+                    //NoBoxTxt.Text = $"Boxes Detected: {filtered.Count}";
                 });
             }
 
@@ -1103,7 +1256,7 @@ namespace HumanDetection
         {
             try
             {
-                ShowStatus(BoxCountingStatusText, "Loading image...");
+                //ShowStatus(BoxCountingStatusText, "Loading image...");
                 Thread.Sleep(500);
 
                 string imagePath = "Assets/boxes.png"; // Path to your image file
@@ -1113,9 +1266,9 @@ namespace HumanDetection
                     return;
                 }
 
-                ShowStatus(BoxCountingStatusText, "Image loaded. Initializing detection...");
-                Thread.Sleep(500);
-                HideStatus(BoxCountingStatusText);
+                //ShowStatus(BoxCountingStatusText, "Image loaded. Initializing detection...");
+                //Thread.Sleep(500);
+                //HideStatus(BoxCountingStatusText);
 
                 using var imageStream = File.OpenRead(imagePath);
                 using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(imageStream);
@@ -1157,7 +1310,7 @@ namespace HumanDetection
 
                 Dispatcher.Invoke(() =>
                 {
-                    BoxCountingCameraFeed.Source = bitmapImage;
+                    //BoxCountingCameraFeed.Source = bitmapImage;
                 });
             }
             catch (Exception ex)
@@ -1242,6 +1395,8 @@ namespace HumanDetection
                 }
             }
         }
+       
+
         #endregion
 
 
@@ -1345,6 +1500,96 @@ namespace HumanDetection
         {
             StopCountdown();
         }
+        private void FlashCamera(UIElement targetElement)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                // Get the base storyboard from UI thread
+                if (FindResource("CameraFlashStoryboard") is Storyboard baseStoryboard)
+                {
+                    // Clone so we can modify safely
+                    Storyboard storyboard = baseStoryboard.Clone();
+
+                    // Set the animation target on UI thread
+                    Storyboard.SetTarget(storyboard.Children[0], targetElement);
+
+                    // Begin animation on UI thread
+                    storyboard.Begin();
+                }
+
+                // Play sound (also safe on UI thread)
+                //PlayShutterSound();
+            });
+        }
+
+        private async void PlayShutterSound()
+        {
+            try
+            {
+                audioManager.Play("Resources/Audio/shutter.mp3");
+                await Task.Delay(500); // short shutter sound
+                audioManager.Stop();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error playing shutter sound: {ex.Message}");
+            }
+        }
+        private async Task PalletDetectedSoundStart()
+        {
+            try
+            {
+                audioManager.Play("Resources/Audio/pallet.wav");
+                await Task.Delay(500); // short shutter sound
+                audioManager.Stop();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error playing shutter sound: {ex.Message}");
+            }
+        }
+
+
+        private void SetCameraUI(Border borderControl, bool isAvailable)
+        {
+            if (borderControl == null) return;
+
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                if (isAvailable)
+                {
+                    borderControl.BorderBrush = (SolidColorBrush)(new BrushConverter().ConvertFromString("#00E108")); // green green
+                    if (borderControl.Child is StackPanel panel &&
+                        panel.Children[0] is Grid grid &&
+                        grid.Children[0] is Ellipse ellipse)
+                    {
+                        ellipse.Opacity = 1;
+                    }
+
+                }
+                else
+                {
+                    borderControl.BorderBrush = (SolidColorBrush)(new BrushConverter().ConvertFromString("#FF0000")); // red
+                    if (borderControl.Child is StackPanel panel &&
+                        panel.Children[0] is Grid grid &&
+                        grid.Children[0] is Ellipse ellipse)
+                    {
+                        ellipse.Opacity = 0;
+                    }
+                }
+            });
+        }
+        private void ShowPalletFromLeft()
+        {
+            Dispatcher.Invoke(() =>
+            {
+                PaletImage.Opacity = 1; // ensure visible
+                var storyboard = (Storyboard)FindResource("ShowPalletFromTopStoryboard");
+                storyboard.Begin(this, true);
+            });
+        }
+
+
         #endregion
 
 
