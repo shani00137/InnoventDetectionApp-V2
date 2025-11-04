@@ -18,9 +18,22 @@ namespace HumanDetection
     /// </summary>
     public partial class ResultDialog : UserControl
     {
+        public event EventHandler CloseClicked;
+        public event EventHandler RestartProcessClicked;
+
         public ResultDialog()
         {
             InitializeComponent();
+        }
+
+        private void CloseButton_Click(object sender, RoutedEventArgs e)
+        {
+            CloseClicked?.Invoke(this, EventArgs.Empty);
+        }
+
+        private void RestartButton_Click(object sender, RoutedEventArgs e)
+        {
+            RestartProcessClicked?.Invoke(this, EventArgs.Empty);
         }
     }
 }

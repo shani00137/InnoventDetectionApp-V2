@@ -3,10 +3,92 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
-             xmlns:local="clr-namespace:HumanDetection"
+             xmlns:local="clr-namespace:HumanDetection" xmlns:materialIcons="clr-namespace:Material.Icons.WPF;assembly=Material.Icons.WPF"
              mc:Ignorable="d" 
-             d:DesignHeight="450" d:DesignWidth="800">
-    <Border CornerRadius="8">
-        
+             d:DesignHeight="450" d:DesignWidth="600">
+    <Border CornerRadius="3" Background="Black" BorderThickness="3" BorderBrush="Indigo">
+        <Grid Background="Black" Margin="5,5,5,5" >
+            <Grid.RowDefinitions>
+                <RowDefinition Height="auto"></RowDefinition>
+                <RowDefinition Height="*"></RowDefinition>
+                <RowDefinition Height="auto"></RowDefinition>
+            </Grid.RowDefinitions>
+            <StackPanel Grid.Row="0" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <TextBlock Foreground="White" FontSize="20" Text="Pallet Results"></TextBlock>
+            </StackPanel>
+            <Grid Grid.Row="1" Margin="10,10,10,5">
+                <Grid VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
+                    <Border CornerRadius="8" BorderThickness="2" Background="Transparent" BorderBrush="Indigo" >
+                        <StackPanel Orientation="Vertical" Background="Transparent">
+
+                            <StackPanel Orientation="Horizontal" Margin="5">
+                                <materialIcons:MaterialIcon Kind="ClockAutoOutline" Width="20" Height="20" Foreground="White"/>
+                                <TextBlock Margin="5" FontSize="16" Foreground="White" Text="12:01:00 PM To 12:05:00"></TextBlock>
+                            </StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"> </ColumnDefinition>
+                                    <ColumnDefinition Width="*"></ColumnDefinition>
+                                    <ColumnDefinition Width="*"></ColumnDefinition>
+                                    <ColumnDefinition Width="*"></ColumnDefinition>
+                                   
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="5">
+                                    <materialIcons:MaterialIcon Kind="BoxAddOutline" Width="20" Height="20" Foreground="White"/>
+                                    <TextBlock Margin="5" FontSize="14" Foreground="White" Text="Detecd Box: 5"></TextBlock>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="5">
+                                    <materialIcons:MaterialIcon Kind="ShippingPallet" Width="20" Height="20" Foreground="White"/>
+                                    <TextBlock Margin="5" FontSize="14" Foreground="White" Text="Pallet Hight: 5.6"></TextBlock>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="5">
+                                    <materialIcons:MaterialIcon Kind="MeasuringTape" Width="20" Height="20" Foreground="White"/>
+                                    <TextBlock Margin="5" FontSize="14" Foreground="White" Text="Weight: 53 KG"></TextBlock>
+                                </StackPanel>
+                                <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="5">
+                                    <materialIcons:MaterialIcon Kind="ListStatus" Width="20" Height="20" Foreground="White"/>
+                                    <TextBlock Margin="5" FontSize="14" Foreground="White" Text="Condition: Ok"></TextBlock>
+                                </StackPanel>
+                            </Grid>
+                            <TextBlock Margin="10" Foreground="White" Text="ORC Results"></TextBlock>
+                            <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto"
+                  Margin="20"
+                  Background="Transparent">
+                                <TextBox 
+    Text="Chrome Remote Desktop is a remote desktop software tool, developed by Google, that allows a user to remotely control another computer's desktop through a proprietary protocol also developed by Google, internally called Chromoting. The protocol transmits the keyboard and mouse events from the client to the server, relaying the graphical screen updates back in the other direction over a computer net."
+    TextWrapping="Wrap"
+    IsReadOnly="True"
+    VerticalScrollBarVisibility="Auto"
+    HorizontalScrollBarVisibility="Disabled"
+    Margin="2"
+    Background="Transparent"
+    BorderThickness="0"
+    FontSize="14"
+/>
+
+                            </ScrollViewer>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Grid>
+            <Grid Grid.Row="2">
+                <StackPanel Margin="5,5,7,5" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right" >
+                    <Button
+                            Background="#193D23"  
+                            Foreground="#34C759" 
+                            Content="Restart Proceess" 
+                            FontSize="14"
+                            Padding="10,5"
+                            HorizontalAlignment="Right"
+                            Margin="10,0,10,0"
+                            BorderThickness="0"
+                            Grid.Column="2"  Click="RestartButton_Click"/>
+                    <Button Click="CloseButton_Click"  Width="100" Content="Close" Foreground="White" VerticalAlignment="Center" HorizontalContentAlignment="Center" Background="Gray"   Padding="0" BorderThickness="0" >
+                    
+                </Button>
+                </StackPanel>
+            </Grid>
+        </Grid>
     </Border>
 </UserControl>

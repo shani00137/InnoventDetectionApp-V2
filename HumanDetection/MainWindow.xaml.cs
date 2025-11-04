@@ -9,6 +9,7 @@ using HumanDetection.Utilites.Animation;
 using HumanDetection.Utilites.Audio;
 using MaterialDesignThemes.Wpf;
 using Microsoft.ML.OnnxRuntime;
+using Model;
 using OpenCvSharp;
 using OpenCvSharp.Extensions;
 using OpenCvSharp.Internal.Vectors;
@@ -84,12 +85,18 @@ namespace HumanDetection
         private bool _isProcessing = false;
         private CaptureVisionRouter? cvRouter;
         public ObservableCollection<BitmapImage> CapturedImages { get; set; }
-
+        public ObservableCollection<ResutlModel> ResultDataList { get; set; }
 
         public MainWindow()
         {
             InitializeComponent();
             MaximizeRestoreButton_Click(null, null);
+            ResultDialoag.CloseClicked += ResultDialog_CloseClicked;
+            ResultDialoag.RestartProcessClicked += ResultDialog_RestartProcessClicked;
+            SetIndicator(SensorIndicator, true);        // Sensor ON
+            SetIndicator(TemperatureIndicator, false);  // Temperature OK
+            SetIndicator(HumidityIndicator, false);      // Humidity ON
+            SetIndicator(MotorIndicator, false);
             Loaded += MainWindow_LoadedAsync;  // Changed to async
         Closed += (s, e) => _isRunning = false;
           
@@ -112,6 +119,7 @@ namespace HumanDetection
         {
             try
             {
+                ResultDataList=new ObservableCollection<ResutlModel> { new ResutlModel() };
                 // Show loading indicator
                 LoadingOverlay.Visibility = Visibility.Visible;
                 await Task.Delay(1); // Ensure UI updates
@@ -198,7 +206,7 @@ namespace HumanDetection
 
             var fontPath = "C:/Windows/Fonts/consola.ttf";
             _font = new SixLabors.Fonts.Font(new FontCollection().Add(fontPath), 16);
-            
+
 
 
         }
@@ -256,10 +264,11 @@ namespace HumanDetection
                                 await Dispatcher.InvokeAsync(async () =>
                                 {
                                     ShowPalletFromLeft();
-                                    await Task.Delay(1000);
+                                    await Task.Delay(500);
                                     await PalletDetectedSoundStart();
-                                    await Task.Delay(1000);
+                                    await Task.Delay(500);
                                     await CaptureAndDisplayAllCamerasAsync();
+                                    AddResult(DateTime.Now,null ,null , null, null,null);
                                 });
 
                                 Console.WriteLine("✅ Pallet detected! Stopping camera...");
@@ -292,6 +301,51 @@ namespace HumanDetection
                 Console.WriteLine("[Camera] Process stopped.");
             }
         }
+
+        private void AddResult(DateTime? startDate = null, DateTime? endDate = null, int? boxes = null, double? palletHeight = null, double? weight = null, string remarks = null)
+        {
+            // Find the first existing result
+            var resultModel = ResultDataList.FirstOrDefault();
+
+            if (resultModel != null)
+            {
+                // Update only provided fields
+                if (boxes.HasValue)
+                    resultModel.TotalBoxes = boxes.Value;
+
+                if (palletHeight.HasValue)
+                    resultModel.PalletHeight = palletHeight.Value;
+
+                if (weight.HasValue)
+                    resultModel.TotalWeight = weight.Value;
+
+                if (!string.IsNullOrWhiteSpace(remarks))
+                    resultModel.OCRResult = remarks;
+
+                if (startDate.HasValue)
+                    resultModel.StartTime = startDate.Value;
+
+                if (endDate.HasValue)
+                    resultModel.EndTime = endDate.Value;
+            }
+            else
+            {
+                // Add a new record if none exists
+                ResultDataList.Add(new ResutlModel
+                {
+                    StartTime = startDate ?? DateTime.Now,
+                    EndTime = endDate ?? DateTime.Now,
+                    TotalBoxes = boxes ?? 0,
+                    PalletHeight = palletHeight ?? 0,
+                    TotalWeight = weight ?? 0,
+                    OCRResult = remarks ?? string.Empty
+                });
+            }
+        }
+
+
+
+
         private async Task CaptureAndDisplayAllCamerasAsync()
         {
             var cameraList  = CameraFinder.Enumerate();
@@ -308,6 +362,11 @@ namespace HumanDetection
             ProgressTxt.Text = "Please Wait.."
 ;           await RunAllAIDetectionsAsync(images);
             LoadingOverlay.Visibility = Visibility.Collapsed;
+
+
+            ImageDialogHost.IsOpen = true; // ✅ show popup
+            PictureDialog.Visibility = Visibility.Collapsed;
+            ResultDialoag.Visibility = Visibility.Visible;
 
         }
         public async Task<List<BitmapImage>> CaptureSingleFrameFromAllCamerasAsync(List<ICameraInfo> cameraInfos)
@@ -364,6 +423,7 @@ namespace HumanDetection
             }
             int NumberOfBox = 0;
             double PalletHeight = 0;
+            string Result
             // Convert BitmapImages to ImageSharp format for inference
             var imageSharpList = capturedImages.Select(img => BitmapImageToImageSharp(img)).ToList();
             for (int i = 0; i < imageSharpList.Count; i++)
@@ -381,21 +441,22 @@ namespace HumanDetection
                 NumberOfBox += boxResult.BoxesDetected;
                 PalletHeight= boxResult.PalletHeight;
             }
-            
-          
 
+
+          
             // 🔔 Update UI with combined results
             Dispatcher.Invoke(() =>
             {
                 NoBoxTxt.Text = $"Boxes: {NumberOfBox}";
                 PalletHeightTxt.Text = $" {PalletHeight:F2} m";
-
+                AddResult(null, DateTime.Now, NumberOfBox, PalletHeight, 0, ocrResult.ExtractedText);
                 //HumanDetectionStatusText.Text = humanResult.HumanDetected ? "✅ Human Detected" : "❌ No Human";
                 //TextExtractionStatusText.Text = $"OCR: {ocrResult.ExtractedText}";
             });
         }
         private (int BoxesDetected, double PalletHeight) RunBoxCountingModel(Image<Rgba32> image)
         {
+            UpdateProgressStatus("Box Counting AI Model Start");
             // ✅ Step 1: Preprocess image (resize to 640x640 YOLOv5 input)
             using var resizedImage = image.Clone(ctx =>
                 ctx.Resize(new ResizeOptions
@@ -476,6 +537,7 @@ namespace HumanDetection
 
         private bool RunHumanDetectionModel(Image<Rgba32> image)
         {
+            UpdateProgressStatus("Human Detection AI Model Start");
             var predictions = _scorerHumanModel.Predict(image);
 
             bool humanDetected = predictions.Any(p =>
@@ -491,6 +553,9 @@ namespace HumanDetection
         {
             try
             {
+
+
+                UpdateProgressStatus( "OCR AI Model Start");
                 using var tempStream = new MemoryStream();
                 image.SaveAsPng(tempStream);
                 tempStream.Position = 0;
@@ -524,12 +589,33 @@ namespace HumanDetection
             {
                 DialogImage.Source = img.Source;
                 ImageDialogHost.IsOpen = true; // ✅ show popup
+                PictureDialog.Visibility = Visibility.Visible;
+
+                ResultDialoag.Visibility = Visibility.Collapsed;
             }
         }
 
         private void CloseDialog_Click(object sender, RoutedEventArgs e)
         {
             ImageDialogHost.IsOpen = false; // ✅ close popup
+        }
+        private void ResultDialog_CloseClicked(object sender, EventArgs e)
+        {
+            // Close the dialog
+            ImageDialogHost.IsOpen = false;
+            MaterialDesignThemes.Wpf.DialogHost.CloseDialogCommand.Execute(null, null);
+        }
+
+        private void ResultDialog_RestartProcessClicked(object sender, EventArgs e)
+        {
+            ImageDialogHost.IsOpen = false;
+            MaterialDesignThemes.Wpf.DialogHost.CloseDialogCommand.Execute(null, null);
+            var allCameras = CameraFinder.Enumerate();
+            int cameraCount = allCameras.Count;
+            if (cameraCount > 0)
+                SetCameraUI(CamFrontLightPulse, cameraCount >= 1);
+          CheckPalletStatus(allCameras[0]);
+
         }
 
 
@@ -1588,6 +1674,22 @@ namespace HumanDetection
                 storyboard.Begin(this, true);
             });
         }
+        private void UpdateProgressStatus(String Status)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                ProgressTxt.Text = Status;
+            });
+        }
+        private void SetIndicator(System.Windows.Controls.Image indicator, bool isOn)
+        {
+            string imageUri = isOn
+                ? "pack://application:,,,/Resources/Images/on_indicator.png"   // Red (ON)
+                : "pack://application:,,,/Resources/Images/off_indicator.png"; // Green (OFF)
+
+            indicator.Source = new BitmapImage(new Uri(imageUri));
+        }
+
 
 
         #endregion
