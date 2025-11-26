@@ -14,6 +14,7 @@
 		<None Remove="Assets\boxes.png" />
 		<None Remove="Assets\boxvideo.mp4" />
 		<None Remove="Assets\ocrvideo.mp4" />
+		<None Remove="Assets\plcommpro.dll" />
 		<None Remove="Assets\reader.py" />
 		<None Remove="Assets\receipt.png" />
 		<None Remove="Assets\Weights\customBoxCount.onnx" />
@@ -42,8 +43,36 @@
 		<Content Include="Assets\boxvideo.mp4">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</Content>
+		<Content Include="Assets\DLL\libareacode.dll" />
+		<Content Include="Assets\DLL\plcommpro.dll">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Assets\DLL\plcomms.dll">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Assets\DLL\plcommutils.dll">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Assets\DLL\plrscagent.dll">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Assets\DLL\plrscomm.dll">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Assets\DLL\pltcpcomm.dll">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Assets\DLL\plusbcomm.dll">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Assets\DLL\ZKCommuCryptoClient.dll">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
 		<Content Include="Assets\ocrvideo.mp4">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Assets\plcommpro.dll">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</Content>
 		<Content Include="Assets\reader.py">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
@@ -64,7 +93,13 @@
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</Content>
 	</ItemGroup>
-
+	<ItemGroup>
+		<!-- Copy EVERY file that lives in the Assets folder -->
+		<None Include="Assets\**\*.*">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
+		</None>
+	</ItemGroup>
 	<ItemGroup>
 		<Content Include="Resources\Audio\warning.wav">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
@@ -123,6 +158,7 @@
 		<PackageReference Include="OpenCvSharp4.WpfExtensions" Version="4.11.0.20250507" />
 		<PackageReference Include="OpenCvSharp4.Extensions" Version="4.11.0.20250507" />
 		<PackageReference Include="SixLabors.ImageSharp" Version="3.1.8" />
+		<PackageReference Include="System.Device.Gpio" Version="4.0.1" />
 		<PackageReference Include="Tesseract" Version="4.1.1" />
 		<PackageReference Include="Tesseract.Data.English" Version="4.0.0" />
 		<PackageReference Include="Yolov5Net" Version="1.1.0" />
@@ -131,6 +167,8 @@
 		<PackageReference Include="Dynamsoft.DotNet.CaptureVision.Bundle" Version="3.0.6000" />
 	</ItemGroup>
 	<ItemGroup>
+
+
 		<ProjectReference Include="..\src\Yolov5Net.Scorer\Yolov5Net.Scorer.csproj" />
 	</ItemGroup>
 
@@ -138,6 +176,9 @@
 	<ItemGroup>
 		<None Update="Assets\test.jpg">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="Assets\Weights\customBoxCountOld.onnx">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
 		<None Update="Assets\Weights\yolov5n.onnx">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -169,6 +210,16 @@
 
 
 	<ItemGroup>
+	  <None Remove="Assets\DLL\libareacode.dll" />
+	  <None Remove="Assets\DLL\plcommpro.dll" />
+	  <None Remove="Assets\DLL\plcomms.dll" />
+	  <None Remove="Assets\DLL\plcommutils.dll" />
+	  <None Remove="Assets\DLL\plrscagent.dll" />
+	  <None Remove="Assets\DLL\plrscomm.dll" />
+	  <None Remove="Assets\DLL\pltcpcomm.dll" />
+	  <None Remove="Assets\DLL\plusbcomm.dll" />
+	  <None Remove="Assets\DLL\ZKCommuCryptoClient.dll" />
+	  <None Remove="Assets\Weights\customBoxCount.onnx" />
 	  <None Remove="Resources\Audio\shutter.mp3" />
 	</ItemGroup>
 
@@ -177,4 +228,19 @@
 	<ItemGroup>
 	  <None Remove="Resources\Audio\pallet.wav" />
 	</ItemGroup>
+
+
+
+	<ItemGroup>
+	  <COMReference Include="zkemkeeper">
+	    <VersionMinor>0</VersionMinor>
+	    <VersionMajor>1</VersionMajor>
+	    <Guid>fe9ded34-e159-408e-8490-b720a5e632c7</Guid>
+	    <Lcid>0</Lcid>
+	    <WrapperTool>tlbimp</WrapperTool>
+	    <Isolated>false</Isolated>
+	    <EmbedInteropTypes>False</EmbedInteropTypes>
+	  </COMReference>
+	</ItemGroup>
+
 </Project>

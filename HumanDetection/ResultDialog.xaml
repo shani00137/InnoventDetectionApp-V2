@@ -3,10 +3,10 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
-             xmlns:local="clr-namespace:HumanDetection" xmlns:materialIcons="clr-namespace:Material.Icons.WPF;assembly=Material.Icons.WPF"
+             xmlns:local="clr-namespace:HumanDetection" xmlns:materialIcons="clr-namespace:Material.Icons.WPF;assembly=Material.Icons.WPF" xmlns:materialIcons1="http://materialdesigninxaml.net/winfx/xaml/themes"
              mc:Ignorable="d" 
              d:DesignHeight="450" d:DesignWidth="600">
-    <Border CornerRadius="3" Background="Black" BorderThickness="3" BorderBrush="Indigo">
+    <Border CornerRadius="3" Background="Black" BorderThickness="1" BorderBrush="Indigo">
         <Grid Background="Black" Margin="5,5,5,5" >
             <Grid.RowDefinitions>
                 <RowDefinition Height="auto"></RowDefinition>
@@ -18,58 +18,141 @@
             </StackPanel>
             <Grid Grid.Row="1" Margin="10,10,10,5">
                 <Grid VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
-                    <Border CornerRadius="8" BorderThickness="2" Background="Transparent" BorderBrush="Indigo" >
-                        <StackPanel Orientation="Vertical" Background="Transparent">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding ResultDataList}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border CornerRadius="8" BorderThickness="1" Background="Transparent" BorderBrush="Indigo" Margin="10">
+                                        <StackPanel Orientation="Vertical">
+                                            <StackPanel Orientation="Horizontal" Margin="5">
+                                                <materialIcons:MaterialIcon Kind="ClockOutline" Width="20" Height="20" Foreground="White"/>
+                                                <TextBlock Margin="5" FontSize="16" Foreground="White"
+                                           Text="{Binding StartTime, StringFormat='{}{0:hh:mm:ss tt}'}"/>
+                                                <TextBlock Margin="5,5,0,0" FontSize="16" Foreground="White" Text="TO"/>
+                                                <TextBlock Margin="5,5,0,0" FontSize="16" Foreground="White" Text="{Binding EndTime, StringFormat='{}{0:hh:mm:ss tt}'}"/>
+                                            </StackPanel>
 
-                            <StackPanel Orientation="Horizontal" Margin="5">
-                                <materialIcons:MaterialIcon Kind="ClockAutoOutline" Width="20" Height="20" Foreground="White"/>
-                                <TextBlock Margin="5" FontSize="16" Foreground="White" Text="12:01:00 PM To 12:05:00"></TextBlock>
-                            </StackPanel>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"> </ColumnDefinition>
-                                    <ColumnDefinition Width="*"></ColumnDefinition>
-                                    <ColumnDefinition Width="*"></ColumnDefinition>
-                                    <ColumnDefinition Width="*"></ColumnDefinition>
-                                   
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="5">
-                                    <materialIcons:MaterialIcon Kind="BoxAddOutline" Width="20" Height="20" Foreground="White"/>
-                                    <TextBlock Margin="5" FontSize="14" Foreground="White" Text="Detecd Box: 5"></TextBlock>
-                                </StackPanel>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="5">
-                                    <materialIcons:MaterialIcon Kind="ShippingPallet" Width="20" Height="20" Foreground="White"/>
-                                    <TextBlock Margin="5" FontSize="14" Foreground="White" Text="Pallet Hight: 5.6"></TextBlock>
-                                </StackPanel>
-                                <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="5">
-                                    <materialIcons:MaterialIcon Kind="MeasuringTape" Width="20" Height="20" Foreground="White"/>
-                                    <TextBlock Margin="5" FontSize="14" Foreground="White" Text="Weight: 53 KG"></TextBlock>
-                                </StackPanel>
-                                <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="5">
-                                    <materialIcons:MaterialIcon Kind="ListStatus" Width="20" Height="20" Foreground="White"/>
-                                    <TextBlock Margin="5" FontSize="14" Foreground="White" Text="Condition: Ok"></TextBlock>
-                                </StackPanel>
-                            </Grid>
-                            <TextBlock Margin="10" Foreground="White" Text="ORC Results"></TextBlock>
-                            <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                  VerticalScrollBarVisibility="Auto"
-                  Margin="20"
-                  Background="Transparent">
-                                <TextBox 
-    Text="Chrome Remote Desktop is a remote desktop software tool, developed by Google, that allows a user to remotely control another computer's desktop through a proprietary protocol also developed by Google, internally called Chromoting. The protocol transmits the keyboard and mouse events from the client to the server, relaying the graphical screen updates back in the other direction over a computer net."
-    TextWrapping="Wrap"
-    IsReadOnly="True"
-    VerticalScrollBarVisibility="Auto"
-    HorizontalScrollBarVisibility="Disabled"
-    Margin="2"
-    Background="Transparent"
-    BorderThickness="0"
-    FontSize="14"
-/>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
 
-                            </ScrollViewer>
-                        </StackPanel>
-                    </Border>
+                                                <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="2">
+                                                    <materialIcons:MaterialIcon Kind="CubeOutline" Width="20" Height="20" Foreground="Orange"/>
+                                                    <TextBlock Margin="5" FontSize="16" Foreground="White"
+                                               Text="{Binding TotalBoxes, StringFormat='Detected Box: {0}'}"/>
+                                                </StackPanel>
+
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="2">
+                                                    <materialIcons:MaterialIcon Kind="ShippingPallet" Width="20" Height="20" Foreground="IndianRed"/>
+                                                    <TextBlock Margin="5" FontSize="16" Foreground="White"
+                                               Text="{Binding PalletHeight, StringFormat='Pallet Height: {0:F2}'}"/>
+                                                </StackPanel>
+
+                                                <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="2">
+                                                    <materialIcons:MaterialIcon Kind="Scale" Width="20" Height="20" Foreground="Yellow"/>
+                                                    <TextBlock Margin="5" FontSize="16" Foreground="White"
+                                               Text="{Binding TotalWeight, StringFormat='Weight: {0:F2} KG'}"/>
+                                                </StackPanel>
+
+                                                <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="2">
+                                                    <materialIcons:MaterialIcon Kind="ListStatus" Width="20" Height="20" Foreground="Green"/>
+                                                    <TextBlock Margin="5" FontSize="16" Foreground="White"
+                                               Text="Condition: OK"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="4" Orientation="Horizontal" Margin="2">
+                                                    <materialIcons:MaterialIcon Kind="Human" Width="20" Height="20" Foreground="Red"/>
+                                                    <TextBlock Margin="5" FontSize="16" Foreground="White"
+                                                    Text="{Binding HumanDetect}"/>
+                                                </StackPanel>
+                                            </Grid>
+
+
+                                            <ScrollViewer VerticalScrollBarVisibility="Auto"
+              Height="200"
+              Margin="20"
+              Background="Transparent">
+
+                                                <ScrollViewer.Resources>
+                                                    <!-- Custom ScrollBar Style -->
+                                                    <Style TargetType="ScrollBar" BasedOn="{StaticResource {x:Type ScrollBar}}">
+                                                        <Setter Property="Width" Value="10" />
+                                                        <Setter Property="Background" Value="Transparent" />
+                                                        <Setter Property="Template">
+                                                            <Setter.Value>
+                                                                <ControlTemplate TargetType="ScrollBar">
+                                                                    <Grid Background="{TemplateBinding Background}">
+                                                                        <Track x:Name="PART_Track" IsDirectionReversed="true">
+                                                                            <Track.DecreaseRepeatButton>
+                                                                                <RepeatButton Command="ScrollBar.LineUpCommand"
+                                                  Style="{x:Null}"
+                                                  Height="0"
+                                                  Content=""/>
+                                                                            </Track.DecreaseRepeatButton>
+                                                                            <Track.IncreaseRepeatButton>
+                                                                                <RepeatButton Command="ScrollBar.LineDownCommand"
+                                                  Style="{x:Null}"
+                                                  Height="0"
+                                                  Content=""/>
+                                                                            </Track.IncreaseRepeatButton>
+                                                                            <Track.Thumb>
+                                                                                <Thumb x:Name="Thumb"
+                                           Height="60"
+                                          
+                                           Background="#444"
+                                           BorderBrush="#666"
+                                           BorderThickness="1">
+                                                                                    <Thumb.Style>
+                                                                                        <Style TargetType="Thumb">
+                                                                                            
+                                                                                            <Setter Property="Background" Value="#555"/>
+                                                                                            <Setter Property="BorderBrush" Value="#777"/>
+                                                                                            <Setter Property="BorderThickness" Value="1"/>
+                                                                                            <Setter Property="Opacity" Value="0.8"/>
+                                                                                            <Style.Triggers>
+                                                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                                                    <Setter Property="Background" Value="#888"/>
+                                                                                                    <Setter Property="Opacity" Value="1"/>
+                                                                                                </Trigger>
+                                                                                                <Trigger Property="IsDragging" Value="True">
+                                                                                                    <Setter Property="Background" Value="#00BFFF"/>
+                                                                                                    <Setter Property="Opacity" Value="1"/>
+                                                                                                </Trigger>
+                                                                                            </Style.Triggers>
+                                                                                        </Style>
+                                                                                    </Thumb.Style>
+                                                                                </Thumb>
+                                                                            </Track.Thumb>
+                                                                        </Track>
+                                                                    </Grid>
+                                                                </ControlTemplate>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </Style>
+                                                </ScrollViewer.Resources>
+
+                                                <!-- Your TextBox -->
+                                                <TextBox Text="{Binding OCRResult}"
+             TextWrapping="Wrap"
+             IsReadOnly="True"
+             Background="Transparent"
+             BorderThickness="0"
+             Foreground="White"
+             FontSize="16"
+             VerticalScrollBarVisibility="Hidden"
+             HorizontalScrollBarVisibility="Disabled"/>
+                                            </ScrollViewer>
+
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
                 </Grid>
             </Grid>
             <Grid Grid.Row="2">

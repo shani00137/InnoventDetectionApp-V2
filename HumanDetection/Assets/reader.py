@@ -1,32 +1,27 @@
 ﻿import sys
-from doctr.io import DocumentFile
-from doctr.models import ocr_predictor
+import easyocr
+import warnings
+import contextlib
+import io
+
+# Suppress all UserWarnings
+warnings.filterwarnings("ignore", category=UserWarning)
 
 def run_ocr(image_path):
-    # Load pretrained model
-    model = ocr_predictor(pretrained=True)
+    try:
+        # Suppress stdout/stderr during EasyOCR initialization
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            reader = easyocr.Reader(['en'], gpu=False)
 
-    # Load image
-    doc = DocumentFile.from_images(image_path)
-
-    # Run OCR
-    result = model(doc)
-
-    # Extract plain text
-    plain_text = []
-    for page in result.export()["pages"]:
-        for block in page["blocks"]:
-            for line in block["lines"]:
-                words = [w["value"] for w in line["words"]]
-                if words:
-                    plain_text.append(" ".join(words))
-
-    return "\n".join(plain_text)
+        results = reader.readtext(image_path)
+        detected_text = " ".join([text for (_, text, _) in results])
+        print(detected_text)  # C# can capture this output
+    except Exception as e:
+        print(f"Error during OCR: {e}")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Please provide image path")
+        print("Error: No image path provided")
     else:
         image_path = sys.argv[1]
-        text = run_ocr(image_path)
-        print(text)
+        run_ocr(image_path)

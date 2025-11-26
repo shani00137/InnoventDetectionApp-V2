@@ -1,5 +1,7 @@
-﻿using System;
+﻿using Model;
+using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -21,11 +23,17 @@ namespace HumanDetection
         public event EventHandler CloseClicked;
         public event EventHandler RestartProcessClicked;
 
+        public ObservableCollection<ResutlModel> ResultDataList { get; set; }
         public ResultDialog()
         {
             InitializeComponent();
         }
-
+        public void UpdateResults(ObservableCollection<ResutlModel> results)
+        {
+            ResultDataList = results;
+            this.DataContext = null;
+            this.DataContext = this; // refresh binding
+        }
         private void CloseButton_Click(object sender, RoutedEventArgs e)
         {
             CloseClicked?.Invoke(this, EventArgs.Empty);

@@ -12,5 +12,6 @@ namespace Model
         public DateTime? StartTime { get; set; }
         public DateTime? EndTime { get; set; }
         public string? OCRResult { get; set; }
+        public string? HumanDetect { get; set; }
     }
 }
