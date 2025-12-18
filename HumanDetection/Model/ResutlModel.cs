@@ -8,7 +8,7 @@ namespace Model
     {
         public int? TotalBoxes { get; set; }
         public double? PalletHeight { get; set; }
-        public double? TotalWeight { get; set; }
+        public string? TotalWeight { get; set; }
         public DateTime? StartTime { get; set; }
         public DateTime? EndTime { get; set; }
         public string? OCRResult { get; set; }

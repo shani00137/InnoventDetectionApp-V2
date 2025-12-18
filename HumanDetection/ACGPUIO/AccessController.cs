@@ -1,59 +1,173 @@
 ﻿using System;
-using zkemkeeper;
+using System.Net.Http;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 
 namespace ACGPUIO
 {
-    public class AccessController
+    public class AccessController : IDisposable
     {
-        //private CZKEMClass axCZKEM;
+        private readonly HttpClient _http;
+        private string _token = "";
+        private readonly string _moxaIP;
 
-        //public bool Connect(string ip, int port)
-        //{
-        //    axCZKEM = new CZKEMClass();
-        //    var response = axCZKEM.Connect_Net(ip, port);
-        //    if (axCZKEM.Connect_Net(ip, port))
-        //    {
-        //        Console.WriteLine("✅ Connected to ZKTeco inBio device.");
+        public AccessController(string moxaIP = "192.168.127.254")
+        {
+            _moxaIP = moxaIP;
+            _http = new HttpClient();
+        }
 
-        //        // Example: trigger light connected to relay 1 for 2 seconds
-        //        TriggerLight(1, 2000);
-        //        return true;
-        //    }
-        //    else
-        //    {
-        //        Console.WriteLine("❌ Connection failed.");
-        //        return false;
-        //    }
-        //}
+        // -------------------------
+        //  Refresh token from 05_21.htm
+        // -------------------------
+        public async Task<bool> RefreshToken()
+        {
+            try
+            {
+                // This page returns the HTML form that contains "token" hidden input
+                string url = $"http://{_moxaIP}/05_21.htm?CHANNEL_NO=0";
 
-        //private void TriggerLight(int outputPort, int durationMs)
-        //{
-        //    try
-        //    {
-        //        // Depending on the SDK version, one of these works:
+                string html = await _http.GetStringAsync(url);
 
-        //        // OPTION 1 (most common for inBio)
-        //        axCZKEM.SetWorkCode(1, outputPort);
-        //        // Parameters: (machineNumber, index, state, address, delay)
+                var tokenRegex = new Regex("name=\"token\"\\s+value=\"([^\"]+)\"");
+                var match = tokenRegex.Match(html);
 
-        //        // OPTION 2 (if ControlDevice not supported)
-        //        // axCZKEM.SetDeviceWorkCode(1, outputPort, 1);
+                if (match.Success)
+                {
+                    _token = match.Groups[1].Value;
+                    // Console.WriteLine("New token: " + _token);
+                    return true;
+                }
 
-        //        Console.WriteLine($"💡 Light on port {outputPort} triggered for {durationMs}ms");
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        Console.WriteLine($"⚠ Error triggering light: {ex.Message}");
-        //    }
-        //}
+                // Token not found
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
+        }
 
-        //public void Disconnect()
-        //{
-        //    if (axCZKEM != null)
-        //    {
-        //        axCZKEM.Disconnect();
-        //        Console.WriteLine("🔌 Disconnected from device.");
-        //    }
-        //}
+        // -------------------------
+        //        CORE DO
+        // -------------------------
+        public async Task<bool> SendDOCommand(int channel, int status)
+        {
+            // 1) If we don't have token yet, get it first
+            if (string.IsNullOrEmpty(_token))
+            {
+                bool gotToken = await RefreshToken();
+                if (!gotToken)
+                    return false;
+            }
+
+            try
+            {
+                string url =
+                    $"http://{_moxaIP}/set_521.htm" +
+                    $"?CHANNEL_NO={channel}" +
+                    $"&DO_MODE_C=0" +
+                    $"&DO_STATUS_ENABLE={status}" +
+                    $"&PWM_LO_C=1&PWM_HI_C=1&PWM_CNT_C=0&PWM_START_C=&DO_VALUE_P=0&PWM_START_P=" +
+                    $"&DO_VALUE_S=0&PWM_START_S=&ALIAS_CHANNEL=DO&LOGIC_0=OFF&LOGIC_1=ON" +
+                    $"&token={_token}";
+
+                string resp = await _http.GetStringAsync(url);
+
+                // 2) If response looks like token/login page again, token might be expired.
+                //    Try refreshing token once and retry.
+                if (IsTokenExpiredResponse(resp))
+                {
+                    bool gotToken = await RefreshToken();
+                    if (!gotToken)
+                        return false;
+
+                    // retry once with new token
+                    url =
+                        $"http://{_moxaIP}/set_521.htm" +
+                        $"?CHANNEL_NO={channel}" +
+                        $"&DO_MODE_C=0" +
+                        $"&DO_STATUS_ENABLE={status}" +
+                        $"&PWM_LO_C=1&PWM_HI_C=1&PWM_CNT_C=0&PWM_START_C=&DO_VALUE_P=0&PWM_START_P=" +
+                        $"&DO_VALUE_S=0&PWM_START_S=&ALIAS_CHANNEL=DO&LOGIC_0=OFF&LOGIC_1=ON" +
+                        $"&token={_token}";
+
+                    resp = await _http.GetStringAsync(url);
+                }
+
+                // You can also parse resp here to verify success if MOXA returns OK text.
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        // Simple heuristic: if the response contains the token input again,
+        // it usually means we were redirected to the form / session expired.
+        private bool IsTokenExpiredResponse(string html)
+        {
+            if (string.IsNullOrEmpty(html))
+                return false;
+
+            return html.Contains("name=\"token\"") || html.Contains("LOGIN", StringComparison.OrdinalIgnoreCase);
+        }
+
+        // -------------------------
+        //     BUZZER (DO0)
+        // -------------------------
+        public async Task StartBuzzerAsync()
+        {
+            // DO0 (buzzer) ON
+            await SendDOCommand(0, 1);
+        }
+
+        public async Task OffBuzzerAsync()
+        {
+            // DO0 (buzzer) OFF
+            await SendDOCommand(0, 0);
+        }
+
+        // -------------------------
+        //     BLOWER (DO1)
+        // -------------------------
+        public async Task StartBlowerAsync()
+        {
+            // DO1 (blower) ON
+            await SendDOCommand(2, 1);
+        }
+
+        public async Task OffBlowerAsync()
+        {
+            // DO1 (blower) OFF
+            await SendDOCommand(2, 0);
+        }
+
+        public async Task StartRotatorAsync()
+        {
+            // DO1 (rotator) ON
+            await SendDOCommand(1, 1);
+            await Task.Delay(7000);
+            await SendDOCommand(3, 1);
+
+            //off rotator after 4 sec
+            await Task.Delay(4000);
+            await SendDOCommand(1, 0);
+            await SendDOCommand(3, 0);
+
+        }
+
+        public async Task OffRotatorAsync()
+        {
+            // DO1 (rotator) OFF
+            await SendDOCommand(1, 0);
+            await SendDOCommand(3, 0);
+        }
+
+        public void Dispose()
+        {
+            _http?.Dispose();
+        }
     }
 }

@@ -16,7 +16,7 @@
 
             <Grid.RowDefinitions>
                 <RowDefinition Height="30"/>
-            <RowDefinition Height="60"/>
+            <RowDefinition Height="50"/>
             <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
             <Grid Grid.Row="0" Background="Black">
@@ -74,7 +74,7 @@
                         <TextBlock Text="Home"  VerticalAlignment="Center"/>
                     </StackPanel>
                 </Button>
-                <Button x:Name="LivePreviewNavBtn" Click="NavToLivePreviewPage_Click" Background="Transparent" Width="100" Height="32" Foreground="White" Margin="5" Padding="10,0"
+                <Button x:Name="LivePreviewNavBtn" Click="NavToLivePreviewPage_Click" Background="Transparent" Width="130" Height="32" Foreground="White" Margin="5" Padding="10,0"
                         BorderBrush="Transparent" BorderThickness="0">
                     <StackPanel Orientation="Horizontal">
                         <materialIcons:MaterialIcon Kind="CameraMarkerOutline" Width="20" Height="20" Margin="0,0,5,0"/>

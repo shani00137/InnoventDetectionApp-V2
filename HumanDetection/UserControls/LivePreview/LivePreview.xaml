@@ -1,0 +1,89 @@
+﻿<Page x:Class="UserControls.LivePreview.LivePreview"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+      xmlns:local="clr-namespace:UserControls.LivePreview"
+      mc:Ignorable="d" 
+      d:DesignHeight="450" d:DesignWidth="800"
+      Title="LivePreview"
+      Loaded="LivePreview_Loaded"
+      Unloaded="LivePreview_Unloaded">
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <!-- Top: 2 previews -->
+            <RowDefinition Height="3*"/>
+            <!-- Bottom: OCR text -->
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- ===== TOP ROW: TWO PREVIEWS ===== -->
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Box Counting Preview -->
+            <GroupBox Header="Box Counting Preview" Grid.Column="0" Padding="8">
+                <Border Background="#111111" CornerRadius="4">
+                    <Image x:Name="BoxPreviewImage"
+                           Stretch="Uniform"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"/>
+                </Border>
+            </GroupBox>
+
+            <!-- Human Detection Preview -->
+            <GroupBox Header="Human Detection Preview" Grid.Column="1" Padding="8">
+                <Border Background="#111111" CornerRadius="4">
+                    <Image x:Name="HumanPreviewImage"
+                           Stretch="Uniform"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"/>
+                </Border>
+            </GroupBox>
+        </Grid>
+
+        <!-- ===== BOTTOM ROW: OCR TEXT ===== -->
+        <GroupBox Grid.Row="1" Header="OCR Result" Margin="0,12,0,0" Padding="8">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <TextBox x:Name="OcrResultTextBox"
+                         IsReadOnly="True"
+                         BorderThickness="0"
+                         Background="Transparent"
+                         TextWrapping="Wrap"
+                         FontFamily="Consolas"
+                         FontSize="14"
+                         AcceptsReturn="True"/>
+            </ScrollViewer>
+        </GroupBox>
+
+        <!-- ===== LOADING OVERLAY (ON TOP) ===== -->
+        <Border x:Name="LoadingOverlay"
+                Background="#80000000"
+                CornerRadius="4"
+                Visibility="Collapsed">
+            <StackPanel HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Orientation="Vertical"
+                        Width="260">
+                <TextBlock x:Name="LoadingText"
+                           Text="Initializing camera and AI models..."
+                           Foreground="White"
+                           FontSize="16"
+                           Margin="0,0,0,12"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"/>
+                <ProgressBar IsIndeterminate="True"
+                             Height="6"
+                             Margin="0,0,0,8"/>
+                <TextBlock Text="Please wait..."
+                           Foreground="LightGray"
+                           FontSize="12"
+                           TextAlignment="Center"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Page>

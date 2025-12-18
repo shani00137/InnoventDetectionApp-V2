@@ -1,27 +1,34 @@
 ﻿import sys
+import os
+import json
 import easyocr
-import warnings
-import contextlib
-import io
+import cv2
 
-# Suppress all UserWarnings
-warnings.filterwarnings("ignore", category=UserWarning)
+# Initialize OCR once
+reader = easyocr.Reader(['en','ar'], gpu=True)
 
-def run_ocr(image_path):
-    try:
-        # Suppress stdout/stderr during EasyOCR initialization
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            reader = easyocr.Reader(['en'], gpu=False)
+def preprocess_image(path):
+    img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+    img = cv2.resize(img, (0,0), fx=0.5, fy=0.5)  # downscale for speed
+    return img
 
-        results = reader.readtext(image_path)
-        detected_text = " ".join([text for (_, text, _) in results])
-        print(detected_text)  # C# can capture this output
-    except Exception as e:
-        print(f"Error during OCR: {e}")
+def process_folder(folder):
+    results = {}
+    for file in os.listdir(folder):
+        if file.lower().endswith(('.png','.jpg','.jpeg')):
+            path = os.path.join(folder, file)
+            img = preprocess_image(path)
+            text = " ".join(reader.readtext(img, detail=0))
+            results[file] = text
+    return results
 
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Error: No image path provided")
-    else:
-        image_path = sys.argv[1]
-        run_ocr(image_path)
+# Persistent loop
+while True:
+    line = sys.stdin.readline()
+    if not line:
+        break
+    folder_path = line.strip()
+    if os.path.exists(folder_path):
+        res = process_folder(folder_path)
+        print(json.dumps(res, ensure_ascii=False))
+        sys.stdout.flush()

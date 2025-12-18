@@ -26,6 +26,7 @@ using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using System;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -48,6 +49,8 @@ using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using Tesseract;
+using Utilites.PythonScripts;
+using Utilites.Weight;
 using Yolov5Net.Scorer;
 using Yolov5Net.Scorer.Models;
 
@@ -57,6 +60,7 @@ using Color = SixLabors.ImageSharp.Color;
 using FlipMode = OpenCvSharp.FlipMode;
 using Font = SixLabors.Fonts.Font;
 using Point = SixLabors.ImageSharp.PointF;
+using ResizeMode = SixLabors.ImageSharp.Processing.ResizeMode;
 using Size = SixLabors.ImageSharp.Size;
 
 namespace HumanDetection
@@ -78,6 +82,7 @@ namespace HumanDetection
         private IAudioManager audioManager;
         private bool _isAlertPlaying = false;
         private bool _isSidebarOpen = false;
+        private readonly AccessController _ac = new AccessController("192.168.127.254");
 
         private const int TargetFPS = 8;
         private const int DetectionWidth = 640;
@@ -90,6 +95,8 @@ namespace HumanDetection
         private CaptureVisionRouter? cvRouter;
         public ObservableCollection<BitmapImage> CapturedImages { get; set; }
         public ObservableCollection<ResutlModel> ResultDataList { get; set; }
+        private ScaleSerialReader? _reader;
+        private  OcrPythonClient _ocrHost;
         public Home()
         {
             InitializeComponent();
@@ -118,6 +125,11 @@ namespace HumanDetection
         {
             try
             {
+                string pythonExe = @"C:\Users\Abhishaik Sharma\AppData\Local\Programs\Python\Python310\python.exe";
+                string scriptPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "reader.py");
+
+                _ocrHost = new OcrPythonClient(pythonExe, scriptPath);
+
                 ResultDataList = new ObservableCollection<ResutlModel>();
                 // Show loading indicator
                 LoadingOverlay.Visibility = Visibility.Visible;
@@ -169,6 +181,9 @@ namespace HumanDetection
                     SetCameraUI(CamRightLightPulse, cameraCount >= 1);
 
                 await Task.WhenAll(cameraTasks);
+
+           
+
             }
             catch (Exception ex)
             {
@@ -181,6 +196,10 @@ namespace HumanDetection
             }
 
         }
+        private void Page_Unloaded(object sender, RoutedEventArgs e)
+        {
+            StopScale();
+        }
 
         private async void LoadModels()
         {
@@ -188,7 +207,7 @@ namespace HumanDetection
             try
             {
                 sessionOptions.AppendExecutionProvider_DML();
-                // Other settings...
+
             }
             catch (Exception ex)
             {
@@ -255,6 +274,8 @@ namespace HumanDetection
                             ms.Position = 0;
 
                             using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(ms);
+                           
+
                             var predictions = _scorerBoxCountingModel.Predict(image)
                                 .Where(p => p.Score >= 0.30f)
                                 .ToList();
@@ -271,6 +292,7 @@ namespace HumanDetection
                                     await PalletDetectedSoundStart();
                                     await Task.Delay(500);
                                     await CaptureAndDisplayAllCamerasAsync();
+                                   
 
                                 });
 
@@ -304,103 +326,56 @@ namespace HumanDetection
                 Console.WriteLine("[Camera] Process stopped.");
             }
         }
-        private Mat GrabResultToMat(IGrabResult grabResult)
-        {
-            // Get the pixel data as byte array
-            byte[] buffer = (byte[])grabResult.PixelData;
-
-            // Create empty mat with correct dimensions
-            Mat mat = new Mat(grabResult.Height, grabResult.Width, MatType.CV_8UC1);
-
-            // Copy data using Marshal (safe approach)
-            Marshal.Copy(buffer, 0, mat.Data, buffer.Length);
-
-            // Convert grayscale to color (BGR)
-            Mat colorMat = new Mat();
-            Cv2.CvtColor(mat, colorMat, ColorConversionCodes.GRAY2BGR);
-
-            // Optional: Apply color map for visualization (requires OpenCvSharp 4.x)
-            // Mat colored = new Mat();
-            // Cv2.ApplyColorMap(colorMat, colored, ColormapTypes.Jet);
-            // return colored;
-
-            return colorMat;
-        }
-
-        private void AddResult(DateTime? startDate = null, DateTime? endDate = null, int? boxes = null, double? palletHeight = null, double? weight = null, string remarks = null, bool humandetected = false, bool isNew = false)
-        {
-            // Find the first existing result
-            var resultModel = ResultDataList.OrderByDescending(x => x.StartTime).FirstOrDefault();
-
-            if (resultModel != null && isNew == false)
-            {
-                // Update only provided fields
-                if (boxes.HasValue)
-                    resultModel.TotalBoxes = boxes.Value;
-
-                if (palletHeight.HasValue)
-                    resultModel.PalletHeight = palletHeight.Value;
-
-                if (weight.HasValue)
-                    resultModel.TotalWeight = weight.Value;
-
-                if (!string.IsNullOrWhiteSpace(remarks))
-                    resultModel.OCRResult = remarks;
-
-                if (startDate.HasValue)
-                    resultModel.StartTime = startDate.Value;
-
-                if (endDate.HasValue)
-                    resultModel.EndTime = endDate.Value;
-
-                resultModel.HumanDetect = humandetected == true ? "Yes" : "No";
-            }
-            else if (isNew == true)
-            {
-                // Add a new record if none exists
-                ResultDataList.Add(new ResutlModel
-                {
-                    StartTime = startDate ?? DateTime.Now,
-                    EndTime = endDate ?? DateTime.Now,
-                    TotalBoxes = boxes ?? 0,
-                    PalletHeight = palletHeight ?? 0,
-                    TotalWeight = weight ?? 0,
-                    OCRResult = remarks ?? string.Empty,
-                    HumanDetect = "No"
-                });
-            }
-        }
-
-
+      
 
 
         private async Task CaptureAndDisplayAllCamerasAsync()
         {
-            AddResult(DateTime.Now, null, null, null, null, null, false, true);
-
-            var cameraList = CameraFinder.Enumerate();
-
-            var images = await CaptureSingleFrameFromAllCamerasAsync(cameraList);
-
-            Dispatcher.Invoke(() =>
+            try
             {
-                CapturedImages.Clear();
-                foreach (var img in images)
-                    CapturedImages.Add(img);
-            });
-            LoadingOverlay.Visibility = Visibility.Visible;
-            ProgressTxt.Text = "Please Wait.."
-; await RunAllAIDetectionsAsync(images);
-            LoadingOverlay.Visibility = Visibility.Collapsed;
-            ResultDialoag.UpdateResults(ResultDataList);
-            Panel.SetZIndex(ResultDialoag, 1); // ensure on top
+              
+               
+                await StartBlower();
+                AddResult(DateTime.Now, null, null, null, null, null, false, true);
 
-            // ✅ show popup
+                var cameraList = CameraFinder.Enumerate();
 
-            PictureDialog.Visibility = Visibility.Collapsed;
-            ResultDialoag.Visibility = Visibility.Visible;
-            LivePreviewDialoag.Visibility = Visibility.Collapsed;
-            ImageDialogHost.IsOpen = true;
+                var images = await CaptureSingleFrameFromAllCamerasAsync(cameraList);
+
+                Dispatcher.Invoke(() =>
+                {
+                    CapturedImages.Clear();
+                    foreach (var img in images)
+                        CapturedImages.Add(img);
+                });
+                StartScale();
+                LoadingOverlay.Visibility = Visibility.Visible;
+                ProgressTxt.Text = "Please Wait.."
+                ; await RunAllAIDetectionsAsync(images);
+                LoadingOverlay.Visibility = Visibility.Collapsed;
+                ResultDialoag.UpdateResults(ResultDataList);
+                Panel.SetZIndex(ResultDialoag, 1); // ensure on top
+
+
+                // ✅ show popup
+
+                PictureDialog.Visibility = Visibility.Collapsed;
+                ResultDialoag.Visibility = Visibility.Visible;
+                LivePreviewDialoag.Visibility = Visibility.Collapsed;
+                ImageDialogHost.IsOpen = true;
+                await StopBuzzer();
+                await OffBlower();
+                await OffRotatorAsync();
+            }
+            catch (Exception ex)
+            {
+                await StopBuzzer();
+                await OffBlower();
+                await OffRotatorAsync();
+            }
+           
+
+
 
         }
         public async Task<List<BitmapImage>> CaptureSingleFrameFromAllCamerasAsync(List<ICameraInfo> cameraInfos)
@@ -461,51 +436,66 @@ namespace HumanDetection
             bool HumanDetected = false;
             // Convert BitmapImages to ImageSharp format for inference
             var imageSharpList = capturedImages.Select(img => BitmapImageToImageSharp(img)).ToList();
+            var ocrBatchTask = RunOCRBatchAsync(imageSharpList);
+
             for (int i = 0; i < imageSharpList.Count; i++)
             {
                 // 🧩 Parallel run — each model runs independently
                 var boxTask = Task.Run(() => RunBoxCountingModel(imageSharpList[i]));
                 var humanTask = Task.Run(() => RunHumanDetectionModel(imageSharpList[i]));
-                var ocrTask = Task.Run(() => RunOCRModel(imageSharpList[i]));
+                //var ocrTask = Task.Run(() => RunOCRModel(imageSharpList[i]));
 
-                await Task.WhenAll(boxTask, humanTask, ocrTask);
+                await Task.WhenAll(boxTask, humanTask);
 
                 var boxResult = boxTask.Result;
                 var humanResult = humanTask.Result;
-                var ocrResult = ocrTask.Result;
+                //var ocrResult = ocrTask.Result;
                 NumberOfBox += boxResult.BoxesDetected;
                 PalletHeight = boxResult.PalletHeight;
-                OcrTxt += ocrResult;
-                HumanDetected = humanResult == true ? true : false;
+                //OcrTxt += ocrResult;
+                HumanDetected = humanResult == true ? true : true;
+                if (HumanDetected == true)
+                {
+                    await StartBuzzer();
+                }
             }
 
 
+            var ocrResults = await ocrBatchTask;
+
+           
+            for (int i = 0; i < ocrResults.Length; i++)
+            {
+                OcrTxt += ocrResults[i] + Environment.NewLine;
+            }
 
             // 🔔 Update UI with combined results
             Dispatcher.Invoke(() =>
             {
                 NoBoxTxt.Text = $"Boxes: {NumberOfBox}";
                 PalletHeightTxt.Text = $" {PalletHeight:F2} m";
-                AddResult(null, DateTime.Now, NumberOfBox, PalletHeight, 0, OcrTxt, HumanDetected, false);
+                AddResult(null, DateTime.Now, NumberOfBox, PalletHeight, "", OcrTxt, HumanDetected, false);
 
             });
         }
         private (int BoxesDetected, double PalletHeight) RunBoxCountingModel(Image<Rgba32> image)
         {
             UpdateProgressStatus("Box Counting AI Model Start");
-            // ✅ Step 1: Preprocess image (resize to 640x640 YOLOv5 input)
-            using var resizedImage = image.Clone(ctx =>
-                ctx.Resize(new ResizeOptions
+            // 1. Resize input image
+            var resizedImage = image.CloneAs<Rgba32>();
+            resizedImage.Mutate(x =>
+                x.Resize(new ResizeOptions
                 {
                     Size = new Size(640, 640),
-
+                    Mode = SixLabors.ImageSharp.Processing.ResizeMode.Pad,
                     PadColor = Color.Black
                 }));
 
-            // ✅ Step 2: Run YOLOv5 ONNX model inference
+            // 2. Run inference on RGBA image
             var predictions = _scorerBoxCountingModel.Predict(resizedImage)
-                .Where(p => p.Score >= 0.60f)
+                .Where(p => p.Score >= 0.20f)
                 .ToList();
+
 
             int boxCount = predictions.Count(p => p.Label.Name.Equals("box", StringComparison.OrdinalIgnoreCase));
             var pallet = predictions.FirstOrDefault(p => p.Label.Name.Equals("pallet", StringComparison.OrdinalIgnoreCase));
@@ -584,6 +574,30 @@ namespace HumanDetection
 
             return humanDetected;
         }
+        private async Task<string[]> RunOCRBatchAsync(List<Image<Rgba32>> images)
+        {
+            string tempFolder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString());
+            Directory.CreateDirectory(tempFolder);
+
+            try
+            {
+                for (int i = 0; i < images.Count; i++)
+                {
+                    var img = images[i];
+                    var filePath = System.IO.Path.Combine(tempFolder, $"img_{i}.png");
+                    img.Save(filePath); // save ImageSharp image as PNG
+                }
+
+                var results = await _ocrHost.RunOcrAsync(tempFolder);
+                return results.Values.ToArray();
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+
 
         private string RunOCRModel(Image<Rgba32> image)
         {
@@ -684,6 +698,73 @@ namespace HumanDetection
                 return output.Trim();
             }
         }
+        private Mat GrabResultToMat(IGrabResult grabResult)
+        {
+            // Get the pixel data as byte array
+            byte[] buffer = (byte[])grabResult.PixelData;
+
+            // Create empty mat with correct dimensions
+            Mat mat = new Mat(grabResult.Height, grabResult.Width, MatType.CV_8UC1);
+
+            // Copy data using Marshal (safe approach)
+            Marshal.Copy(buffer, 0, mat.Data, buffer.Length);
+
+            // Convert grayscale to color (BGR)
+            Mat colorMat = new Mat();
+            Cv2.CvtColor(mat, colorMat, ColorConversionCodes.GRAY2BGR);
+
+            // Optional: Apply color map for visualization (requires OpenCvSharp 4.x)
+            // Mat colored = new Mat();
+            // Cv2.ApplyColorMap(colorMat, colored, ColormapTypes.Jet);
+            // return colored;
+
+            return colorMat;
+        }
+
+        private void AddResult(DateTime? startDate = null, DateTime? endDate = null, int? boxes = null, double? palletHeight = null, string? weight = null, string remarks = null, bool humandetected = false, bool isNew = false)
+        {
+            // Find the first existing result
+            var resultModel = ResultDataList.OrderByDescending(x => x.StartTime).FirstOrDefault();
+
+            if (resultModel != null && isNew == false)
+            {
+                // Update only provided fields
+                if (boxes.HasValue)
+                    resultModel.TotalBoxes = boxes.Value;
+
+                if (palletHeight.HasValue)
+                    resultModel.PalletHeight = palletHeight.Value;
+
+                if (!string.IsNullOrWhiteSpace(weight))
+                    resultModel.TotalWeight = weight;
+
+                if (!string.IsNullOrWhiteSpace(remarks))
+                    resultModel.OCRResult = remarks;
+
+                if (startDate.HasValue)
+                    resultModel.StartTime = startDate.Value;
+
+                if (endDate.HasValue)
+                    resultModel.EndTime = endDate.Value;
+
+                resultModel.HumanDetect = humandetected == true ? "Yes" : "No";
+            }
+            else if (isNew == true)
+            {
+                // Add a new record if none exists
+                ResultDataList.Add(new ResutlModel
+                {
+                    StartTime = startDate ?? DateTime.Now,
+                    EndTime = endDate ?? DateTime.Now,
+                    TotalBoxes = boxes ?? 0,
+                    PalletHeight = palletHeight ?? 0,
+                    TotalWeight = string.Empty,
+                    OCRResult = remarks ?? string.Empty,
+                    HumanDetect = "No"
+                });
+            }
+        }
+
 
 
         private void Image_Click(object sender, MouseButtonEventArgs e)
@@ -712,20 +793,27 @@ namespace HumanDetection
 
         private void ResultDialog_RestartProcessClicked(object sender, EventArgs e)
         {
-            RestartProcess();
+           RestartProcess();
 
 
 
         }
-        public void RestartProcess()
+        public async Task RestartProcess()
         {
             ImageDialogHost.IsOpen = false;
+            await StartRotator();
             MaterialDesignThemes.Wpf.DialogHost.CloseDialogCommand.Execute(null, null);
             var allCameras = CameraFinder.Enumerate();
             int cameraCount = allCameras.Count;
             if (cameraCount > 0)
+            {
                 SetCameraUI(CamFrontLightPulse, cameraCount >= 1);
-            CheckPalletStatus(allCameras[0]);
+                CheckPalletStatus(allCameras[0]);
+            }
+            else {
+                MessageBox.Show("No Camera found");
+            }
+                
         }
         private void Restart_Click(object sender, EventArgs e)
         {
@@ -879,6 +967,93 @@ namespace HumanDetection
             indicator.Source = new BitmapImage(new Uri(imageUri));
         }
 
+        #endregion
+
+        // Create ONE shared controller for the whole class
+       
+        public async Task StartBuzzer()
+        {
+            await _ac.StartBuzzerAsync();
+        }
+
+        public async Task StopBuzzer()
+        {
+            await _ac.OffBuzzerAsync();
+        }
+
+        public async Task StartBlower()
+        {
+            await _ac.StartBlowerAsync();
+           
+        }
+
+        public async Task OffBlower()
+        {
+            await _ac.OffBlowerAsync();
+        }
+        public async Task StartRotator()
+        {
+            await _ac.StartRotatorAsync();
+        }
+        public async Task OffRotatorAsync()
+        {
+            await _ac.OffRotatorAsync();
+
+        }
+
+        #region manage weight machine events
+
+        private void StartScale()
+        {
+            if (_reader != null && _reader.IsOpen) return;
+
+            _reader = new ScaleSerialReader
+            {
+                PortName = "COM3",
+                BaudRate = 9600
+            };
+
+            _reader.WeightReceived += Reader_WeightReceived;
+            _reader.Error += Reader_Error;
+
+            try
+            {
+                _reader.Start();
+            }
+            catch (Exception ex)
+            {
+                WeightText.Text = "ERR";
+                // optional: MessageBox.Show(ex.Message);
+            }
+        }
+        private void StopScale()
+        {
+            if (_reader == null) return;
+
+            _reader.WeightReceived -= Reader_WeightReceived;
+            _reader.Error -= Reader_Error;
+
+            _reader.Stop();
+            _reader.Dispose();
+            _reader = null;
+        }
+
+        private void Reader_WeightReceived(object? sender, double w)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                WeightText.Text = $"{w:0.##} KG";
+                //AddResult(DateTime.Now, null, null, null, WeightText.Text, null, false, false);
+            });
+        }
+
+        private void Reader_Error(object? sender, Exception ex)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                WeightText.Text = "ERR";
+            });
+        }
         #endregion
     }
 }

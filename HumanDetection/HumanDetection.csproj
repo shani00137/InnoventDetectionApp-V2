@@ -148,7 +148,7 @@
 		</Content>
 	</ItemGroup>
 	<ItemGroup>
-		    <PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" Version="1.14.0" />
+		<PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" Version="1.18.0" />
 
 
 		<PackageReference Include="NAudio" Version="2.2.1" />
@@ -159,6 +159,7 @@
 		<PackageReference Include="OpenCvSharp4.Extensions" Version="4.11.0.20250507" />
 		<PackageReference Include="SixLabors.ImageSharp" Version="3.1.8" />
 		<PackageReference Include="System.Device.Gpio" Version="4.0.1" />
+		<PackageReference Include="System.IO.Ports" Version="10.0.1" />
 		<PackageReference Include="Tesseract" Version="4.1.1" />
 		<PackageReference Include="Tesseract.Data.English" Version="4.0.0" />
 		<PackageReference Include="Yolov5Net" Version="1.1.0" />

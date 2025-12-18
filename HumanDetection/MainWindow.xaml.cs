@@ -33,7 +33,10 @@ namespace HumanDetection
         {
             InitializeComponent();
             MaximizeRestoreButton_Click(null, null);
-        
+            var homePage = new Uri("UserControls/Home/Home.xaml", UriKind.Relative);
+
+            MainFrame.Navigate(homePage);
+
 
             //  LoadCamera();
 
@@ -92,7 +95,7 @@ namespace HumanDetection
         }
         private void NavToSettingPage_Click(object sender, RoutedEventArgs e)
         {
-            var homePage = new Uri("UserControls/Settings/SettingPage.xaml", UriKind.Relative);
+            var homePage = new Uri("UserControls/Settings/Setting.xaml", UriKind.Relative);
        
             MainFrame.Navigate(homePage);
 
@@ -107,7 +110,7 @@ namespace HumanDetection
         }
         private void NavToLivePreviewPage_Click(object sender, RoutedEventArgs e)
         {
-            var homePage = new Uri("UserControls/Reports/ReportsPage.xaml", UriKind.Relative);
+            var homePage = new Uri("UserControls/LivePreview/LivePreview.xaml", UriKind.Relative);
           
             MainFrame.Navigate(homePage);
 
