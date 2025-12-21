@@ -24,6 +24,7 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Drawing.Processing;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
+using SQLite;
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -75,6 +76,8 @@ namespace HumanDetection
         private Mat _frame;
         private bool _isRunning = true;
         private bool _isRunning2 = true;
+        private AppSettings _settings;
+
 
         private YoloScorer<YoloCocoP5Model> _scorerHumanModel;
         private YoloScorer<YoloCustomModel> _scorerBoxCountingModel;
@@ -82,7 +85,7 @@ namespace HumanDetection
         private IAudioManager audioManager;
         private bool _isAlertPlaying = false;
         private bool _isSidebarOpen = false;
-        private readonly AccessController _ac = new AccessController("192.168.127.254");
+        public  AccessController _ac;
 
         private const int TargetFPS = 8;
         private const int DetectionWidth = 640;
@@ -118,71 +121,73 @@ namespace HumanDetection
         {
 
             _frame = new Mat();
-            LoadModels();
+           // LoadModels();
 
         }
         private async void MainWindow_LoadedAsync(object sender, RoutedEventArgs e)
         {
             try
             {
-                string pythonExe = @"C:\Users\Abhishaik Sharma\AppData\Local\Programs\Python\Python310\python.exe";
-                string scriptPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "reader.py");
+                _settings = SettingsRepository.GetSettings();
+               _ac =new AccessController($"{_settings.MoxIP}");
+                //string pythonExe = @"C:\Users\Abhishaik Sharma\AppData\Local\Programs\Python\Python310\python.exe";
+                //string scriptPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "reader.py");
 
-                _ocrHost = new OcrPythonClient(pythonExe, scriptPath);
+                //_ocrHost = new OcrPythonClient(pythonExe, scriptPath);
 
-                ResultDataList = new ObservableCollection<ResutlModel>();
-                // Show loading indicator
-                LoadingOverlay.Visibility = Visibility.Visible;
-                await Task.Delay(1); // Ensure UI updates
+                //ResultDataList = new ObservableCollection<ResutlModel>();
+                //// Show loading indicator
+                //LoadingOverlay.Visibility = Visibility.Visible;
+                //await Task.Delay(1); // Ensure UI updates
 
-                await Task.Run(() =>
-                {
-                    _capture = new VideoCapture(0);
-                    _frame = new Mat();
-                    LoadModels();
-                });
-                
-                // Enumerate all Basler cameras
-                var allCameras = CameraFinder.Enumerate();
-                int cameraCount = allCameras.Count;
+                //await Task.Run(() =>
+                //{
+                //    _capture = new VideoCapture(0);
+                //    _frame = new Mat();
+                //    LoadModels();
+                //});
 
-                if (cameraCount == 0)
-                {
-                    MessageBox.Show("No Basler cameras detected.", "Camera Error", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
-                else if (cameraCount < 3)
-                {
-                    MessageBox.Show($"Only {cameraCount} camera(s) detected. Please connect all 3 cameras.",
-                                    "Camera Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    // Optionally return or continue with available cameras
-                    // return;
-                }
+                //// Enumerate all Basler cameras
+                //var allCameras = CameraFinder.Enumerate();
+                //int cameraCount = allCameras.Count;
 
-                Console.WriteLine($"Detected {cameraCount} Basler camera(s).");
+                //if (cameraCount == 0)
+                //{
+                //    MessageBox.Show("No Basler cameras detected.", "Camera Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                //    return;
+                //}
+                //else if (cameraCount < 3)
+                //{
+                //    MessageBox.Show($"Only {cameraCount} camera(s) detected. Please connect all 3 cameras.",
+                //                    "Camera Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+                //    // Optionally return or continue with available cameras
+                //    // return;
+                //}
 
-                LoadingOverlay.Visibility = Visibility.Collapsed;
+                //Console.WriteLine($"Detected {cameraCount} Basler camera(s).");
 
-                // Start tasks for each camera (up to 3)
-                List<Task> cameraTasks = new List<Task>();
+                //LoadingOverlay.Visibility = Visibility.Collapsed;
 
-                if (cameraCount > 0)
-                    SetCameraUI(CamFrontLightPulse, cameraCount >= 1);
-                await Task.Delay(1000);
+                //// Start tasks for each camera (up to 3)
+                //List<Task> cameraTasks = new List<Task>();
 
-                cameraTasks.Add(Task.Run(() => CheckPalletStatus(allCameras[0])));
+                //if (cameraCount > 0)
+                //    SetCameraUI(CamFrontLightPulse, cameraCount >= 1);
+                //await Task.Delay(1000);
 
-                if (cameraCount > 1)
-                    //cameraTasks.Add(Task.Run(() => ReadTextFromBaslerCamera(allCameras[1])));
-                    SetCameraUI(CamLeftLightPulse, cameraCount >= 1);
+                //cameraTasks.Add(Task.Run(() => CheckPalletStatus(allCameras[0])));
+
+                //if (cameraCount > 1)
+                //    //cameraTasks.Add(Task.Run(() => ReadTextFromBaslerCamera(allCameras[1])));
+                //    SetCameraUI(CamLeftLightPulse, cameraCount >= 1);
 
 
-                if (cameraCount > 2)
-                    SetCameraUI(CamRightLightPulse, cameraCount >= 1);
+                //if (cameraCount > 2)
+                //    SetCameraUI(CamRightLightPulse, cameraCount >= 1);
 
-                await Task.WhenAll(cameraTasks);
+                //await Task.WhenAll(cameraTasks);
 
-           
+
 
             }
             catch (Exception ex)
@@ -492,9 +497,20 @@ namespace HumanDetection
                 }));
 
             // 2. Run inference on RGBA image
-            var predictions = _scorerBoxCountingModel.Predict(resizedImage)
-                .Where(p => p.Score >= 0.20f)
+            double confidenceThreshold = 0.20; // fallback default
+
+            if (_settings != null &&
+                !string.IsNullOrWhiteSpace(_settings.ConfidenceLevel) &&
+                double.TryParse(_settings.ConfidenceLevel, out var dbValue))
+            {
+                confidenceThreshold = dbValue;
+            }
+
+            var predictions = _scorerBoxCountingModel
+                .Predict(resizedImage)
+                .Where(p => p.Score >= confidenceThreshold)
                 .ToList();
+
 
 
             int boxCount = predictions.Count(p => p.Label.Name.Equals("box", StringComparison.OrdinalIgnoreCase));
@@ -1009,7 +1025,7 @@ namespace HumanDetection
 
             _reader = new ScaleSerialReader
             {
-                PortName = "COM3",
+                PortName = $"{_settings.ComPort}",
                 BaudRate = 9600
             };
 

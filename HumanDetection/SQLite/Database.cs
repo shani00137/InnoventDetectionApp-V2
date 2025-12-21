@@ -36,6 +36,8 @@ namespace SQLite
                                         ComPort TEXT NOT NULL, 
                                         MoxIP TEXT NOT NULL,
                                         ConfidenceLevel TEXT NOT NULL,
+                                        DatabaseURL TEXT NOT NULL,
+                                        BackOfficeURL TEXT NOT NULL
                                     );";
                 cmd.ExecuteNonQuery();
             }

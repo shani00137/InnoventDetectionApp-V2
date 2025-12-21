@@ -92,12 +92,10 @@
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Margin="10,0,0,0" Grid.Column="0" Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" >
-                                    <TextBlock    Text="Tunnel Id:" FontSize="20" Foreground="White" Margin="0,5" />
-                                    <TextBlock    Text="3464125645544" FontSize="20" Foreground="#A1A1AA" Margin="5,5" />
+                                   
                                 </StackPanel>
                                 <StackPanel Margin="10,0,0,0" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" >
-                                    <TextBlock    Text="Last Sync:" FontSize="20" Foreground="White" Margin="0,5" />
-                                    <TextBlock    Text="25-12-2024 14:30" FontSize="20" Foreground="#A1A1AA" Margin="5,7" />
+                                  
                                 </StackPanel>
                                 <StackPanel Margin="10,0,0,0" Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" >
                                     <TextBlock    Text="Site:" FontSize="20" Foreground="White" Margin="0,5" />
@@ -108,20 +106,16 @@
                             <!-- Row 2 Content -->
                             <Border Margin="5,10,5,5" Grid.Row="1" BorderThickness="1" BorderBrush="White" CornerRadius="12" >
                                 <StackPanel Orientation="Vertical" Margin="0,10,0,0">
-                                    <TextBlock Text="Reader Settings" FontSize="20" 
+                                    <TextBlock Text="Confidenec Level" FontSize="20" 
                       
                      Foreground="White" 
                      FontWeight="Medium" 
                      Margin="10,0,5,20" />
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" >
-                                        <TextBlock Text="Reader Status:" FontSize="16" 
-                          
-                         Foreground="Gray" 
-                         FontWeight="Medium" 
-                         Margin="10,0,5,0" />
+                                       
                                     </StackPanel>
                                     <StackPanel Margin="0,5,0,2" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" >
-                                        <TextBlock Text="Default Power:" FontSize="16" 
+                                        <TextBlock Text="Box Counting:" FontSize="16" 
                           
                          Foreground="Gray" 
                          FontWeight="Medium" 
@@ -134,8 +128,9 @@
                                     </StackPanel>
                                     <StackPanel Margin="10,0,10,10">
                                         <Slider x:Name="MinSlider" 
-                         Minimum="0" Maximum="1000" 
+                         Minimum="0" Maximum="100" 
                          Value="0" 
+        ValueChanged="MinSlider_ValueChanged"
                          Foreground="#007AFF" 
                          Margin="0">
                                         </Slider>
@@ -144,31 +139,27 @@
                             </Border>
                             <Border Margin="5,10,5,5" Grid.Row="2" BorderThickness="1" BorderBrush="White" CornerRadius="12" >
                                 <StackPanel Orientation="Vertical" Margin="0,10,0,0">
-                                    <TextBlock  Text="Security Lock" FontSize="20" 
+                                    <TextBlock  Text="Moxa IP Address" FontSize="20" 
                       
                      Foreground="White" 
                      FontWeight="Medium" 
                      Margin="10,0,5,20" />
                                     <StackPanel Margin="10,0,10,10" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" >
                                         <TextBox x:Name="SecurityLock" BorderBrush="Gray" BorderThickness="1" Style="{StaticResource MaterialDesignOutlinedTextBox}" Padding="5" Width="500" Height="40" Foreground="White"  materialDesign:HintAssist.Hint="Enter Key to Unlock"/>
-                                        <Border CornerRadius="15" Margin="0,2,0,0">
-                                            <Button    BorderThickness="0"  Width="146" Margin="5" Height="40" Background="#0D2A4B" Foreground="#007AFF"/>
-                                        </Border>
+                                       
                                     </StackPanel>
                                 </StackPanel>
                             </Border>
                             <Border Margin="5,10,5,5" Grid.Row="3" BorderThickness="1" BorderBrush="White" CornerRadius="12" >
                                 <StackPanel Orientation="Vertical" Margin="0,10,0,0">
-                                    <TextBlock  Text="Tunnel ID" FontSize="20" 
+                                    <TextBlock  Text="Weight Machine COM Port" FontSize="20" 
                       
                      Foreground="White" 
                      FontWeight="Medium" 
                      Margin="10,0,5,20" />
                                     <StackPanel Margin="10,0,10,10" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" >
-                                        <TextBox x:Name="TunnelID" BorderBrush="Gray" BorderThickness="1" Style="{StaticResource MaterialDesignOutlinedTextBox}" Padding="5" Width="500" Height="40" Foreground="White"  materialDesign:HintAssist.Hint="Add TunnelID"/>
-                                        <Border CornerRadius="15" Margin="0,2,0,0">
-                                            <Button    BorderThickness="0"  Width="146" Margin="5" Height="40" Background="#0D2A4B" Foreground="#007AFF"/>
-                                        </Border>
+                                        <TextBox x:Name="TunnelID" BorderBrush="Gray" BorderThickness="1" Style="{StaticResource MaterialDesignOutlinedTextBox}" Padding="5" Width="500" Height="40" Foreground="White"  materialDesign:HintAssist.Hint="Add COM port no"/>
+                                       
                                     </StackPanel>
                                 </StackPanel>
                             </Border>
@@ -181,9 +172,7 @@
                      Margin="10,0,5,10" />
                                     <StackPanel Margin="10,0,10,10" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" >
                                         <TextBox x:Name="DBConnectionURL" BorderBrush="Gray" BorderThickness="1" Style="{StaticResource MaterialDesignOutlinedTextBox}" Padding="5" Width="500" Height="40" Foreground="White"  materialDesign:HintAssist.Hint="Add Database Connection URL"/>
-                                        <Border CornerRadius="15" Margin="0,2,0,0">
-                                            <Button   BorderThickness="0" Content="Unlock Setting" Width="146" Margin="5" Height="40" Background="#0D2A4B" Foreground="#007AFF"/>
-                                        </Border>
+                                       
                                     </StackPanel>
                                 </StackPanel>
                             </Border>
@@ -196,41 +185,16 @@
                      Margin="10,0,5,20" />
                                     <StackPanel Margin="10,0,10,10" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" >
                                         <TextBox Name="BackOfficeURL"  Style="{StaticResource MaterialDesignOutlinedTextBox}" BorderThickness="1"  Padding="5" Width="500" Height="40" Foreground="White"  materialDesign:HintAssist.Hint="URL Link"/>
-                                        <Border CornerRadius="15" Margin="0,2,0,0">
-                                            <Button    BorderThickness="0" Content="Unlock Setting" Height="40"  Width="146" Margin="5" Background="#13371D" Foreground="#32BE55"/>
-                                        </Border>
+                                        
                                     </StackPanel>
                                 </StackPanel>
                             </Border>
-                            <Border Margin="5,10,5,5" Grid.Row="6" BorderThickness="1" BorderBrush="White" CornerRadius="12" >
-                                <StackPanel Orientation="Vertical" Margin="0,10,0,0">
-                                    <TextBlock Text="RFID Scanner Setting" FontSize="20" 
-                          
-                         Foreground="White" 
-                         FontWeight="Medium" 
-                         Margin="10,0,5,20" />
-                                    <StackPanel Margin="10,0,10,10" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" >
-                                        <TextBox Name="RFIDScannerIP"  Style="{StaticResource MaterialDesignOutlinedTextBox}" BorderThickness="1"  Padding="5" Width="250" Height="40" Foreground="White"  materialDesign:HintAssist.Hint="Add IP Address" materialDesign:HintAssist.Background="Transparent"/>
-                                        <TextBox Name="RFIDScannerPort"  Style="{StaticResource MaterialDesignOutlinedTextBox}" BorderThickness="1" Margin="5" Padding="5" Width="245" Height="40" Foreground="White"  materialDesign:HintAssist.Hint="Add Port Number"/>
-                                        <Border CornerRadius="15" Margin="0,2,0,0">
-                                            <Button    BorderThickness="0" Content="Unlock Setting" Height="40"  Width="146" Margin="5" Background="#13371D" Foreground="#32BE55"/>
-                                        </Border>
-                                    </StackPanel>
-                                </StackPanel>
-                            </Border>
+
                             <Border Margin="5,10,5,5" Grid.Row="7" BorderThickness="1" BorderBrush="White" CornerRadius="12" >
                                 <StackPanel Orientation="Vertical" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="0,10,0,0">
-                                    <TextBlock Text="Reset Unit" FontSize="20" 
-                      
-                     Foreground="White" 
-                     FontWeight="Medium" 
-                     Margin="10,0,5,20" />
-                                    <TextBlock Text="This action will exit the session and will reset the current data from your app." FontSize="16" 
-                      
-                     Foreground="Gray" 
-                     Margin="10,0,5,10" />
+                                  
                                     <Border HorizontalAlignment="Left" CornerRadius="15" Margin="10,5,0,10">
-                                        <Button    BorderThickness="0" Content="Reset Device" Height="30"  Width="146" Margin="5" Background="#441514" Foreground="#FF3B30"/>
+                                        <Button Click="SaveSettings_Click"  BorderThickness="0" Content="Save Settings" Height="30"  Width="146" Margin="5" Background="#441514" Foreground="#FF3B30"/>
                                     </Border>
                                 </StackPanel>
                             </Border>

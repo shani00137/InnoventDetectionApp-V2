@@ -13,7 +13,7 @@ namespace HumanDetection
         public LivePreview()
         {
             InitializeComponent();
-            LoadBaslerCameras();
+            //LoadBaslerCameras();
         }
 
         private void LoadBaslerCameras()
