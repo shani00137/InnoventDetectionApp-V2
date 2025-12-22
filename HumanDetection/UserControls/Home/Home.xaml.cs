@@ -129,13 +129,30 @@ namespace HumanDetection
             try
             {
                 _settings = SettingsRepository.GetSettings();
+                if(_settings!=null)
                _ac =new AccessController($"{_settings.MoxIP}");
+                ResultDataList = new ObservableCollection<ResutlModel>();
+                List<RuleModel> ruleModel = SettingsRepository.GetAll();
+                
+                Dispatcher.Invoke(() =>
+                {
+                    AddResult(DateTime.Now, null, 5, 5, "S", " \"فنلاع فقيه للنواجن iEH POULTRY FARMS صبر x 30 egg5 لاترص اكثر Don t stack more than can٥n ٢ تحفظ تحت د Ihnpuratie (4-iuc) لرمن 0 كرانء ورطوبة نا n.4. 155-80} - -ي٦ )٤ لدمة لق =إلدد سدا الصلاحية ٣ Valid for 3 Months from the Fakich بيئن عائدة فاذ PREMIUM TADLE ECGS Tr3y5 5107374 Produrile\"\r\n", false, true);
+                });
+                var response = ORCWithReg.ApplyRulesOnOCR("فنلاع فقيه للنواجن iEH POULTRY FARMS صبر x 30 egg5 لاترص اكثر Don t stack more than can٥n ٢ تحفظ تحت د Ihnpuratie (4-iuc) لرمن 0 كرانء ورطوبة نا n.4. 155-80} - -ي٦ )٤ لدمة لق =إلدد سدا الصلاحية ٣ Valid for 3 Months from the Fakich بيئن عائدة فاذ PREMIUM TADLE ECGS Tr3y5 5107374 Produrile\"\r\n", ruleModel);
+                //checking OCR Result with Rules
+                ImageDialogHost.IsOpen = true;
+                ResultDialoag.UpdateResults(ResultDataList);
+                PictureDialog.Visibility = Visibility.Collapsed;
+                ResultDialoag.Visibility = Visibility.Visible;
+           
+               
+
                 //string pythonExe = @"C:\Users\Abhishaik Sharma\AppData\Local\Programs\Python\Python310\python.exe";
                 //string scriptPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "reader.py");
 
                 //_ocrHost = new OcrPythonClient(pythonExe, scriptPath);
 
-                //ResultDataList = new ObservableCollection<ResutlModel>();
+               
                 //// Show loading indicator
                 //LoadingOverlay.Visibility = Visibility.Visible;
                 //await Task.Delay(1); // Ensure UI updates
@@ -366,7 +383,7 @@ namespace HumanDetection
 
                 PictureDialog.Visibility = Visibility.Collapsed;
                 ResultDialoag.Visibility = Visibility.Visible;
-                LivePreviewDialoag.Visibility = Visibility.Collapsed;
+               
                 ImageDialogHost.IsOpen = true;
                 await StopBuzzer();
                 await OffBlower();
@@ -792,7 +809,7 @@ namespace HumanDetection
                 PictureDialog.Visibility = Visibility.Visible;
 
                 ResultDialoag.Visibility = Visibility.Collapsed;
-                LivePreviewDialoag.Visibility = Visibility.Collapsed;
+               
             }
         }
 
@@ -838,7 +855,7 @@ namespace HumanDetection
         private void LivePreview_Click(object sender, EventArgs e)
         {
             ImageDialogHost.IsOpen = true;
-            LivePreviewDialoag.Visibility = Visibility.Visible;
+        
             ResultDialoag.Visibility = Visibility.Collapsed;
         }
         #endregion

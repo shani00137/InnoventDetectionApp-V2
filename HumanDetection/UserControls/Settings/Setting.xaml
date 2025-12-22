@@ -185,10 +185,119 @@
                      Margin="10,0,5,20" />
                                     <StackPanel Margin="10,0,10,10" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" >
                                         <TextBox Name="BackOfficeURL"  Style="{StaticResource MaterialDesignOutlinedTextBox}" BorderThickness="1"  Padding="5" Width="500" Height="40" Foreground="White"  materialDesign:HintAssist.Hint="URL Link"/>
-                                        
+
                                     </StackPanel>
                                 </StackPanel>
                             </Border>
+                            <Border Margin="5,10,5,5"
+                                    Grid.Row="6"
+                                    BorderThickness="1"
+                                    BorderBrush="White"
+                                    CornerRadius="12">
+
+                                <StackPanel Orientation="Vertical" Margin="0,10,0,10">
+                                    <StackPanel Orientation="Horizontal">
+
+
+                                        <!-- Title -->
+                                        <TextBlock Text="Add Regex Rule"
+                   FontSize="20"
+                   Foreground="White"
+                   FontWeight="Medium"
+                   Margin="10,0,5,15" />
+
+                                        <!-- Rule Name -->
+                                        <StackPanel Margin="10,0,10,10">
+                                            <TextBox x:Name="RuleNameTextBox" MinWidth="300"
+                                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                                     Padding="5"
+                                                     Height="40"
+                                                     Foreground="White"
+                                                     materialDesign:HintAssist.Hint="Rule Name" />
+                                        </StackPanel>
+
+                                        <!-- Regex Pattern -->
+                                        <StackPanel Margin="10,0,10,10">
+                                            <TextBox x:Name="RegexPatternTextBox"
+                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                     Padding="5" MinWidth="300"
+                     Height="40"
+                     Foreground="White"
+                     materialDesign:HintAssist.Hint="Regex Pattern" />
+                                        </StackPanel>
+
+                                        <!-- Submit Button -->
+                                        <StackPanel Margin="10,0,10,15" Orientation="Horizontal">
+                                            <Button Content="Add Rule"
+                    Width="120"
+                    Height="36"
+                    Click="AddRegexRule_Click"
+                    Background="#0D2A4B"
+                    Foreground="White"
+                    BorderThickness="0" />
+                                        </StackPanel>
+
+                                    </StackPanel>
+
+                                    <!-- Rules Grid -->
+                                    <!-- Rules Grid -->
+                                    <Border BorderBrush="White"
+        BorderThickness="1"
+        CornerRadius="8"
+        Margin="10,0,10,10">
+
+                                        <DataGrid x:Name="RegexRulesGrid"
+              AutoGenerateColumns="False"
+              HeadersVisibility="Column"
+              CanUserAddRows="False"
+              Background="#09090B"
+              Foreground="White"
+              GridLinesVisibility="All"
+              HorizontalGridLinesBrush="White"
+              VerticalGridLinesBrush="White"
+              BorderThickness="0" Margin="5,5,5,5" 
+              RowBackground="#09090B"
+              AlternatingRowBackground="#111113">
+
+                                            <DataGrid.Columns>
+
+                                                <DataGridTextColumn Header="Id"
+                                Binding="{Binding Id}"
+                                Width="60" />
+
+                                                <DataGridTextColumn Header="Name"
+                                Binding="{Binding RuleName}"
+                                Width="*" />
+
+                                                <DataGridTextColumn Header="Regex"
+                                Binding="{Binding Rule}"
+                                Width="2*" />
+
+                                                <DataGridTemplateColumn Header="Action" Width="100">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <Button Content="Delete"
+                                Background="#441514"
+                                Foreground="#FF3B30"
+                                BorderThickness="0"
+                                Padding="5"
+                                Click="DeleteRegexRule_Click"/>
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+
+                                            </DataGrid.Columns>
+
+                                        </DataGrid>
+
+                                    </Border>
+
+
+                                </StackPanel>
+
+                            </Border>
+
+
 
                             <Border Margin="5,10,5,5" Grid.Row="7" BorderThickness="1" BorderBrush="White" CornerRadius="12" >
                                 <StackPanel Orientation="Vertical" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="0,10,0,0">

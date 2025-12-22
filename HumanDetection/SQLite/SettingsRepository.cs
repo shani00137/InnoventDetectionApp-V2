@@ -87,6 +87,60 @@ namespace SQLite
 
                 cmd.ExecuteNonQuery();
             }
+
+        public static List<RuleModel> GetAll()
+        {
+            var list = new List<RuleModel>();
+           
+            using var con = GetConnection();
+            con.Open();
+
+            var cmd = con.CreateCommand();
+            cmd.CommandText = "SELECT Id, RuleName, Rule FROM Rules ORDER BY Id DESC";
+
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                list.Add(new RuleModel
+                {
+                    Id = reader.GetInt32(0),
+                    RuleName = reader.GetString(1),
+                    Rule = reader.GetString(2)
+                });
+            }
+
+            return list;
         }
+
+        // INSERT
+        public static void Insert(string ruleName, string rule)
+        {
+            using var con = GetConnection();
+            con.Open();
+
+            var cmd = con.CreateCommand();
+            cmd.CommandText = @"
+                INSERT INTO Rules (RuleName, Rule)
+                VALUES (@name, @rule)";
+
+            cmd.Parameters.AddWithValue("@name", ruleName);
+            cmd.Parameters.AddWithValue("@rule", rule);
+
+            cmd.ExecuteNonQuery();
+        }
+
+        // DELETE
+        public static void Delete(int id)
+        {
+            using var con = GetConnection();
+            con.Open();
+
+            var cmd = con.CreateCommand();
+            cmd.CommandText = "DELETE FROM Rules WHERE Id=@id";
+            cmd.Parameters.AddWithValue("@id", id);
+
+            cmd.ExecuteNonQuery();
+        }
+    }
     
 }

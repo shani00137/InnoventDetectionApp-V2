@@ -24,10 +24,8 @@ namespace SQLite
 
                                     CREATE TABLE IF NOT EXISTS Rules (
                                         Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                        RuleType TEXT NOT NULL, 
-                                        Name TEXT NOT NULL,
-                                        Json TEXT NOT NULL,
-                                        CreatedAt TEXT NOT NULL
+                                        Rule TEXT NOT NULL, 
+                                        RuleName TEXT NOT NULL
                                     );
 
 

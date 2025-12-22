@@ -26,6 +26,7 @@ namespace UserControls.Settings
         {
             InitializeComponent();
             LoadSettings();
+            LoadRules();
         }
 
         private void LoadSettings()
@@ -78,6 +79,61 @@ namespace UserControls.Settings
             if (PowerValueText != null)
                 PowerValueText.Text = ((int)e.NewValue).ToString();
         }
+        public void AddRegexRule_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(RuleNameTextBox.Text) ||
+                string.IsNullOrWhiteSpace(RegexPatternTextBox.Text))
+            {
+                MessageBox.Show("Rule Name and Regex are required");
+                return;
+            }
+
+            // Optional: validate regex
+            try
+            {
+                _ = new System.Text.RegularExpressions.Regex(RegexPatternTextBox.Text);
+            }
+            catch
+            {
+                MessageBox.Show("Invalid Regex pattern");
+                return;
+            }
+
+            SettingsRepository.Insert(
+                RuleNameTextBox.Text.Trim(),
+                RegexPatternTextBox.Text.Trim()
+            );
+
+            RuleNameTextBox.Clear();
+            RegexPatternTextBox.Clear();
+
+            LoadRules();
+        }
+
+        public void DeleteRegexRule_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as Button)?.DataContext is not RuleModel rule)
+                return;
+
+            var result = MessageBox.Show(
+                $"Delete rule '{rule.RuleName}'?",
+                "Confirm",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (result != MessageBoxResult.Yes)
+                return;
+
+            SettingsRepository.Delete(rule.Id);
+            LoadRules();
+        }
+
+        private void LoadRules()
+        {
+            RegexRulesGrid.ItemsSource = SettingsRepository.GetAll();
+        }
+
+
 
     }
 }

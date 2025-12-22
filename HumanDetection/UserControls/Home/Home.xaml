@@ -74,7 +74,7 @@
                     </Grid>
                 </Border>
                 <local:ResultDialog x:Name="ResultDialoag" Width="800"></local:ResultDialog>
-                <local:LivePreview x:Name="LivePreviewDialoag" Width="800"></local:LivePreview>
+             
             </Grid>
         </materialDesign:DialogHost.DialogContent>
 
