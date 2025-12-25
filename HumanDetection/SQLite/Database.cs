@@ -19,26 +19,29 @@ namespace SQLite
             using (var cmd = con.CreateCommand())
             {
                 cmd.CommandText = @"
-                                    PRAGMA journal_mode = WAL;
-                                    PRAGMA synchronous = NORMAL;
+        PRAGMA journal_mode = WAL;
+        PRAGMA synchronous = NORMAL;
 
-                                    CREATE TABLE IF NOT EXISTS Rules (
-                                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                        Rule TEXT NOT NULL, 
-                                        RuleName TEXT NOT NULL
-                                    );
+        CREATE TABLE IF NOT EXISTS Rules (
+            Id INTEGER PRIMARY KEY AUTOINCREMENT,
+            Rule TEXT NOT NULL, 
+            RuleName TEXT NOT NULL
+        );
 
+        CREATE TABLE IF NOT EXISTS Settings (
+            Id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ComPort TEXT NOT NULL, 
+            MoxIP TEXT NOT NULL,
+            RoutatorTimer INTEGER NOT NULL,
+            ConfidenceLevel TEXT NOT NULL,
+            DatabaseURL TEXT NOT NULL,
+            BackOfficeURL TEXT NOT NULL
+        );
+    ";
 
-                                    CREATE TABLE IF NOT EXISTS Settings (
-                                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                        ComPort TEXT NOT NULL, 
-                                        MoxIP TEXT NOT NULL,
-                                        ConfidenceLevel TEXT NOT NULL,
-                                        DatabaseURL TEXT NOT NULL,
-                                        BackOfficeURL TEXT NOT NULL
-                                    );";
                 cmd.ExecuteNonQuery();
             }
+
         }
 
         private static string GetConnectionString()

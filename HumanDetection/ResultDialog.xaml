@@ -47,7 +47,7 @@
                                                Text="{Binding TotalBoxes, StringFormat='Detected Box: {0}'}"/>
                                                 </StackPanel>
 
-                                                <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="2">
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="2,0,40,0">
                                                     <materialIcons:MaterialIcon Kind="ShippingPallet" Width="20" Height="20" Foreground="IndianRed"/>
                                                     <TextBlock Margin="5" FontSize="16" Foreground="White"
                                                Text="{Binding PalletHeight, StringFormat='Pallet Height: {0:F2}'}"/>

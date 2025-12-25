@@ -39,6 +39,7 @@ namespace UserControls.Settings
             SecurityLock.Text = _settings.MoxIP;
             DBConnectionURL.Text = _settings.DatabaseURL;
             BackOfficeURL.Text = _settings.BackOfficeURL;
+            RoutatorTimerTxt.Text = _settings.RoutatorTimer.ToString();
 
             if (int.TryParse(_settings.ConfidenceLevel, out int val))
             {
@@ -49,13 +50,18 @@ namespace UserControls.Settings
 
         private void SaveSettings_Click(object sender, RoutedEventArgs e)
         {
+            int rotatorTimer = 0; // default / fallback value
+
+            int.TryParse(RoutatorTimerTxt.Text, out rotatorTimer);
+
             var data = new AppSettings
             {
                 ComPort = TunnelID.Text,
                 MoxIP = SecurityLock.Text,
                 DatabaseURL = DBConnectionURL.Text,
                 BackOfficeURL = BackOfficeURL.Text,
-                ConfidenceLevel = ((int)MinSlider.Value).ToString()
+                ConfidenceLevel = ((int)MinSlider.Value).ToString(),
+                RoutatorTimer = rotatorTimer
             };
 
             if (_settings == null)

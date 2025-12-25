@@ -12,5 +12,6 @@ namespace SQLite
         public string ConfidenceLevel { get; set; }
         public string DatabaseURL { get; set; }
         public string BackOfficeURL { get; set; }
+        public int? RoutatorTimer { get; set; }
     }
 }

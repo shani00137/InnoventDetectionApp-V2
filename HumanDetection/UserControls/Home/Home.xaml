@@ -186,11 +186,11 @@
                                                     <Grid Grid.Row="0" Margin="0,5">
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="*"/>
-                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="auto"/>
                                                         </Grid.ColumnDefinitions>
                                                         <StackPanel Orientation="Horizontal" Grid.Column="0">
                                                             <Image Source="pack://application:,,,/Resources/Images/sensor.png" Height="18" Width="18"/>
-                                                            <TextBlock Margin="10,0,0,0" Text="Sensor Lidar" Foreground="White" FontSize="14"/>
+                                                            <TextBlock Margin="10,0,0,0" Text="Sensor Lidar" Foreground="White" FontSize="12"/>
                                                         </StackPanel>
                                                         <Image x:Name="SensorIndicator" 
                                                           Source="pack://application:,,,/Resources/Images/off_indicator.png"
@@ -203,11 +203,11 @@
                                                     <Grid Grid.Row="1" Margin="0,10,0,0">
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="*"/>
-                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="auto"/>
                                                         </Grid.ColumnDefinitions>
                                                         <StackPanel Orientation="Horizontal" Grid.Column="0">
                                                             <Image Source="pack://application:,,,/Resources/Images/temperature.png" Height="18" Width="18"/>
-                                                            <TextBlock Margin="10,0,0,0" Text="Temperature 33°C" Foreground="White" FontSize="14"/>
+                                                            <TextBlock Margin="10,0,0,0" Text="Temperature" Foreground="White" FontSize="12"/>
                                                         </StackPanel>
                                                         <Image x:Name="TemperatureIndicator" 
                                                           Source="pack://application:,,,/Resources/Images/off_indicator.png"
@@ -221,28 +221,28 @@
                                                     <Grid Grid.Row="2" Margin="0,10,0,0">
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="*"/>
-                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="auto"/>
                                                         </Grid.ColumnDefinitions>
                                                         <StackPanel Orientation="Horizontal" Grid.Column="0">
                                                             <Image Source="pack://application:,,,/Resources/Images/humidity.png" Height="18" Width="18"/>
-                                                            <TextBlock Margin="10,0,0,0" Text="Humidity 67%" Foreground="White" FontSize="14"/>
+                                                            <TextBlock Margin="10,0,0,0" Text="Humidity 67%" Foreground="White" FontSize="12"/>
                                                         </StackPanel>
                                                         <Image x:Name="HumidityIndicator"
-          Source="pack://application:,,,/Resources/Images/off_indicator.png"
-          Height="16" Width="16"
-          Grid.Column="1"
-          HorizontalAlignment="Right"/>
+                                                      Source="pack://application:,,,/Resources/Images/off_indicator.png"
+                                                      Height="16" Width="16"
+                                                      Grid.Column="1"
+                                                      HorizontalAlignment="Right"/>
                                                     </Grid>
 
                                                     <!-- Motor Condition -->
                                                     <Grid Grid.Row="3" Margin="0,10,0,0">
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="*"/>
-                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="auto"/>
                                                         </Grid.ColumnDefinitions>
                                                         <StackPanel Orientation="Horizontal" Grid.Column="0">
                                                             <Image Source="pack://application:,,,/Resources/Images/motor.png" Height="18" Width="18"/>
-                                                            <TextBlock Margin="10,0,0,0" Text="Motor Condition" Foreground="White" FontSize="14"/>
+                                                            <TextBlock Margin="10,0,0,0" Text="Motor Condition" Foreground="White" FontSize="12"/>
                                                         </StackPanel>
                                                         <Image x:Name="MotorIndicator"
                                                       Source="pack://application:,,,/Resources/Images/off_indicator.png"
@@ -272,7 +272,7 @@
                                     <Border Grid.Column="0" Margin="5" CornerRadius="10" BorderBrush="White" BorderThickness="1" Background="#333">
                                         <StackPanel Height="65" HorizontalAlignment="Left" VerticalAlignment="Center" Background="Transparent" Margin="10,0">
                                             <TextBlock Text="Entry" FontSize="14" Foreground="White" HorizontalAlignment="Left"/>
-                                            <TextBlock Text="12:20:35" FontSize="24" Foreground="White" HorizontalAlignment="Left"/>
+                                            <TextBlock x:Name="EntryTimeTxt" Text="00:00:00" FontSize="24" Foreground="White" HorizontalAlignment="Left"/>
                                         </StackPanel>
                                     </Border>
 
@@ -280,7 +280,7 @@
                                     <Border Grid.Column="1" Margin="5" CornerRadius="10" BorderBrush="White" BorderThickness="1" Background="#333">
                                         <StackPanel Height="65" HorizontalAlignment="Left" VerticalAlignment="Center" Background="Transparent" Margin="10,0">
                                             <TextBlock Text="Exit" FontSize="14" Foreground="White" HorizontalAlignment="Left"/>
-                                            <TextBlock Text="12:20:35" FontSize="24" Foreground="White" HorizontalAlignment="Left"/>
+                                            <TextBlock x:Name="ExitTimeTxt" Text="00:00:00" FontSize="24" Foreground="White" HorizontalAlignment="Left"/>
                                         </StackPanel>
                                     </Border>
 
@@ -300,11 +300,11 @@
                                         </StackPanel>
                                     </Border>
 
-                                    <!-- Condition -->
+                                    <!-- Score -->
                                     <Border Grid.Column="4" Margin="5" CornerRadius="10" BorderBrush="White" BorderThickness="1" Background="#333">
                                         <StackPanel Height="65" HorizontalAlignment="Left" VerticalAlignment="Center" Background="Transparent" Margin="10,0">
-                                            <TextBlock Text="Condition" FontSize="14" Foreground="White" HorizontalAlignment="Left"/>
-                                            <TextBlock Text="OK" FontSize="24" Foreground="White" HorizontalAlignment="Left"/>
+                                            <TextBlock Text="Score" FontSize="14" Foreground="White" HorizontalAlignment="Left"/>
+                                            <TextBlock x:Name="ScoreTxt" Text="0" FontSize="24" Foreground="White" HorizontalAlignment="Left"/>
                                         </StackPanel>
                                     </Border>
 
@@ -540,9 +540,9 @@ Effect="{DynamicResource DropShadow}">
            Grid.Column="0" />
 
                                         <Button
-           Background="Gray" Click="LivePreview_Click"
+           Background="Gray" Click="StopProc_Click"
            Foreground="White" Height="50" 
-           Content="Live Preview"
+           Content="Stop"
            FontSize="14"
            Padding="10,5"
            HorizontalAlignment="Stretch"
@@ -572,7 +572,7 @@ Effect="{DynamicResource DropShadow}">
                                         <Button
                                        Background="Gray"
                                        Foreground="White" Height="50"
-                                       Content="Results"
+                                       Content="Results" Click="ShowResult_Click"
                                        FontSize="14"
                                        Padding="10,5"
                                        HorizontalAlignment="Stretch"

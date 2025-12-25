@@ -30,15 +30,16 @@ namespace SQLite
                 using var reader = cmd.ExecuteReader();
                 if (!reader.Read()) return null;
 
-                return new AppSettings
-                {
-                    Id = reader.GetInt32(0),
-                    ComPort = reader.GetString(1),
-                    MoxIP = reader.GetString(2),
-                    ConfidenceLevel = reader.GetString(3),
-                    DatabaseURL = reader.GetString(4),
-                    BackOfficeURL = reader.GetString(5)
-                };
+            return new AppSettings
+            {
+                Id = reader.GetInt32(0),
+                ComPort = reader.GetString(1),
+                MoxIP = reader.GetString(2),
+                ConfidenceLevel = reader.GetString(3),
+                DatabaseURL = reader.GetString(4),
+                BackOfficeURL = reader.GetString(5),
+                RoutatorTimer = reader.GetString(6)!=null? int.Parse(reader.GetString(6)):0
+            };
             }
 
             // CREATE
@@ -50,16 +51,17 @@ namespace SQLite
                 var cmd = con.CreateCommand();
                 cmd.CommandText = @"
                 INSERT INTO Settings 
-                (ComPort, MoxIP, ConfidenceLevel, DatabaseURL, BackOfficeURL)
-                VALUES (@ComPort,@MoxIP,@Confidence,@Db,@Back)";
+                (ComPort, MoxIP, ConfidenceLevel, DatabaseURL, BackOfficeURL,RoutatorTimer)
+                VALUES (@ComPort,@MoxIP,@Confidence,@Db,@Back,@Timer)";
 
                 cmd.Parameters.AddWithValue("@ComPort", s.ComPort);
                 cmd.Parameters.AddWithValue("@MoxIP", s.MoxIP);
                 cmd.Parameters.AddWithValue("@Confidence", s.ConfidenceLevel);
                 cmd.Parameters.AddWithValue("@Db", s.DatabaseURL);
                 cmd.Parameters.AddWithValue("@Back", s.BackOfficeURL);
+                cmd.Parameters.AddWithValue("@Timer", s.RoutatorTimer);
 
-                cmd.ExecuteNonQuery();
+            cmd.ExecuteNonQuery();
             }
 
             // UPDATE
@@ -75,7 +77,8 @@ namespace SQLite
                     MoxIP=@MoxIP,
                     ConfidenceLevel=@Confidence,
                     DatabaseURL=@Db,
-                    BackOfficeURL=@Back
+                    BackOfficeURL=@Back,
+                    RoutatorTimer=@Time
                 WHERE Id=@Id";
 
                 cmd.Parameters.AddWithValue("@Id", s.Id);
@@ -84,8 +87,10 @@ namespace SQLite
                 cmd.Parameters.AddWithValue("@Confidence", s.ConfidenceLevel);
                 cmd.Parameters.AddWithValue("@Db", s.DatabaseURL);
                 cmd.Parameters.AddWithValue("@Back", s.BackOfficeURL);
+                 cmd.Parameters.AddWithValue("@Time", s.RoutatorTimer);
 
-                cmd.ExecuteNonQuery();
+
+            cmd.ExecuteNonQuery();
             }
 
         public static List<RuleModel> GetAll()

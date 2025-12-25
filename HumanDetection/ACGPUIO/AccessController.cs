@@ -151,10 +151,27 @@ namespace ACGPUIO
             await Task.Delay(7000);
             await SendDOCommand(3, 1);
 
-            //off rotator after 4 sec
-            await Task.Delay(4000);
-            await SendDOCommand(1, 0);
-            await SendDOCommand(3, 0);
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(4000); // Wait 4 seconds
+                await SendDOCommand(1, 0); // Turn off
+                await SendDOCommand(3, 0); // Turn off
+            });
+
+        }
+        public async Task StartRotatorForDurationAsync(int Seconds)
+        {
+            // DO1 (rotator) ON
+            await SendDOCommand(1, 1);
+            await Task.Delay(7000);
+            await SendDOCommand(3, 1);
+
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(Seconds); // Wait 4 seconds
+                await SendDOCommand(1, 0); // Turn off
+                await SendDOCommand(3, 0); // Turn off
+            });
 
         }
 

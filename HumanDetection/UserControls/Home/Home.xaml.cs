@@ -100,6 +100,9 @@ namespace HumanDetection
         public ObservableCollection<ResutlModel> ResultDataList { get; set; }
         private ScaleSerialReader? _reader;
         private  OcrPythonClient _ocrHost;
+        private bool _isPalletDetectionRunning = false;
+        private CancellationTokenSource? _palletCts;
+
         public Home()
         {
             InitializeComponent();
@@ -128,6 +131,8 @@ namespace HumanDetection
         {
             try
             {
+                EntryTimeTxt.Text = "00:00:00";
+                ExitTimeTxt.Text = "00:00:00";
                 _settings = SettingsRepository.GetSettings();
                 if(_settings!=null)
                _ac =new AccessController($"{_settings.MoxIP}");
@@ -144,15 +149,15 @@ namespace HumanDetection
                 ResultDialoag.UpdateResults(ResultDataList);
                 PictureDialog.Visibility = Visibility.Collapsed;
                 ResultDialoag.Visibility = Visibility.Visible;
-           
-               
+
+              
 
                 //string pythonExe = @"C:\Users\Abhishaik Sharma\AppData\Local\Programs\Python\Python310\python.exe";
                 //string scriptPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "reader.py");
 
                 //_ocrHost = new OcrPythonClient(pythonExe, scriptPath);
 
-               
+
                 //// Show loading indicator
                 //LoadingOverlay.Visibility = Visibility.Visible;
                 //await Task.Delay(1); // Ensure UI updates
@@ -185,24 +190,7 @@ namespace HumanDetection
 
                 //LoadingOverlay.Visibility = Visibility.Collapsed;
 
-                //// Start tasks for each camera (up to 3)
-                //List<Task> cameraTasks = new List<Task>();
 
-                //if (cameraCount > 0)
-                //    SetCameraUI(CamFrontLightPulse, cameraCount >= 1);
-                //await Task.Delay(1000);
-
-                //cameraTasks.Add(Task.Run(() => CheckPalletStatus(allCameras[0])));
-
-                //if (cameraCount > 1)
-                //    //cameraTasks.Add(Task.Run(() => ReadTextFromBaslerCamera(allCameras[1])));
-                //    SetCameraUI(CamLeftLightPulse, cameraCount >= 1);
-
-
-                //if (cameraCount > 2)
-                //    SetCameraUI(CamRightLightPulse, cameraCount >= 1);
-
-                //await Task.WhenAll(cameraTasks);
 
 
 
@@ -218,6 +206,39 @@ namespace HumanDetection
             }
 
         }
+        public void StartPalletDetectionProc()
+        {
+            //// Start tasks for each camera (up to 3)
+            //List<Task> cameraTasks = new List<Task>();
+
+            //if (cameraCount > 0)
+            //    SetCameraUI(CamFrontLightPulse, cameraCount >= 1);
+            //await Task.Delay(1000);
+
+            //cameraTasks.Add(Task.Run(() => CheckPalletStatus(allCameras[0])));
+
+            //if (cameraCount > 1)
+            //    //cameraTasks.Add(Task.Run(() => ReadTextFromBaslerCamera(allCameras[1])));
+            //    SetCameraUI(CamLeftLightPulse, cameraCount >= 1);
+
+
+            //if (cameraCount > 2)
+            //    SetCameraUI(CamRightLightPulse, cameraCount >= 1);
+
+            //await Task.WhenAll(cameraTasks);
+            EntryTimeTxt.Text = DateTime.Now.ToString("HH:mm:ss");
+            ExitTimeTxt.Text = DateTime.Now.ToString("HH:mm:ss");
+
+        }
+        public async Task StopPalletDetectionProc()
+        {
+            await StopBuzzer();
+            await OffBlower();
+            await OffRotatorAsync();
+        }
+       
+
+
         private void Page_Unloaded(object sender, RoutedEventArgs e)
         {
             StopScale();
@@ -348,63 +369,75 @@ namespace HumanDetection
                 Console.WriteLine("[Camera] Process stopped.");
             }
         }
-      
+
 
 
         private async Task CaptureAndDisplayAllCamerasAsync()
         {
             try
             {
-              
-               
                 await StartBlower();
-                AddResult(DateTime.Now, null, null, null, null, null, false, true);
 
-                var cameraList = CameraFinder.Enumerate();
+                bool detectionPassed = false;
 
-                var images = await CaptureSingleFrameFromAllCamerasAsync(cameraList);
-
-                Dispatcher.Invoke(() =>
+                while (!detectionPassed)
                 {
-                    CapturedImages.Clear();
-                    foreach (var img in images)
-                        CapturedImages.Add(img);
-                });
-                StartScale();
-                LoadingOverlay.Visibility = Visibility.Visible;
-                ProgressTxt.Text = "Please Wait.."
-                ; await RunAllAIDetectionsAsync(images);
-                LoadingOverlay.Visibility = Visibility.Collapsed;
-                ResultDialoag.UpdateResults(ResultDataList);
-                Panel.SetZIndex(ResultDialoag, 1); // ensure on top
+                    AddResult(DateTime.Now, null, null, null, null, null, false, true);
 
+                    var cameraList = CameraFinder.Enumerate();
 
-                // ✅ show popup
+                    // Capture images from all cameras
+                    var images = await CaptureSingleFrameFromAllCamerasAsync(cameraList);
 
-                PictureDialog.Visibility = Visibility.Collapsed;
-                ResultDialoag.Visibility = Visibility.Visible;
-               
-                ImageDialogHost.IsOpen = true;
-                await StopBuzzer();
-                await OffBlower();
-                await OffRotatorAsync();
+                    // Display captured images in UI
+                    Dispatcher.Invoke(() =>
+                    {
+                        CapturedImages.Clear();
+                        foreach (var img in images)
+                            CapturedImages.Add(img);
+                    });
+
+                    StartScale();
+                    LoadingOverlay.Visibility = Visibility.Visible;
+                    ProgressTxt.Text = "Please Wait..";
+
+                    // Run AI detections and get average score
+                    double avgScore = await RunAllAIDetectionsAsync(images);
+
+                    LoadingOverlay.Visibility = Visibility.Collapsed;
+                    ResultDialoag.UpdateResults(ResultDataList);
+                    Panel.SetZIndex(ResultDialoag, 1); // ensure on top
+                    Dispatcher.Invoke(async () =>
+                    {
+                        ScoreTxt.Text = avgScore.ToString();
+                    });
+                    if (avgScore >= 70)
+                    {
+                        detectionPassed = true; // exit loop
+                    }
+                    else
+                    {
+                        await StartRotator();
+                        // Optional: add a short delay before retrying
+                        await Task.Delay(500);
+                    }
+                }
             }
             catch (Exception ex)
             {
                 await StopBuzzer();
                 await OffBlower();
                 await OffRotatorAsync();
+                MessageBox.Show($"Error: {ex.Message}", "Capture Failed", MessageBoxButton.OK, MessageBoxImage.Error);
             }
-           
-
-
-
         }
-        public async Task<List<BitmapImage>> CaptureSingleFrameFromAllCamerasAsync(List<ICameraInfo> cameraInfos)
+
+        public async Task<List<BitmapImage>> CaptureSingleFrameFromAllCamerasAsync(
+      List<ICameraInfo> cameraInfos, bool FirstTerm)
         {
             var capturedImages = new List<BitmapImage>();
 
-            await Task.Run(() =>
+            await Task.Run(async () =>
             {
                 foreach (var camInfo in cameraInfos)
                 {
@@ -414,12 +447,16 @@ namespace HumanDetection
                         {
                             camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
                             camera.Open();
+
                             FlashCamera(FrontFlashEllipse);
                             FlashCamera(LeftFlashEllipse);
                             FlashCamera(RightFlashEllipse);
                             PlayShutterSound();
-                            Task.Delay(100);
-                            using (IGrabResult grabResult = camera.StreamGrabber.GrabOne(3000, TimeoutHandling.ThrowException))
+
+                            Task.Delay(100).Wait();
+
+                            using (IGrabResult grabResult =
+                                camera.StreamGrabber.GrabOne(3000, TimeoutHandling.ThrowException))
                             {
                                 if (grabResult.GrabSucceeded)
                                 {
@@ -441,68 +478,130 @@ namespace HumanDetection
                         Console.WriteLine($"⚠️ Failed to capture from {camInfo[CameraInfoKey.ModelName]}: {ex.Message}");
                     }
                 }
+
+                // 🔹 EXTRA CAPTURE WHEN FirstTerm == false
+                if (!FirstTerm && cameraInfos.Count > 0)
+                {
+                  
+                    try
+                    {
+                       await StartRoutatorWithDuration(_settings.RoutatorTimer!=null?(int)_settings.RoutatorTimer:0);
+                        var firstCamInfo = cameraInfos[0];
+
+                        using (var camera = new Camera(firstCamInfo))
+                        {
+                            camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
+                            camera.Open();
+
+                            FlashCamera(FrontFlashEllipse);
+                            PlayShutterSound();
+
+                            Task.Delay(100).Wait();
+
+                            using (IGrabResult grabResult =
+                                camera.StreamGrabber.GrabOne(3000, TimeoutHandling.ThrowException))
+                            {
+                                if (grabResult.GrabSucceeded)
+                                {
+                                    using Mat frame = GrabResultToMat(grabResult);
+                                    var bmp = frame.ToBitmap();
+                                    var bitmapImage = ConvertBitmapToImageSource(bmp);
+                                    bitmapImage.Freeze();
+
+                                    capturedImages.Add(bitmapImage);
+                                }
+                            }
+
+                            camera.Close();
+                            Console.WriteLine("📸 Extra image captured from first camera (index 0)");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"⚠️ Failed extra capture from first camera: {ex.Message}");
+                    }
+                }
             });
 
             return capturedImages;
         }
-        private async Task RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
+
+        private async Task<double> RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
         {
             if (capturedImages == null || capturedImages.Count < 1)
             {
                 MessageBox.Show("❌ Not enough images to process AI models.");
-                return;
+                return 0.0;
             }
+
             int NumberOfBox = 0;
             double PalletHeight = 0;
             string OcrTxt = "";
             bool HumanDetected = false;
+            double totalAvgScore = 0.0;
+            int avgScoreCount = 0;
+
             // Convert BitmapImages to ImageSharp format for inference
             var imageSharpList = capturedImages.Select(img => BitmapImageToImageSharp(img)).ToList();
             var ocrBatchTask = RunOCRBatchAsync(imageSharpList);
 
             for (int i = 0; i < imageSharpList.Count; i++)
             {
-                // 🧩 Parallel run — each model runs independently
+                // Parallel run — each model runs independently
                 var boxTask = Task.Run(() => RunBoxCountingModel(imageSharpList[i]));
                 var humanTask = Task.Run(() => RunHumanDetectionModel(imageSharpList[i]));
-                //var ocrTask = Task.Run(() => RunOCRModel(imageSharpList[i]));
 
                 await Task.WhenAll(boxTask, humanTask);
 
                 var boxResult = boxTask.Result;
                 var humanResult = humanTask.Result;
-                //var ocrResult = ocrTask.Result;
+
                 NumberOfBox += boxResult.BoxesDetected;
                 PalletHeight = boxResult.PalletHeight;
-                //OcrTxt += ocrResult;
-                HumanDetected = humanResult == true ? true : true;
-                if (HumanDetected == true)
+
+                if (boxResult.AverageScore > 0)
                 {
-                    await StartBuzzer();
+                    totalAvgScore += boxResult.AverageScore;
+                    avgScoreCount++;
+                }
+
+                HumanDetected = humanResult;
+
+                if (HumanDetected)
+                {
+                    await TriggerHumanDetectedEffectAsync(true);
+                    
                 }
             }
 
-
             var ocrResults = await ocrBatchTask;
 
-           
             for (int i = 0; i < ocrResults.Length; i++)
             {
                 OcrTxt += ocrResults[i] + Environment.NewLine;
             }
 
-            // 🔔 Update UI with combined results
-            Dispatcher.Invoke(() =>
+            // Calculate final average score
+            double finalAverageScore = avgScoreCount > 0
+                ? totalAvgScore / avgScoreCount
+                : 0.0;
+
+            // Update UI
+            Dispatcher.Invoke(async () =>
             {
                 NoBoxTxt.Text = $"Boxes: {NumberOfBox}";
                 PalletHeightTxt.Text = $" {PalletHeight:F2} m";
                 AddResult(null, DateTime.Now, NumberOfBox, PalletHeight, "", OcrTxt, HumanDetected, false);
 
             });
+
+            return finalAverageScore;
         }
-        private (int BoxesDetected, double PalletHeight) RunBoxCountingModel(Image<Rgba32> image)
+
+        private (int BoxesDetected, double PalletHeight, double AverageScore)RunBoxCountingModel(Image<Rgba32> image)
         {
             UpdateProgressStatus("Box Counting AI Model Start");
+
             // 1. Resize input image
             var resizedImage = image.CloneAs<Rgba32>();
             resizedImage.Mutate(x =>
@@ -513,8 +612,8 @@ namespace HumanDetection
                     PadColor = Color.Black
                 }));
 
-            // 2. Run inference on RGBA image
-            double confidenceThreshold = 0.20; // fallback default
+            // 2. Confidence threshold
+            double confidenceThreshold = 0.20;
 
             if (_settings != null &&
                 !string.IsNullOrWhiteSpace(_settings.ConfidenceLevel) &&
@@ -528,38 +627,61 @@ namespace HumanDetection
                 .Where(p => p.Score >= confidenceThreshold)
                 .ToList();
 
+            // 3. Count boxes & pallet
+            int boxCount = predictions.Count(p =>
+                p.Label.Name.Equals("box", StringComparison.OrdinalIgnoreCase));
 
-
-            int boxCount = predictions.Count(p => p.Label.Name.Equals("box", StringComparison.OrdinalIgnoreCase));
-            var pallet = predictions.FirstOrDefault(p => p.Label.Name.Equals("pallet", StringComparison.OrdinalIgnoreCase));
+            var palletPredictions = predictions
+                .Where(p => p.Label.Name.Equals("pallet", StringComparison.OrdinalIgnoreCase))
+                .ToList();
 
             double palletHeightMeters = 0.0;
-            if (pallet != null)
+            if (palletPredictions.Any())
             {
+                var pallet = palletPredictions.First();
                 int heightPixels = (int)(pallet.Rectangle.Bottom - pallet.Rectangle.Top);
                 double mmPerPixel = 2.0;
                 palletHeightMeters = (heightPixels * mmPerPixel) / 1000.0;
             }
 
-            // ✅ Step 3: Draw detection boxes on image
+            // ----------------------------------------------------
+            // ✅ Average confidence (ONLY if box & pallet exist)
+            // ----------------------------------------------------
+            double averageScore = 0.0;
+
+            var boxPredictions = predictions
+                .Where(p => p.Label.Name.Equals("box", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (boxPredictions.Any() && palletPredictions.Any())
+            {
+                double boxAvg = boxPredictions.Average(p => p.Score);
+                double palletAvg = palletPredictions.Average(p => p.Score);
+                averageScore = (boxAvg + palletAvg) / 2.0;
+            }
+
+            // 4. Draw detection boxes
             using (var annotated = resizedImage.Clone())
             {
-                var colorBox = new Rgba32(0, 255, 0);    // Green for box
-                var colorPallet = new Rgba32(255, 64, 64); // Soft red for pallet
-                var font = SixLabors.Fonts.SystemFonts.CreateFont("Arial", 14, SixLabors.Fonts.FontStyle.Bold);
+                var colorBox = new Rgba32(0, 255, 0);
+                var colorPallet = new Rgba32(255, 64, 64);
+                var font = SixLabors.Fonts.SystemFonts.CreateFont(
+                    "Arial", 14, SixLabors.Fonts.FontStyle.Bold);
 
                 foreach (var p in predictions)
                 {
-                    var color = p.Label.Name.Equals("pallet", StringComparison.OrdinalIgnoreCase) ? colorPallet : colorBox;
+                    var color = p.Label.Name.Equals("pallet", StringComparison.OrdinalIgnoreCase)
+                        ? colorPallet
+                        : colorBox;
 
                     annotated.Mutate(x =>
                     {
-                        // ✅ Draw bold box (thicker)
                         x.Draw(color, 6, p.Rectangle);
 
-                        // ✅ Label with background rectangle for readability
                         var labelText = $"{p.Label.Name} {p.Score:P1}";
-                        var textLocation = new SixLabors.ImageSharp.PointF(p.Rectangle.X + 5, p.Rectangle.Y - 25);
+                        var textLocation = new SixLabors.ImageSharp.PointF(
+                            p.Rectangle.X + 5, p.Rectangle.Y - 25);
+
                         var textBgRect = new SixLabors.ImageSharp.RectangleF(
                             textLocation.X - 3, textLocation.Y - 3,
                             labelText.Length * 9, 22);
@@ -569,7 +691,7 @@ namespace HumanDetection
                     });
                 }
 
-                // ✅ Step 4: Convert annotated image to BitmapImage for WPF display
+                // 5. Convert annotated image to WPF
                 using (var ms = new MemoryStream())
                 {
                     annotated.SaveAsPng(ms);
@@ -582,7 +704,6 @@ namespace HumanDetection
                     bitmap.EndInit();
                     bitmap.Freeze();
 
-                    // ✅ Step 5: Add to WPF UI list safely
                     App.Current.Dispatcher.Invoke(() =>
                     {
                         CapturedImages.Add(bitmap);
@@ -590,9 +711,8 @@ namespace HumanDetection
                 }
             }
 
-            return (boxCount, palletHeightMeters);
+            return (boxCount, palletHeightMeters, averageScore);
         }
-
 
         private bool RunHumanDetectionModel(Image<Rgba32> image)
         {
@@ -850,13 +970,20 @@ namespace HumanDetection
         }
         private void Restart_Click(object sender, EventArgs e)
         {
-            RestartProcess();
         }
-        private void LivePreview_Click(object sender, EventArgs e)
+        private async void StopProc_Click(object sender, EventArgs e)
         {
+           await StopPalletDetectionProc();
+        }
+        private void ShowResult_Click(object sender, EventArgs e)
+        {
+            // ✅ show popup
+
+            PictureDialog.Visibility = Visibility.Collapsed;
+            ResultDialoag.Visibility = Visibility.Visible;
+
             ImageDialogHost.IsOpen = true;
-        
-            ResultDialoag.Visibility = Visibility.Collapsed;
+          
         }
         #endregion
         #region UIControls
@@ -1019,6 +1146,7 @@ namespace HumanDetection
             await _ac.StartBlowerAsync();
            
         }
+       
 
         public async Task OffBlower()
         {
@@ -1031,6 +1159,11 @@ namespace HumanDetection
         public async Task OffRotatorAsync()
         {
             await _ac.OffRotatorAsync();
+
+        }
+        public async Task StartRoutatorWithDuration(int sec)
+        {
+            await _ac.StartRotatorForDurationAsync(sec);
 
         }
 
@@ -1073,10 +1206,17 @@ namespace HumanDetection
 
         private void Reader_WeightReceived(object? sender, double w)
         {
-            Dispatcher.Invoke(() =>
+            Dispatcher.Invoke(async () =>
             {
                 WeightText.Text = $"{w:0.##} KG";
-                //AddResult(DateTime.Now, null, null, null, WeightText.Text, null, false, false);
+
+                if (w > 5)
+                {
+                    StartPalletDetectionProc();
+                }
+                else {
+                   await StopPalletDetectionProc();
+                }
             });
         }
 
@@ -1087,6 +1227,43 @@ namespace HumanDetection
                 WeightText.Text = "ERR";
             });
         }
+        private async Task TriggerHumanDetectedEffectAsync(bool isFound)
+        {
+            if (isFound)
+            {
+                await StartBuzzer();
+                if (!_isAlertPlaying)
+                {
+                    _isAlertPlaying = true;
+                    audioManager.Play("Resources/Audio/warning.wav"); // Play warning sound
+                }
+
+                // Play animation repeatedly for 4 seconds
+                var startTime = DateTime.Now;
+                while ((DateTime.Now - startTime).TotalSeconds < 5)
+                {
+                    await AnimationHelper.ScaleToAsync(HumanImage, 1.2, 200, true);  // scale up
+                    await AnimationHelper.ScaleToAsync(HumanImage, 1.0, 200, false); // scale down
+                }
+
+                // Stop sound after 4 seconds
+                if (_isAlertPlaying)
+                {
+                    _isAlertPlaying = false;
+                    audioManager.Stop();
+                }
+                await StopBuzzer();
+            }
+            else
+            {
+                if (_isAlertPlaying)
+                {
+                    _isAlertPlaying = false;
+                    audioManager.Stop();
+                }
+            }
+        }
+
         #endregion
     }
 }
