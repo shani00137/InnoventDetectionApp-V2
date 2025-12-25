@@ -25,25 +25,37 @@ namespace SQLite
                 con.Open();
 
                 var cmd = con.CreateCommand();
-                cmd.CommandText = @"SELECT * FROM Settings LIMIT 1";
+                cmd.CommandText = @"SELECT Id,ComPort, MoxIP,RoutatorTimer,ConfidenceLevel,DatabaseURL,BackOfficeURL FROM Settings LIMIT 1";
 
                 using var reader = cmd.ExecuteReader();
                 if (!reader.Read()) return null;
+                var data= new AppSettings
+                {
+                    Id = reader.GetInt32(0),
+                    ComPort = reader.GetString(1),
+                    MoxIP = reader.GetString(2),
+                    RoutatorTimer = reader.GetString(3).ToString() != null ? 0 : reader.GetInt32(3),
+                    ConfidenceLevel=reader.GetInt32(4).ToString(),
+                    DatabaseURL = reader.GetString(4),
+                    BackOfficeURL = reader.GetString(5),
+                   
+                };
 
             return new AppSettings
             {
                 Id = reader.GetInt32(0),
                 ComPort = reader.GetString(1),
                 MoxIP = reader.GetString(2),
-                ConfidenceLevel = reader.GetString(3),
+                RoutatorTimer = reader.GetString(3).ToString() != null ? 0 : reader.GetInt32(3),
+                ConfidenceLevel = reader.GetInt32(4).ToString(),
                 DatabaseURL = reader.GetString(4),
                 BackOfficeURL = reader.GetString(5),
-                RoutatorTimer = reader.GetString(6)!=null? int.Parse(reader.GetString(6)):0
             };
-            }
 
-            // CREATE
-            public static void InsertSettings(AppSettings s)
+        }
+
+        // CREATE
+        public static void InsertSettings(AppSettings s)
             {
                 using var con = GetConnection();
                 con.Open();

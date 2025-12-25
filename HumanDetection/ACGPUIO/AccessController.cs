@@ -159,18 +159,26 @@ namespace ACGPUIO
             });
 
         }
+        public async Task TurnOnRotatorAsync()
+        {
+            // DO1 (rotator) ON
+            await SendDOCommand(1, 1);          
+
+        }
         public async Task StartRotatorForDurationAsync(int Seconds)
         {
             // DO1 (rotator) ON
-            await SendDOCommand(1, 1);
-            await Task.Delay(7000);
+           
             await SendDOCommand(3, 1);
 
+            await Task.Delay(Seconds);
             _ = Task.Run(async () =>
             {
-                await Task.Delay(Seconds); // Wait 4 seconds
+                // Wait 4 seconds
                 await SendDOCommand(1, 0); // Turn off
                 await SendDOCommand(3, 0); // Turn off
+
+                
             });
 
         }
