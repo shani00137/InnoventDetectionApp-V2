@@ -5,12 +5,12 @@ import easyocr
 import cv2
 
 # Initialize OCR once
-reader = easyocr.Reader(['en','ar'], gpu=True)
+reader = easyocr.Reader(['en','ar'])
 
 def preprocess_image(path):
     img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
     img = cv2.resize(img, (0,0), fx=0.5, fy=0.5)  # downscale for speed
-    return img
+    return imga
 
 def process_folder(folder):
     results = {}

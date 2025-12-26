@@ -29,21 +29,31 @@ namespace Utilites.PythonScripts
             _pythonProcess = Process.Start(psi) ?? throw new Exception("Failed to start Python process.");
         }
 
-        public async Task<Dictionary<string, string>> RunOcrAsync(string folderPath)
+        public async Task<Dictionary<string, string>> RunOcrFromMemoryAsync(
+      Dictionary<string, byte[]> images)
         {
             if (_pythonProcess == null || _pythonProcess.HasExited)
                 throw new Exception("Python OCR process is not running.");
 
-            await _pythonProcess.StandardInput.WriteLineAsync(folderPath);
+            var payload = images.ToDictionary(
+                x => x.Key,
+                x => Convert.ToBase64String(x.Value)
+            );
+
+            string json = JsonSerializer.Serialize(payload);
+
+            await _pythonProcess.StandardInput.WriteLineAsync(json);
             await _pythonProcess.StandardInput.FlushAsync();
 
             string output = await _pythonProcess.StandardOutput.ReadLineAsync();
 
-            if (string.IsNullOrEmpty(output))
+            if (string.IsNullOrWhiteSpace(output))
                 return new Dictionary<string, string>();
 
-            return JsonSerializer.Deserialize<Dictionary<string, string>>(output);
+            return JsonSerializer.Deserialize<Dictionary<string, string>>(output)
+                   ?? new Dictionary<string, string>();
         }
+
 
         public void Dispose()
         {

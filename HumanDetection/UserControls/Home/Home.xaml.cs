@@ -213,7 +213,7 @@ namespace HumanDetection
         }
         public async Task StopPalletDetectionProc()
         {
-            await StopBuzzer();
+            //await StopBuzzer();
             await OffBlower();
             await OffRotatorAsync();
             Dispatcher.Invoke(async () =>
@@ -303,23 +303,23 @@ namespace HumanDetection
                 await StartBlower();
 
                 bool detectionPassed = false;
+
                 Dispatcher.Invoke(() =>
                 {
-
                     LoadingOverlay.Visibility = Visibility.Visible;
-                    ProgressTxt.Text = "Please Wait..";
+                    ProgressTxt.Text = "Starting capture...";
                 });
+                int attempTaken = 0;
                 while (!detectionPassed)
                 {
-                   
+                    attempTaken++;
                     AddResult(DateTime.Now, null, null, null, null, null, false, true);
 
-                    var cameraList = CameraFinder.Enumerate();
+                    ReportProgress("📷 Capturing images...");
 
-                    // Capture images from all cameras
+                    var cameraList = CameraFinder.Enumerate();
                     var images = await CaptureSingleFrameFromAllCamerasAsync(cameraList, FirstTerm);
 
-                    // Display captured images in UI
                     Dispatcher.Invoke(() =>
                     {
                         CapturedImages.Clear();
@@ -327,51 +327,57 @@ namespace HumanDetection
                             CapturedImages.Add(img);
                     });
 
+                    ReportProgress("🧠 Running AI detection...");
 
-
-
-                    // Run AI detections and get average score
-                    //double avgScore = await RunAllAIDetectionsAsync(images);double avgScore
-                    double avgScore = 0.4;
-                    LoadingOverlay.Visibility = Visibility.Collapsed;
-                    ResultDialoag.UpdateResults(ResultDataList);
-                    Panel.SetZIndex(ResultDialoag, 1); // ensure on top
-                    Dispatcher.Invoke(async () =>
+                    // 🔥 AI runs fully in background
+                    var varAIResponse = await Task.Run(() =>
+                        RunAllAIDetectionsAsync(images)
+                    );
+                    double avgScore = varAIResponse.AvScore;
+                    bool HumanDetected = varAIResponse.HumanDetected;
+                    if (HumanDetected)
                     {
-                        //ScoreTxt.Text = $"{avgScore * 100:0}%";
+                        await StartBuzzer();
+                        await Task.Delay(6000);
+                        await StopBuzzer();
+                    }
+                    Dispatcher.Invoke(() =>
+                    {
+                        LoadingOverlay.Visibility = Visibility.Collapsed;
+                        ResultDialoag.UpdateResults(ResultDataList);
+                        Panel.SetZIndex(ResultDialoag, 1);
+                         ScoreTxt.Text = $"{avgScore * 100:0}%";
                     });
+
                     if (avgScore >= 0.70)
                     {
-                        detectionPassed = true; // exit loop
+                        detectionPassed = true;
                         await StopPalletDetectionProc();
                     }
                     else
                     {
-                        LoadingOverlay.Visibility = Visibility.Visible;
-                        await Task.Delay(10000);
-                        UpdateProgressStatus("Process restart and turn on routator");
+                        if (attempTaken >= 3)
+                        {
+                            await StopPalletDetectionProc();
+                            break;
+                        }
+                        ReportProgress("🔄 Repositioning pallet...");
                         await TurnOnRotatorAsync();
                         await Task.Delay(8000);
-                        UpdateProgressStatus("start routator");
-
-                        await StartRoutatorWithDuration(600);
-                        LoadingOverlay.Visibility = Visibility.Collapsed;
-                        
+                        await StartRoutatorWithDuration(5200);
                         FirstTerm = false;
-                       
-
                     }
                 }
-            
             }
             catch (Exception ex)
             {
                 await StopBuzzer();
                 await OffBlower();
                 await OffRotatorAsync();
-                MessageBox.Show($"Error: {ex.Message}", "Capture Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(ex.Message);
             }
         }
+
 
         public async Task<List<BitmapImage>> CaptureSingleFrameFromAllCamerasAsync(
       List<ICameraInfo> cameraInfos, bool FirstTerm)
@@ -426,7 +432,7 @@ namespace HumanDetection
                     try
                     {
                         //await StartRoutatorWithDuration(_settings.RoutatorTimer!=null?(int)_settings.RoutatorTimer:20);
-                        await StartRoutatorWithDuration(5500);
+                        await StartRoutatorWithDuration(5200);
                         var firstCamInfo = cameraInfos[0];
 
                         using (var camera = new Camera(firstCamInfo))
@@ -467,13 +473,14 @@ namespace HumanDetection
             return capturedImages;
         }
 
-        private async Task<double> RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
+        private async Task<(double AvScore, bool HumanDetected)> RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
+
         {
             UpdateProgressStatus("AI Model Start to detect");
             if (capturedImages == null || capturedImages.Count < 1)
             {
                 MessageBox.Show("❌ Not enough images to process AI models.");
-                return 0.0;
+                return (0.0,false);
             }
 
             int NumberOfBox = 0;
@@ -485,15 +492,16 @@ namespace HumanDetection
 
             // Convert BitmapImages to ImageSharp format for inference
             var imageSharpList = capturedImages.Select(img => BitmapImageToImageSharp(img)).ToList();
-            var ocrBatchTask = RunOCRBatchAsync(imageSharpList);
+          
 
             for (int i = 0; i < imageSharpList.Count; i++)
             {
                 // Parallel run — each model runs independently
                 var boxTask = Task.Run(() => RunBoxCountingModel(imageSharpList[i]));
                 var humanTask = Task.Run(() => RunHumanDetectionModel(imageSharpList[i]));
+                ReportProgress($"🧠 AI Processing {i}/{imageSharpList.Count}");
 
-                await Task.WhenAll(boxTask, humanTask);
+                await Task.WhenAll(boxTask);
 
                 var boxResult = boxTask.Result;
                 var humanResult = humanTask.Result;
@@ -509,13 +517,15 @@ namespace HumanDetection
 
                 HumanDetected = humanResult;
 
-                if (HumanDetected)
-                {
-                    await TriggerHumanDetectedEffectAsync(true);
-                    
-                }
+                
             }
+            if (HumanDetected)
+            {
+                await TriggerHumanDetectedEffectAsync(true);
 
+            }
+            //ReportProgress($"🧠 AI Processing For OCR");
+            //var ocrBatchTask = RunOCRBatchAsync(imageSharpList);
             //var ocrResults = await ocrBatchTask;
 
             //for (int i = 0; i < ocrResults.Length; i++)
@@ -537,7 +547,14 @@ namespace HumanDetection
 
             });
 
-            return finalAverageScore;
+            return (finalAverageScore, HumanDetected);
+        }
+        private void ReportProgress(string message)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                ProgressTxt.Text = message;
+            });
         }
 
         private (int BoxesDetected, double PalletHeight, double AverageScore)RunBoxCountingModel(Image<Rgba32> image)
@@ -671,30 +688,22 @@ namespace HumanDetection
         }
         private async Task<string[]> RunOCRBatchAsync(List<Image<Rgba32>> images)
         {
-            string tempFolder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString());
-            Directory.CreateDirectory(tempFolder);
+            var imageMap = new Dictionary<string, byte[]>();
 
-            try
+            for (int i = 0; i < images.Count; i++)
             {
-                for (int i = 0; i < images.Count; i++)
-                {
-                    var img = images[i];
-                    var filePath = System.IO.Path.Combine(tempFolder, $"img_{i}.png");
-                    img.Save(filePath); // save ImageSharp image as PNG
-                }
+                using var ms = new MemoryStream();
+                images[i].SaveAsPng(ms);
+                imageMap[$"img_{i}.png"] = ms.ToArray();
+            }
 
-                var results = await _ocrHost.RunOcrAsync(tempFolder);
-                return results.Values.ToArray();
-            }
-            catch (Exception ex)
-            {
-                return Array.Empty<string>();
-            }
-            finally
-            {
-                Directory.Delete(tempFolder, true);
-            }
+            var results = await _ocrHost.RunOcrFromMemoryAsync(imageMap);
+
+            return results.Values.ToArray();
         }
+
+
+
 
 
 
@@ -1191,26 +1200,27 @@ namespace HumanDetection
             if (isFound)
             {
                 await StartBuzzer();
-                if (!_isAlertPlaying)
-                {
-                    _isAlertPlaying = true;
-                    audioManager.Play("Resources/Audio/warning.wav"); // Play warning sound
-                }
+                await Task.Delay(8000);
+                //if (!_isAlertPlaying)
+                //{
+                //    _isAlertPlaying = true;
+                //    audioManager.Play("Resources/Audio/warning.wav"); // Play warning sound
+                //}
 
                 // Play animation repeatedly for 4 seconds
                 var startTime = DateTime.Now;
-                while ((DateTime.Now - startTime).TotalSeconds < 5)
-                {
-                    await AnimationHelper.ScaleToAsync(HumanImage, 1.2, 200, true);  // scale up
-                    await AnimationHelper.ScaleToAsync(HumanImage, 1.0, 200, false); // scale down
-                }
+                //while ((DateTime.Now - startTime).TotalSeconds < 3)
+                //{
+                //    await AnimationHelper.ScaleToAsync(HumanImage, 1.2, 200, true);  // scale up
+                //    await AnimationHelper.ScaleToAsync(HumanImage, 1.0, 200, false); // scale down
+                //}
 
-                // Stop sound after 4 seconds
-                if (_isAlertPlaying)
-                {
-                    _isAlertPlaying = false;
-                    audioManager.Stop();
-                }
+                //// Stop sound after 4 seconds
+                //if (_isAlertPlaying)
+                //{
+                //    _isAlertPlaying = false;
+                //    audioManager.Stop();
+                //}
                 await StopBuzzer();
             }
             else
