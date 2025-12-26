@@ -1,34 +1,69 @@
 ﻿import sys
 import os
 import json
-import easyocr
-import cv2
+from doctr.io import DocumentFile
+from doctr.models import ocr_predictor
 
-# Initialize OCR once
-reader = easyocr.Reader(['en','ar'])
+# Arabic + English friendly:
+# - det_arch: "db_resnet50" is a solid general detector
+# - reco_arch: "sar_resnet31" supports Arabic well (also works for many Latin cases)
+MODEL = ocr_predictor(
+    det_arch="db_resnet50",
+    reco_arch="sar_resnet31",
+    pretrained=True
+)
 
-def preprocess_image(path):
-    img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-    img = cv2.resize(img, (0,0), fx=0.5, fy=0.5)  # downscale for speed
-    return imga
+def ocr_single_image(image_path: str) -> str:
+    doc = DocumentFile.from_images(image_path)
+    result = MODEL(doc)
 
-def process_folder(folder):
+    lines_out = []
+    exported = result.export()
+
+    for page in exported.get("pages", []):
+        for block in page.get("blocks", []):
+            for line in block.get("lines", []):
+                words = [w.get("value", "") for w in line.get("words", [])]
+                words = [w for w in words if w]
+                if words:
+                    lines_out.append(" ".join(words))
+
+    return "\n".join(lines_out).strip()
+
+def ocr_folder(folder_path: str) -> dict:
+    exts = (".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp")
     results = {}
-    for file in os.listdir(folder):
-        if file.lower().endswith(('.png','.jpg','.jpeg')):
-            path = os.path.join(folder, file)
-            img = preprocess_image(path)
-            text = " ".join(reader.readtext(img, detail=0))
-            results[file] = text
+
+    if not os.path.isdir(folder_path):
+        return {"__error__": f"Folder not found: {folder_path}"}
+
+    files = sorted(
+        f for f in os.listdir(folder_path)
+        if f.lower().endswith(exts)
+    )
+
+    for fname in files:
+        fpath = os.path.join(folder_path, fname)
+        try:
+            results[fname] = ocr_single_image(fpath)
+        except Exception as e:
+            results[fname] = f"__error__: {str(e)}"
+
     return results
 
-# Persistent loop
-while True:
-    line = sys.stdin.readline()
-    if not line:
-        break
-    folder_path = line.strip()
-    if os.path.exists(folder_path):
-        res = process_folder(folder_path)
-        print(json.dumps(res, ensure_ascii=False))
+def main():
+    for line in sys.stdin:
+        folder = line.strip().strip('"')
+        if not folder:
+            continue
+
+        try:
+            out = ocr_folder(folder)
+        except Exception as e:
+            out = {"__error__": str(e)}
+
+        sys.stdout.write(json.dumps(out, ensure_ascii=False) + "\n")
         sys.stdout.flush()
+
+if __name__ == "__main__":
+    main()

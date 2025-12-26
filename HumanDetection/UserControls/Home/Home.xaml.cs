@@ -519,19 +519,15 @@ namespace HumanDetection
 
                 
             }
-            if (HumanDetected)
+
+            ReportProgress($"🧠 AI Processing For OCR");
+            var ocrBatchTask = RunOCRBatchAsync(imageSharpList);
+            var ocrResults = await ocrBatchTask;
+
+            for (int i = 0; i < ocrResults.Length; i++)
             {
-                await TriggerHumanDetectedEffectAsync(true);
-
+                OcrTxt += ocrResults[i] + Environment.NewLine;
             }
-            //ReportProgress($"🧠 AI Processing For OCR");
-            //var ocrBatchTask = RunOCRBatchAsync(imageSharpList);
-            //var ocrResults = await ocrBatchTask;
-
-            //for (int i = 0; i < ocrResults.Length; i++)
-            //{
-            //    OcrTxt += ocrResults[i] + Environment.NewLine;
-            //}
 
             // Calculate final average score
             double finalAverageScore = avgScoreCount > 0
@@ -688,19 +684,27 @@ namespace HumanDetection
         }
         private async Task<string[]> RunOCRBatchAsync(List<Image<Rgba32>> images)
         {
-            var imageMap = new Dictionary<string, byte[]>();
+            string tempFolder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString());
+            Directory.CreateDirectory(tempFolder);
 
-            for (int i = 0; i < images.Count; i++)
+            try
             {
-                using var ms = new MemoryStream();
-                images[i].SaveAsPng(ms);
-                imageMap[$"img_{i}.png"] = ms.ToArray();
+                for (int i = 0; i < images.Count; i++)
+                {
+                    var img = images[i];
+                    var filePath = System.IO.Path.Combine(tempFolder, $"img_{i}.png");
+                    img.Save(filePath); // save ImageSharp image as PNG
+                }
+
+                var results = await _ocrHost.RunOcrAsync(tempFolder);
+                return results.Values.ToArray();
             }
-
-            var results = await _ocrHost.RunOcrFromMemoryAsync(imageMap);
-
-            return results.Values.ToArray();
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
         }
+
 
 
 
