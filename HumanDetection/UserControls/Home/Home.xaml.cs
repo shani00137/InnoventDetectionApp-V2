@@ -13,6 +13,7 @@ using Microsoft.ML.OnnxRuntime;
 using Microsoft.VisualBasic.ApplicationServices;
 using Model;
 using NAudio.CoreAudioApi;
+using Newtonsoft.Json;
 using OpenCvSharp;
 using OpenCvSharp.Extensions;
 using OpenCvSharp.Internal.Vectors;
@@ -103,8 +104,9 @@ namespace HumanDetection
         private bool _isPalletDetectionRunning = false;
         private CancellationTokenSource? _palletCts;
         public bool FirstTerm=true;
-
-
+        //public string pythonExe = @"C:\Users\Abhishaik Sharma\AppData\Local\Programs\Python\Python310\python.exe";
+        public string pythonExe = @" C:\Users\USER\AppData\Local\Programs\Python\Python310\python.exe";
+       
 
         public Home()
         {
@@ -143,7 +145,7 @@ namespace HumanDetection
 
                 ResultDataList = new ObservableCollection<ResutlModel>();
 
-                string pythonExe = @"C:\Users\Abhishaik Sharma\AppData\Local\Programs\Python\Python310\python.exe";
+                
                 string scriptPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "reader.py");
 
                 _ocrHost = new OcrPythonClient(pythonExe, scriptPath);
@@ -254,9 +256,48 @@ namespace HumanDetection
 
             var fontPath = "C:/Windows/Fonts/consola.ttf";
             _font = new SixLabors.Fonts.Font(new FontCollection().Add(fontPath), 16);
+            StartFlaskApi();
 
-           
 
+
+        }
+        public void StartFlaskApi()
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = pythonExe,   // ✅ FULL PATH (important)
+                Arguments = "ocr_api.py",
+                WorkingDirectory = System.IO.Path.Combine(
+                    AppDomain.CurrentDomain.BaseDirectory,
+                    "Assets"                             // ✅ where ocr_api.py exists
+                ),
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+
+            var flaskProcess = new Process
+            {
+                StartInfo = psi,
+                EnableRaisingEvents = true
+            };
+
+            flaskProcess.OutputDataReceived += (s, e) =>
+            {
+                if (!string.IsNullOrWhiteSpace(e.Data))
+                    Debug.WriteLine("PY: " + e.Data);
+            };
+
+            flaskProcess.ErrorDataReceived += (s, e) =>
+            {
+                if (!string.IsNullOrWhiteSpace(e.Data))
+                    Debug.WriteLine("PY ERR: " + e.Data);
+            };
+
+            flaskProcess.Start();
+            flaskProcess.BeginOutputReadLine();
+            flaskProcess.BeginErrorReadLine();
         }
 
 
@@ -301,23 +342,24 @@ namespace HumanDetection
             try
             {
                 await StartBlower();
-
                 bool detectionPassed = false;
+                int attempTaken = 0;
 
                 Dispatcher.Invoke(() =>
                 {
                     LoadingOverlay.Visibility = Visibility.Visible;
                     ProgressTxt.Text = "Starting capture...";
                 });
-                int attempTaken = 0;
+
                 while (!detectionPassed)
                 {
                     attempTaken++;
                     AddResult(DateTime.Now, null, null, null, null, null, false, true);
 
                     ReportProgress("📷 Capturing images...");
-
                     var cameraList = CameraFinder.Enumerate();
+
+                    // Capture images (MAIN THREAD)
                     var images = await CaptureSingleFrameFromAllCamerasAsync(cameraList, FirstTerm);
 
                     Dispatcher.Invoke(() =>
@@ -327,26 +369,45 @@ namespace HumanDetection
                             CapturedImages.Add(img);
                     });
 
-                    ReportProgress("🧠 Running AI detection...");
+                    ReportProgress("🧠 Running AI + OCR in parallel...");
 
-                    // 🔥 AI runs fully in background
-                    var varAIResponse = await Task.Run(() =>
+                    // 🔥 RUN BOTH TASKS IN PARALLEL
+                    var aiTask = Task.Run(() =>
                         RunAllAIDetectionsAsync(images)
                     );
-                    double avgScore = varAIResponse.AvScore;
-                    bool HumanDetected = varAIResponse.HumanDetected;
-                    if (HumanDetected)
+                    var imageBytes = images
+                                    .Select(img => BitmapImageToBytes(img))
+                                    .ToList();
+
+                    var ocrTask = Task.Run(() =>
+                        RunOcrAsync(imageBytes)
+                    );
+
+                    await Task.WhenAll(aiTask, ocrTask);
+
+                    var aiResult = aiTask.Result;
+                    var ocrResult = ocrTask.Result;
+
+                    double avgScore = aiResult.AvScore;
+                    bool humanDetected = aiResult.HumanDetected;
+
+                    // 🔔 buzzer
+                    if (humanDetected)
                     {
                         await StartBuzzer();
                         await Task.Delay(6000);
                         await StopBuzzer();
                     }
+
                     Dispatcher.Invoke(() =>
                     {
                         LoadingOverlay.Visibility = Visibility.Collapsed;
                         ResultDialoag.UpdateResults(ResultDataList);
-                        Panel.SetZIndex(ResultDialoag, 1);
-                         ScoreTxt.Text = $"{avgScore * 100:0}%";
+                        ScoreTxt.Text = $"{avgScore * 100:0}%";
+                        String ORCResult = string.Join("\n", ocrResult.ocr_texts);
+                        AddResult(DateTime.Now, null, null, null, ORCResult, null, false, false);
+                        // OCR result available here
+                       
                     });
 
                     if (avgScore >= 0.70)
@@ -361,6 +422,7 @@ namespace HumanDetection
                             await StopPalletDetectionProc();
                             break;
                         }
+
                         ReportProgress("🔄 Repositioning pallet...");
                         await TurnOnRotatorAsync();
                         await Task.Delay(8000);
@@ -377,6 +439,23 @@ namespace HumanDetection
                 MessageBox.Show(ex.Message);
             }
         }
+        private byte[] BitmapImageToBytes(BitmapImage bitmap)
+        {
+            byte[] bytes;
+            using (var stream = new MemoryStream())
+            {
+                BitmapEncoder encoder = new JpegBitmapEncoder
+                {
+                    QualityLevel = 80 // 👈 IMPORTANT for speed
+                };
+
+                encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                encoder.Save(stream);
+                bytes = stream.ToArray();
+            }
+            return bytes;
+        }
+
 
 
         public async Task<List<BitmapImage>> CaptureSingleFrameFromAllCamerasAsync(
@@ -520,14 +599,7 @@ namespace HumanDetection
                 
             }
 
-            ReportProgress($"🧠 AI Processing For OCR");
-            var ocrBatchTask = RunOCRBatchAsync(imageSharpList);
-            var ocrResults = await ocrBatchTask;
-
-            for (int i = 0; i < ocrResults.Length; i++)
-            {
-                OcrTxt += ocrResults[i] + Environment.NewLine;
-            }
+          
 
             // Calculate final average score
             double finalAverageScore = avgScoreCount > 0
@@ -682,28 +754,31 @@ namespace HumanDetection
 
             return humanDetected;
         }
-        private async Task<string[]> RunOCRBatchAsync(List<Image<Rgba32>> images)
+        private async Task<OcrResult> RunOcrAsync(List<byte[]> images)
         {
-            string tempFolder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString());
-            Directory.CreateDirectory(tempFolder);
+            using var client = new HttpClient();
+            using var content = new MultipartFormDataContent();
 
-            try
+            foreach (var img in images)
             {
-                for (int i = 0; i < images.Count; i++)
-                {
-                    var img = images[i];
-                    var filePath = System.IO.Path.Combine(tempFolder, $"img_{i}.png");
-                    img.Save(filePath); // save ImageSharp image as PNG
-                }
+                var byteContent = new ByteArrayContent(img);
+                byteContent.Headers.ContentType =
+                    new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
 
-                var results = await _ocrHost.RunOcrAsync(tempFolder);
-                return results.Values.ToArray();
+                content.Add(byteContent, "images", "capture.jpg");
             }
-            finally
-            {
-                Directory.Delete(tempFolder, true);
-            }
+
+            var response = await client.PostAsync(
+                "http://127.0.0.1:9000/ocr",
+                content
+            );
+
+            response.EnsureSuccessStatusCode();
+            var json = await response.Content.ReadAsStringAsync();
+
+            return JsonConvert.DeserializeObject<OcrResult>(json);
         }
+
 
 
 
