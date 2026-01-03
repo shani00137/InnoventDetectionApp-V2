@@ -129,7 +129,7 @@ namespace HumanDetection
         {
 
             _frame = new Mat();
-             LoadModels();
+             //LoadModels();
 
         }
         private async void MainWindow_LoadedAsync(object sender, RoutedEventArgs e)
@@ -146,24 +146,29 @@ namespace HumanDetection
                 ResultDataList = new ObservableCollection<ResutlModel>();
 
                 
-                string scriptPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "reader.py");
+                //string scriptPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "reader.py");
 
-                _ocrHost = new OcrPythonClient(pythonExe, scriptPath);
+                //_ocrHost = new OcrPythonClient(pythonExe, scriptPath);
 
 
                 // Show loading indicator
                 LoadingOverlay.Visibility = Visibility.Visible;
-                await Task.Delay(1); // Ensure UI updates
 
-                await Task.Run(() =>
-                {
-                    _capture = new VideoCapture(0);
-                    _frame = new Mat();
-                    LoadModels();
-                });
-               await TurnOnRotatorAsync();
+                PictureDialog.Visibility = Visibility.Collapsed;
+                ResultDialoag.Visibility = Visibility.Visible;
 
-                StartScale();
+                ImageDialogHost.IsOpen = true;
+
+
+                // await Task.Run(() =>
+                // {
+                //     _capture = new VideoCapture(0);
+                //     _frame = new Mat();
+                //     LoadModels();
+                // });
+                //await TurnOnRotatorAsync();
+
+                // StartScale();
 
 
 
@@ -256,7 +261,7 @@ namespace HumanDetection
 
             var fontPath = "C:/Windows/Fonts/consola.ttf";
             _font = new SixLabors.Fonts.Font(new FontCollection().Add(fontPath), 16);
-            StartFlaskApi();
+            //StartFlaskApi();
 
 
 

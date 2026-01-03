@@ -9,9 +9,14 @@ namespace Model
         public int? TotalBoxes { get; set; }
         public double? PalletHeight { get; set; }
         public string? TotalWeight { get; set; }
+        public string? ExpiryDate { get; set; }
+        public string? SupplierName { get; set; }
+        public int? BarcodeCodeCount { get; set; }
+        public bool? DublicateBarcode { get; set; }
+        public string? HumanDetect { get; set; }
         public DateTime? StartTime { get; set; }
         public DateTime? EndTime { get; set; }
         public string? OCRResult { get; set; }
-        public string? HumanDetect { get; set; }
+       
     }
 }
