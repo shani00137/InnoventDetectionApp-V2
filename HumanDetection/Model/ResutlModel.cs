@@ -17,6 +17,7 @@ namespace Model
         public DateTime? StartTime { get; set; }
         public DateTime? EndTime { get; set; }
         public string? OCRResult { get; set; }
+        public double? Score { get; set; }
        
     }
 }

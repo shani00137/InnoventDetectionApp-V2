@@ -359,7 +359,21 @@ namespace HumanDetection
                 while (!detectionPassed)
                 {
                     attempTaken++;
-                    AddResult(DateTime.Now, null, null, null, null, null, false, true);
+                    var obj = new ResutlModel {
+                    StartTime = DateTime.Now,
+                    EndTime=null,
+                    TotalBoxes=0,
+                     BarcodeCodeCount=0,
+                      DublicateBarcode=null,
+                       ExpiryDate=null,
+                        HumanDetect=null,
+                         OCRResult=null,
+                          PalletHeight=0,
+                          Score=0,
+                           SupplierName=null,
+                            TotalWeight=null
+                    };
+                    AddResult(obj, true);
 
                     ReportProgress("📷 Capturing images...");
                     var cameraList = CameraFinder.Enumerate();
@@ -410,7 +424,22 @@ namespace HumanDetection
                         ResultDialoag.UpdateResults(ResultDataList);
                         ScoreTxt.Text = $"{avgScore * 100:0}%";
                         String ORCResult = string.Join("\n", ocrResult.ocr_texts);
-                        AddResult(DateTime.Now, null, null, null, ORCResult, null, false, false);
+                        var obj = new ResutlModel
+                        {
+                            StartTime = DateTime.Now,
+                            EndTime = DateTime.Now,
+                            TotalBoxes = 0,
+                            BarcodeCodeCount = 0,
+                            DublicateBarcode = null,
+                            ExpiryDate = null,
+                            HumanDetect = null,
+                            OCRResult = null,
+                            PalletHeight = 0,
+                            Score = avgScore,
+                            SupplierName = null,
+                            TotalWeight = null
+                        };
+                        AddResult(obj, false);
                         // OCR result available here
                        
                     });
@@ -418,6 +447,13 @@ namespace HumanDetection
                     if (avgScore >= 0.70)
                     {
                         detectionPassed = true;
+                        var request = new ResultRequestModel
+                        {
+                            ResutlModelList = ResultDataList.ToList(),
+                        };
+
+                        // 🔥 POST TO API
+                        await PostDetectionRequestAsync(request);
                         await StopPalletDetectionProc();
                     }
                     else
@@ -444,6 +480,42 @@ namespace HumanDetection
                 MessageBox.Show(ex.Message);
             }
         }
+        private async Task PostDetectionRequestAsync(ResultRequestModel request)
+        {
+            try
+            {
+                using var client = new HttpClient
+                {
+                    Timeout = TimeSpan.FromSeconds(20)
+                };
+
+                var json = System.Text.Json.JsonSerializer.Serialize(
+                    request,
+                    new System.Text.Json.JsonSerializerOptions
+                    {
+                        PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+                    });
+
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var response = await client.PostAsync(
+                    $"{_settings.BackOfficeURL}",
+                    content);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    throw new Exception($"API Error: {response.StatusCode} - {error}");
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log only – never break detection flow
+                Debug.WriteLine($"❌ API upload failed: {ex.Message}");
+            }
+        }
+
+
         private byte[] BitmapImageToBytes(BitmapImage bitmap)
         {
             byte[] bytes;
@@ -913,49 +985,78 @@ namespace HumanDetection
             return colorMat;
         }
 
-        private void AddResult(DateTime? startDate = null, DateTime? endDate = null, int? boxes = null, double? palletHeight = null, string? weight = null, string remarks = null, bool humandetected = false, bool isNew = false)
+        private void AddResult(ResutlModel input, bool isNew = false)
         {
-            // Find the first existing result
-            var resultModel = ResultDataList.OrderByDescending(x => x.StartTime).FirstOrDefault();
+            if (input == null)
+                return;
 
-            if (resultModel != null && isNew == false)
+            // Get latest result
+            var resultModel = ResultDataList
+                                .OrderByDescending(x => x.StartTime)
+                                .FirstOrDefault();
+
+            // 🔹 UPDATE EXISTING RESULT
+            if (resultModel != null && !isNew)
             {
-                // Update only provided fields
-                if (boxes.HasValue)
-                    resultModel.TotalBoxes = boxes.Value;
+                if (input.TotalBoxes.HasValue)
+                    resultModel.TotalBoxes = input.TotalBoxes;
 
-                if (palletHeight.HasValue)
-                    resultModel.PalletHeight = palletHeight.Value;
+                if (input.PalletHeight.HasValue)
+                    resultModel.PalletHeight = input.PalletHeight;
 
-                if (!string.IsNullOrWhiteSpace(weight))
-                    resultModel.TotalWeight = weight;
+                if (!string.IsNullOrWhiteSpace(input.TotalWeight))
+                    resultModel.TotalWeight = input.TotalWeight;
 
-                if (!string.IsNullOrWhiteSpace(remarks))
-                    resultModel.OCRResult = remarks;
+                if (!string.IsNullOrWhiteSpace(input.ExpiryDate))
+                    resultModel.ExpiryDate = input.ExpiryDate;
 
-                if (startDate.HasValue)
-                    resultModel.StartTime = startDate.Value;
+                if (!string.IsNullOrWhiteSpace(input.SupplierName))
+                    resultModel.SupplierName = input.SupplierName;
 
-                if (endDate.HasValue)
-                    resultModel.EndTime = endDate.Value;
+                if (input.BarcodeCodeCount.HasValue)
+                    resultModel.BarcodeCodeCount = input.BarcodeCodeCount;
 
-                resultModel.HumanDetect = humandetected == true ? "Yes" : "No";
+                if (input.DublicateBarcode.HasValue)
+                    resultModel.DublicateBarcode = input.DublicateBarcode;
+
+                if (!string.IsNullOrWhiteSpace(input.OCRResult))
+                    resultModel.OCRResult = input.OCRResult;
+
+                if (input.Score.HasValue)
+                    resultModel.Score = input.Score;
+
+                if (input.StartTime.HasValue)
+                    resultModel.StartTime = input.StartTime;
+
+                if (input.EndTime.HasValue)
+                    resultModel.EndTime = input.EndTime;
+
+                if (!string.IsNullOrWhiteSpace(input.HumanDetect))
+                    resultModel.HumanDetect = input.HumanDetect;
             }
-            else if (isNew == true)
+            // 🔹 ADD NEW RESULT
+            else if (isNew)
             {
-                // Add a new record if none exists
                 ResultDataList.Add(new ResutlModel
                 {
-                    StartTime = startDate ?? DateTime.Now,
-                    EndTime = endDate ?? DateTime.Now,
-                    TotalBoxes = boxes ?? 0,
-                    PalletHeight = palletHeight ?? 0,
-                    TotalWeight = string.Empty,
-                    OCRResult = remarks ?? string.Empty,
-                    HumanDetect = "No"
+                    StartTime = input.StartTime ?? DateTime.Now,
+                    EndTime = input.EndTime,
+                    TotalBoxes = input.TotalBoxes,
+                    PalletHeight = input.PalletHeight,
+                    TotalWeight = input.TotalWeight,
+                    ExpiryDate = input.ExpiryDate,
+                    SupplierName = input.SupplierName,
+                    BarcodeCodeCount = input.BarcodeCodeCount,
+                    DublicateBarcode = input.DublicateBarcode,
+                    OCRResult = input.OCRResult,
+                    Score = input.Score,
+                    HumanDetect = string.IsNullOrWhiteSpace(input.HumanDetect)
+                                    ? "No"
+                                    : input.HumanDetect
                 });
             }
         }
+
 
 
 
