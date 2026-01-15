@@ -25,6 +25,21 @@ from flask import Flask, request, jsonify
 import easyocr
 from pyzbar.pyzbar import decode
 from PIL import Image
+def preprocess(img_bytes):
+    # Open image and convert to grayscale
+    img = np.array(Image.open(io.BytesIO(img_bytes)).convert('L'))
+
+    # Upscale to make small dots more visible
+    img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+
+    # Threshold to make letters and dots sharper
+    _, img = cv2.threshold(img, 150, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+    # Sharpen the image
+    kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+    img = cv2.filter2D(img, -1, kernel)
+
+    return img
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -75,8 +90,10 @@ def ocr_endpoint():
 
         # OCR using EasyOCR (English + Arabic)
         try:
-            results = reader.readtext(img_bytes, paragraph=True)
-            detected_text = " ".join([text for (_, text) in results])
+           processed_img = preprocess(img_bytes)
+results = reader.readtext(processed_img, paragraph=False, text_threshold=0.2, low_text=0.1)
+detected_text = " ".join([text for (_, text) in results])
+         
         except Exception:
             detected_text = ""
 

@@ -104,9 +104,9 @@ namespace HumanDetection
         private bool _isPalletDetectionRunning = false;
         private CancellationTokenSource? _palletCts;
         public bool FirstTerm=true;
-        //public string pythonExe = @"C:\Users\Abhishaik Sharma\AppData\Local\Programs\Python\Python310\python.exe";
-        public string pythonExe = @" C:\Users\USER\AppData\Local\Programs\Python\Python310\python.exe";
-       
+        public string pythonExe = @"C:\Users\Abhishaik Sharma\AppData\Local\Programs\Python\Python310\python.exe";
+        //public string pythonExe = @" C:\Users\USER\AppData\Local\Programs\Python\Python310\python.exe";
+
 
         public Home()
         {
@@ -153,22 +153,15 @@ namespace HumanDetection
 
                 // Show loading indicator
                 LoadingOverlay.Visibility = Visibility.Visible;
+                await Task.Run(() =>
+                {
+                    _capture = new VideoCapture(0);
+                    _frame = new Mat();
+                    LoadModels();
+                });
+                await TurnOnRotatorAsync();
 
-                PictureDialog.Visibility = Visibility.Collapsed;
-                ResultDialoag.Visibility = Visibility.Visible;
-
-                ImageDialogHost.IsOpen = true;
-
-
-                // await Task.Run(() =>
-                // {
-                //     _capture = new VideoCapture(0);
-                //     _frame = new Mat();
-                //     LoadModels();
-                // });
-                //await TurnOnRotatorAsync();
-
-                // StartScale();
+                StartScale();
 
 
 
@@ -261,7 +254,7 @@ namespace HumanDetection
 
             var fontPath = "C:/Windows/Fonts/consola.ttf";
             _font = new SixLabors.Fonts.Font(new FontCollection().Add(fontPath), 16);
-            //StartFlaskApi();
+            StartFlaskApi();
 
 
 
@@ -394,18 +387,18 @@ namespace HumanDetection
                     var aiTask = Task.Run(() =>
                         RunAllAIDetectionsAsync(images)
                     );
-                    var imageBytes = images
-                                    .Select(img => BitmapImageToBytes(img))
-                                    .ToList();
+                    //var imageBytes = images
+                    //                .Select(img => BitmapImageToBytes(img))
+                    //                .ToList();
 
-                    var ocrTask = Task.Run(() =>
-                        RunOcrAsync(imageBytes)
-                    );
+                    //var ocrTask = Task.Run(() =>
+                    //    RunOcrAsync(imageBytes)
+                    //);
 
-                    await Task.WhenAll(aiTask, ocrTask);
+                    await Task.WhenAll(aiTask);
 
                     var aiResult = aiTask.Result;
-                    var ocrResult = ocrTask.Result;
+                    //var ocrResult = ocrTask.Result;
 
                     double avgScore = aiResult.AvScore;
                     bool humanDetected = aiResult.HumanDetected;
@@ -423,7 +416,7 @@ namespace HumanDetection
                         LoadingOverlay.Visibility = Visibility.Collapsed;
                         ResultDialoag.UpdateResults(ResultDataList);
                         ScoreTxt.Text = $"{avgScore * 100:0}%";
-                        String ORCResult = string.Join("\n", ocrResult.ocr_texts);
+                        //String ORCResult = string.Join("\n", ocrResult.ocr_texts);
                         var obj = new ResutlModel
                         {
                             StartTime = DateTime.Now,
@@ -688,7 +681,7 @@ namespace HumanDetection
             {
                 NoBoxTxt.Text = $"Boxes: {NumberOfBox}";
                 PalletHeightTxt.Text = $" {PalletHeight:F2} m";
-                AddResult(null, DateTime.Now, NumberOfBox, PalletHeight, "", OcrTxt, HumanDetected, false);
+                //AddResult(null, DateTime.Now, NumberOfBox, PalletHeight, "", OcrTxt, HumanDetected, false);
 
             });
 
@@ -744,7 +737,7 @@ namespace HumanDetection
             {
                 var pallet = palletPredictions.First();
                 int heightPixels = (int)(pallet.Rectangle.Bottom - pallet.Rectangle.Top);
-                double mmPerPixel = 2.0;
+                double mmPerPixel = 2.17;
                 palletHeightMeters = (heightPixels * mmPerPixel) / 1000.0;
             }
 
@@ -835,7 +828,7 @@ namespace HumanDetection
         {
             using var client = new HttpClient();
             using var content = new MultipartFormDataContent();
-
+            client.Timeout = TimeSpan.FromMinutes(5);
             foreach (var img in images)
             {
                 var byteContent = new ByteArrayContent(img);
