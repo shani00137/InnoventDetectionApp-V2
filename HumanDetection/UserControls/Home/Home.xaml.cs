@@ -402,6 +402,7 @@ namespace HumanDetection
 
                     double avgScore = aiResult.AvScore;
                     bool humanDetected = aiResult.HumanDetected;
+                    int numberOfBox = aiResult.NumberOfBox;
 
                     // 🔔 buzzer
                     if (humanDetected)
@@ -421,16 +422,16 @@ namespace HumanDetection
                         {
                             StartTime = DateTime.Now,
                             EndTime = DateTime.Now,
-                            TotalBoxes = 0,
+                            TotalBoxes = numberOfBox,
                             BarcodeCodeCount = 0,
                             DublicateBarcode = null,
                             ExpiryDate = null,
-                            HumanDetect = null,
+                            HumanDetect = humanDetected.ToString(),
                             OCRResult = null,
                             PalletHeight = 0,
                             Score = avgScore,
                             SupplierName = null,
-                            TotalWeight = null
+                            TotalWeight = WeightText.Text
                         };
                         AddResult(obj, false);
                         // OCR result available here
@@ -622,14 +623,14 @@ namespace HumanDetection
             return capturedImages;
         }
 
-        private async Task<(double AvScore, bool HumanDetected)> RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
+        private async Task<(double AvScore, bool HumanDetected,int NumberOfBox)> RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
 
         {
             UpdateProgressStatus("AI Model Start to detect");
             if (capturedImages == null || capturedImages.Count < 1)
             {
                 MessageBox.Show("❌ Not enough images to process AI models.");
-                return (0.0,false);
+                return (0.0,false,0);
             }
 
             int NumberOfBox = 0;
@@ -685,7 +686,7 @@ namespace HumanDetection
 
             });
 
-            return (finalAverageScore, HumanDetected);
+            return (finalAverageScore, HumanDetected, NumberOfBox);
         }
         private void ReportProgress(string message)
         {
