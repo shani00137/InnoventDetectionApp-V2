@@ -104,7 +104,7 @@ namespace HumanDetection
         private bool _isPalletDetectionRunning = false;
         private CancellationTokenSource? _palletCts;
         public bool FirstTerm=true;
-        public string pythonExe = @"C:\Users\Abhishaik Sharma\AppData\Local\Programs\Python\Python310\python.exe";
+        public string pythonExe = @"C:\Users\Owner\AppData\Local\Programs\Python\Python310\python.exe";
         //public string pythonExe = @" C:\Users\USER\AppData\Local\Programs\Python\Python310\python.exe";
 
 
@@ -261,6 +261,7 @@ namespace HumanDetection
         }
         public void StartFlaskApi()
         {
+            KillProcessesUsingPort(9000);
             var psi = new ProcessStartInfo
             {
                 FileName = pythonExe,   // ✅ FULL PATH (important)
@@ -297,7 +298,44 @@ namespace HumanDetection
             flaskProcess.BeginOutputReadLine();
             flaskProcess.BeginErrorReadLine();
         }
+        public static void KillProcessesUsingPort(int port)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = $"/c netstat -ano | findstr :{port}",
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
 
+                using var process = Process.Start(psi);
+                string output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit();
+
+                foreach (var line in output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    // Example line:
+                    // TCP    0.0.0.0:9000     0.0.0.0:0     LISTENING     12345
+                    var parts = Regex.Split(line.Trim(), @"\s+");
+                    if (parts.Length >= 5 && int.TryParse(parts[^1], out int pid))
+                    {
+                        try
+                        {
+                            Process.GetProcessById(pid).Kill(true);
+                            Debug.WriteLine($"Killed process PID {pid} using port {port}");
+                        }
+                        catch { /* ignore access denied */ }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("KillProcessesUsingPort error: " + ex.Message);
+            }
+        }
 
         private ObservableCollection<OcrFrameResult> _ocrResults = new ObservableCollection<OcrFrameResult>();
 
@@ -387,18 +425,18 @@ namespace HumanDetection
                     var aiTask = Task.Run(() =>
                         RunAllAIDetectionsAsync(images)
                     );
-                    //var imageBytes = images
-                    //                .Select(img => BitmapImageToBytes(img))
-                    //                .ToList();
+                    var imageBytes = images
+                                    .Select(img => BitmapImageToBytes(img))
+                                    .ToList();
 
-                    //var ocrTask = Task.Run(() =>
-                    //    RunOcrAsync(imageBytes)
-                    //);
+                    var ocrTask = Task.Run(() =>
+                        RunOcrAsync(imageBytes)
+                    );
 
                     await Task.WhenAll(aiTask);
 
                     var aiResult = aiTask.Result;
-                    //var ocrResult = ocrTask.Result;
+                    var ocrResult = ocrTask.Result;
 
                     double avgScore = aiResult.AvScore;
                     bool humanDetected = aiResult.HumanDetected;
@@ -417,7 +455,7 @@ namespace HumanDetection
                         LoadingOverlay.Visibility = Visibility.Collapsed;
                         ResultDialoag.UpdateResults(ResultDataList);
                         ScoreTxt.Text = $"{avgScore * 100:0}%";
-                        //String ORCResult = string.Join("\n", ocrResult.ocr_texts);
+                        String ORCResult = string.Join("\n", ocrResult.ocr_texts);
                         var obj = new ResutlModel
                         {
                             StartTime = DateTime.Now,
@@ -427,7 +465,7 @@ namespace HumanDetection
                             DublicateBarcode = null,
                             ExpiryDate = null,
                             HumanDetect = humanDetected.ToString(),
-                            OCRResult = null,
+                            OCRResult = ORCResult,
                             PalletHeight = 0,
                             Score = avgScore,
                             SupplierName = null,
