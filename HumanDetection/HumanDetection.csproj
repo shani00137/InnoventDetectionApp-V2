@@ -74,6 +74,9 @@
 		<Content Include="Assets\ocr_api.py">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</Content>
+		<Content Include="Assets\paddle_api.py">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
 		<Content Include="Assets\plcommpro.dll">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</Content>
@@ -172,7 +175,12 @@
 		<PackageReference Include="Yolov5Net" Version="1.1.0" />
 		<PackageReference Include="Material.Icons.WPF" Version="2.1.10" />
 		<PackageReference Include="MaterialDesignThemes" Version="5.1.0" />
-		<PackageReference Include="Dynamsoft.DotNet.CaptureVision.Bundle" Version="3.0.6000" />
+		<PackageReference Include="Sdcb.PaddleOCR" Version="3.0.1" />
+		<PackageReference Include="Sdcb.PaddleInference" Version="3.0.1" />
+		<PackageReference Include="Sdcb.PaddleInference.runtime.win64.mkl" Version="3.1.0.54" />
+		<PackageReference Include="Sdcb.PaddleOCR.Models.Local" Version="3.0.1" />
+		<PackageReference Include="Dynamsoft.DotNet.BarcodeReader.Bundle" Version="11.2.5000" />
+
 	</ItemGroup>
 	<ItemGroup>
 
@@ -220,6 +228,8 @@
 	  <None Remove="Assets\DLL\plusbcomm.dll" />
 	  <None Remove="Assets\DLL\ZKCommuCryptoClient.dll" />
 	  <None Remove="Assets\ocr_api.py" />
+	  <None Remove="Assets\paddle_api.py" />
+	  <None Remove="Assets\plcommpro.dll" />
 	  <None Remove="Assets\Weights\customBoxCount.onnx" />
 	  <None Remove="Resources\Audio\shutter.mp3" />
 	</ItemGroup>

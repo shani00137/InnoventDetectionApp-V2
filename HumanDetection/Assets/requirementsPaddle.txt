@@ -1,0 +1,17 @@
+flask==3.0.0
+
+# Paddle core (MUST match PaddleOCR 2.7.0.3)
+paddlepaddle==2.6.2
+
+# PaddleOCR
+paddleocr==2.7.0.3
+
+# Image processing (stable with Paddle)
+numpy==1.26.4
+opencv-python-headless==4.7.0.72
+Pillow==12.1.0
+
+# Optional helpers
+pyzbar==0.1.9
+PyMuPDF<1.21.0
+python-bidi==0.6.7

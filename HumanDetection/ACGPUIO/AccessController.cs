@@ -11,7 +11,7 @@ namespace ACGPUIO
         private string _token = "";
         private readonly string _moxaIP;
 
-        public AccessController(string moxaIP = "192.168.127.254")
+        public AccessController(string moxaIP = "192.168.1.135")
         {
             _moxaIP = moxaIP;
             _http = new HttpClient();
