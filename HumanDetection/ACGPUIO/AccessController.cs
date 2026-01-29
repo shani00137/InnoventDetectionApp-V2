@@ -189,6 +189,41 @@ namespace ACGPUIO
             await SendDOCommand(1, 0);
             await SendDOCommand(3, 0);
         }
+        public async Task<bool> RebootDeviceAsync()
+        {
+            // Ensure token exists
+            if (string.IsNullOrEmpty(_token))
+            {
+                bool gotToken = await RefreshToken();
+                if (!gotToken)
+                    return false;
+            }
+
+            try
+            {
+                string url = $"http://{_moxaIP}/sys_reboot.htm?token={_token}";
+                string resp = await _http.GetStringAsync(url);
+
+                // If token expired, refresh once and retry
+                if (IsTokenExpiredResponse(resp))
+                {
+                    bool gotToken = await RefreshToken();
+                    if (!gotToken)
+                        return false;
+
+                    url = $"http://{_moxaIP}/sys_reboot.htm?token={_token}";
+                    resp = await _http.GetStringAsync(url);
+                }
+
+                // If we got here, reboot command was accepted
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
 
         public void Dispose()
         {

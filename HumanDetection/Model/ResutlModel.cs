@@ -18,6 +18,7 @@ namespace Model
         public DateTime? EndTime { get; set; }
         public string? OCRResult { get; set; }
         public double? Score { get; set; }
+        public string? Name {get;set;}
        
     }
 }

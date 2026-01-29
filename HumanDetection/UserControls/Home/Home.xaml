@@ -101,34 +101,18 @@
                         <Grid Background="#333" Margin="5,5,5,5">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="*" />
+                              
                             </Grid.RowDefinitions>
                             <Grid Grid.Row="0">
                                 <!-- Video Background Layer -->
-                                <Border Padding="5,5,5,5" 
-                           Background="Transparent" CornerRadius="6"
-                           BorderBrush="SlateBlue" BorderThickness="2"
-                           SnapsToDevicePixels="True">
-                                    <!--<Grid>
-                               -->
-                                    <!-- Live Video Feed -->
-                                    <!--
-                               <Image Name="BoxCountingCameraFeed" Stretch="Fill" />
-                               -->
-                                    <!-- Status Overlay -->
-                                    <!--
-                               <TextBlock Name="BoxCountingStatusText"
-                              Text="Initializing..."
-                              Foreground="White"
-                              Background="#66000000"
-                              HorizontalAlignment="Center"
-                              VerticalAlignment="Center"
-                              FontSize="16"
-                              Padding="10"
-                              TextAlignment="Center"
-                              Visibility="Visible"/>
-                           </Grid>-->
-                                </Border>
-                                <Grid VerticalAlignment="Top" Margin="10,2,10,0">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="auto"></RowDefinition>
+                                        <RowDefinition Height="auto"></RowDefinition>
+                                        <RowDefinition Height="*"></RowDefinition>
+                                        <RowDefinition Height="auto"></RowDefinition>
+                                    </Grid.RowDefinitions>
+                                <Grid VerticalAlignment="Top" Margin="10,2,10,0" Grid.Row="0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="*"/>
@@ -144,7 +128,7 @@
                                     <!-- Center Camera Icon -->
                                     <StackPanel Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center">
                                         <Border BorderBrush="Gray"  BorderThickness="2"  Background="#111"
-                                           CornerRadius="8" Width="118" Height="126" Padding="2,10,2,2">
+                                           CornerRadius="8" Width="118" Height="126" Padding="2,10,2,2" x:Name="CamTopLightPulse">
                                             <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
                                                 <Image Source="pack://application:,,,/Resources/Images/camera.png" Height="64" Width="64"/>
                                                 <TextBlock FontSize="20" Foreground="White" Text="Cam Top" Margin="0,10,0,0" HorizontalAlignment="Center"/>
@@ -258,7 +242,7 @@
                                     </StackPanel>
                                 </Grid>
                                 <!-- Top Info Panel Overlay -->
-                                <Grid VerticalAlignment="Top" Margin="10,150,10,0">
+                                <Grid VerticalAlignment="Top" Margin="10,10,10,0" Grid.Row="1">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="*"/>
@@ -296,7 +280,7 @@
                                     <Border Grid.Column="3" Margin="5" CornerRadius="10" BorderBrush="White" BorderThickness="1" Background="#333">
                                         <StackPanel Height="65" HorizontalAlignment="Left" VerticalAlignment="Center" Background="Transparent" Margin="10,0">
                                             <TextBlock Text="Box Count" FontSize="14" Foreground="White" HorizontalAlignment="Left"/>
-                                            <TextBlock x:Name="NoBoxTxt" Text="0" FontSize="16" Foreground="White" HorizontalAlignment="Left"/>
+                                            <TextBlock x:Name="NoBoxTxt" Text="0" FontSize="24" Foreground="White" HorizontalAlignment="Left"/>
                                         </StackPanel>
                                     </Border>
 
@@ -323,12 +307,13 @@
                                 </Grid>
 
                                 <Grid Grid.Row="2">
+                                        <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="auto"/>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <Grid Grid.Column="0" Margin="0,300,0,0">
+                                    <Grid Grid.Column="0" Margin="0,6,0,0">
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="auto"></RowDefinition>
                                             <RowDefinition Height="auto"></RowDefinition>
@@ -357,30 +342,10 @@ BorderThickness="2">
                                             </DockPanel>
                                         </materialDesign:Card>
 
-                                        <!-- Total Boxes -->
-                                        <materialDesign:Card Grid.Row="1"
-Margin="8"
-Padding="16"
-UniformCornerRadius="6"
-BorderBrush="SlateBlue"
-BorderThickness="2">
-                                            <DockPanel>
-                                                <materialIcons:MaterialIcon Kind="CubeOutline"
-               Width="36"
-               Height="36"
-               Foreground="#00B4D8"
-               DockPanel.Dock="Left"/>
-                                                <StackPanel Margin="12,0,0,0">
-                                                    <TextBlock  Foreground="White" Text="Total Boxes"
-  FontWeight="SemiBold"/>
-                                                    <TextBlock Text="{Binding TotalBoxes}"
-  FontWeight="Bold"/>
-                                                </StackPanel>
-                                            </DockPanel>
-                                        </materialDesign:Card>
+                                     
 
                                         <!-- Duplicate Barcode -->
-                                        <materialDesign:Card Grid.Row="2" Name="SKUDetectBox"
+                                        <materialDesign:Card Grid.Row="1" Name="SKUDetectBox"
                                         Margin="8"
                                         Padding="16"
                                         UniformCornerRadius="6"
@@ -403,7 +368,7 @@ BorderThickness="2">
                                         </materialDesign:Card>
 
                                         <!-- Expiry Date -->
-                                        <materialDesign:Card Grid.Row="3" x:Name="DateExireBox"
+                                        <materialDesign:Card Grid.Row="2" x:Name="DateExireBox"
                                         Margin="8"
                                         Padding="16"
                                         UniformCornerRadius="6"
@@ -427,20 +392,21 @@ BorderThickness="2">
                                     <Image Grid.Column="1"
                                x:Name="PaletImage"
                                Source="pack://application:,,,/Resources/Images/palet.png"
-                               Height="300"
-                               Width="300"
+                               Height="250"
+                               Width="250"
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"
                                Opacity="0"
-                               RenderTransformOrigin="0.5,0.5">
+                               RenderTransformOrigin="0.20,0.5">
                                         <Image.RenderTransform>
                                             <TranslateTransform x:Name="PaletImageTransform" X="0" Y="0"/>
                                         </Image.RenderTransform>
                                     </Image>
-
-                                </Grid>
+                                            <Grid Grid.Column="2"></Grid>
+                                        </Grid>
+                                    </Grid>
                                 <!-- Bottom Camera Controls -->
-                                <Grid VerticalAlignment="Bottom" Margin="20,0,20,20">
+                                <Grid VerticalAlignment="Bottom" Margin="20,0,20,20" Grid.Row="3">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="*"/>
@@ -530,7 +496,7 @@ BorderThickness="2">
                                         </Border>
                                     </StackPanel>
                                 </Grid>
-
+                                </Grid>
                             </Grid>
                         </Grid>
                     </Border>
@@ -693,10 +659,10 @@ Effect="{DynamicResource DropShadow}">
             </Border>
             <!-- Loading Overlay -->
             <Grid x:Name="LoadingOverlay" 
- Grid.RowSpan="2" 
- Panel.ZIndex="999" 
- Background="#CC000000" 
- Visibility="Visible">
+                     Grid.RowSpan="2" 
+                     Panel.ZIndex="999" 
+                     Background="#CC000000" 
+                     Visibility="Visible">
                 <Border Background="#333" 
        CornerRadius="10" 
        Padding="20" 
@@ -715,6 +681,12 @@ Effect="{DynamicResource DropShadow}">
                     </StackPanel>
                 </Border>
             </Grid>
+            <materialDesign:Card x:Name="LoadingCard" UniformCornerRadius="14" Padding="4"
+                      VerticalAlignment="Bottom" HorizontalAlignment="Left" 
+                      Margin="15,0,0,5" Width="60" Height="60" Visibility="Collapsed">
+                <ProgressBar Style="{StaticResource MaterialDesignCircularProgressBar}" 
+                  IsIndeterminate="True" Width="50" Height="50" Foreground="White"/>
+            </materialDesign:Card>
         </Grid>
     </materialDesign:DialogHost>
 </Page>

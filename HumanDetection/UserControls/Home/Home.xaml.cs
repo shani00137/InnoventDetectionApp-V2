@@ -206,7 +206,7 @@ namespace HumanDetection
 
             if (cameraCount > 1)
                 //cameraTasks.Add(Task.Run(() => ReadTextFromBaslerCamera(allCameras[1])));
-                SetCameraUI(CamLeftLightPulse, cameraCount >= 1);
+                SetCameraUI(CamTopLightPulse, cameraCount >= 1);
 
 
             if (cameraCount > 2)
@@ -379,7 +379,7 @@ namespace HumanDetection
                     var cameraList = CameraFinder.Enumerate();
 
                     // Capture images (MAIN THREAD)
-                    var images = await CaptureSingleFrameFromAllCamerasAsync(cameraList, FirstTerm);
+                    var images = await CaptureSingleFrameFromAllCamerasAsync(cameraList, true);
 
                     Dispatcher.Invoke(() =>
                     {
@@ -394,17 +394,32 @@ namespace HumanDetection
                     var aiTask = Task.Run(() =>
                         RunAllAIDetectionsAsync(images)
                     );
-                   
 
+                    StartCountdown();
                     await Task.WhenAll(aiTask);
-
                     var aiResult = aiTask.Result;
-                    List<OcrResult> ocrResult = aiResult.OcrText;
-                   
-
                     double avgScore = aiResult.AvScore;
                     bool humanDetected = aiResult.HumanDetected;
                     int numberOfBox = aiResult.NumberOfBox;
+                   ScoreTxt.Text = $"{avgScore * 100:0}%";
+                    LoadingOverlay.Visibility = Visibility.Collapsed;
+
+                    _messageQueue.Enqueue("Please wait Calculate result..");
+
+                   
+                    LoadingCard.Visibility = Visibility.Visible;
+                    var cropByteList = aiResult.OCRBytes;
+                   List<OcrResult>  ocrResultList=new List<OcrResult>();
+                    if (cropByteList.Any())
+                    {
+                        var res = await RunOcrAsync(cropByteList);
+                        ocrResultList.Add(res);
+                        //combinedOcrText = string.Join(" ", OcrResultToString(ocrResult));
+
+                    }
+                    LoadingCard.Visibility = Visibility.Collapsed;
+                    StopCountdown();
+
                     if (aiResult.maxPalletHeight>0.60)
                     {
                         HeightBox.Background = System.Windows.Media.Brushes.Red;
@@ -417,11 +432,13 @@ namespace HumanDetection
                     {
                         HumanDetectBox.Background = System.Windows.Media.Brushes.Red;
                         await StartBuzzer();
+                        await Task.Delay(6000);
+                        await StopBuzzer();
                         await PlayAlertForSystem();
                         HumanDetectedTxt.Text = "Yes";
                     }
                   
-                    bool CheckSKUBarcode = ocrResult.Select(x => x.barcodes).Distinct().Any();
+                    bool CheckSKUBarcode = ocrResultList.Select(x => x.barcodes).Distinct().Any();
                     if (CheckSKUBarcode == true)
                     {
                         await StartBuzzer();
@@ -429,10 +446,10 @@ namespace HumanDetection
                         await StopBuzzer();
                         SKUDetectBox.Background = System.Windows.Media.Brushes.Red;
                         BarcodeSKUText.Text = "Yes";
-
+                        await PlayAlertForSystem();
 
                     }
-                    int CheckDateExpire = ocrResult.Select(x => x.dates).Distinct().Count();
+                    int CheckDateExpire = ocrResultList.Select(x => x.dates).Distinct().Count();
                     if (CheckDateExpire >0)
                     {
                         await StartBuzzer();
@@ -440,16 +457,17 @@ namespace HumanDetection
                         await StopBuzzer();
                         DateExireBox.Background = System.Windows.Media.Brushes.Red;
                         DateExpireTxt.Text = "Yes";
+                        await PlayAlertForSystem();
 
                     }
                     string OCRResultInString = "";
-                    foreach (var q in ocrResult)
+                    foreach (var q in ocrResultList)
                     {
                         OCRResultInString = string.Join("", OcrResultToString(q));
                     }
                     Dispatcher.Invoke(() =>
                     {
-                        LoadingOverlay.Visibility = Visibility.Collapsed;
+                        ExitTimeTxt.Text = DateTime.Now.ToString("HH:mm:ss");
                         ResultDialoag.UpdateResults(ResultDataList);
                         ScoreTxt.Text = $"{avgScore * 100:0}%";
                         var obj = new ResutlModel
@@ -466,22 +484,24 @@ namespace HumanDetection
                             Score = avgScore,
                             SupplierName = null,
                             TotalWeight = WeightText.Text
+
                         };
                         AddResult(obj, false);
                         // OCR result available here
                        
-                    });
 
-                    if (avgScore >= 0.70)
+                    });
+                    string ResultTooPost =  $"AvgScore {avgScore} TotalWight {WeightText.Text}";
+                    if (avgScore >= 0.40)
                     {
                         detectionPassed = true;
                         var request = new ResultRequestModel
                         {
                             ResutlModelList = ResultDataList.ToList(),
                         };
-
+                        _messageQueue.Enqueue("70% score found..  result are saved");
                         // 🔥 POST TO API
-                        await PostDetectionRequestAsync(request);
+                        await PostDetectionRequestAsync(ResultTooPost);
                         await StopPalletDetectionProc();
                     }
                     else
@@ -551,26 +571,47 @@ namespace HumanDetection
             return sb.ToString();
         }
 
-        private async Task PostDetectionRequestAsync(ResultRequestModel request)
+        private async Task PostDetectionRequestAsync(string request)
         {
             try
             {
-                using var client = new HttpClient
+                LoadingCard.Visibility = Visibility.Visible;
+
+                // Payload exactly like API expects
+                var payload = new
                 {
-                    Timeout = TimeSpan.FromSeconds(20)
+                    Name = request,
+                    Image = "https://adp-backend-demo.ashybay-437ca219.uaenorth.azurecontainerapps.io/core/uploads/image-1769680856546.png"
                 };
 
+                using var client = new HttpClient
+                {
+                    Timeout = TimeSpan.FromSeconds(120)
+                };
+
+                // ✅ ADD HEADERS
+                client.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue(
+                        "Bearer",
+                        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwYXlsb2FkIjp7ImVtYWlsIjoia2xwMjF1c2VyQGdtYWlsLmNvbSIsInVzZXJOYW1lIjoia2xwMjEiLCJfaWQiOiI2NmI1YmM3Nzc1MDA5M2U0MWU1ODNiZTYifSwiaWF0IjoxNzY2NzU2NDQwfQ.lzAMd9HXsj-18U9TMfOij5OF8bUIkMosUYxl1rgM-pE"
+                    );
+
+                client.DefaultRequestHeaders.Add(
+                    "x-api-key",
+                    "99927ec1-8668-45ae-8709-2db03366e680"
+                );
+
                 var json = System.Text.Json.JsonSerializer.Serialize(
-                    request,
-                    new System.Text.Json.JsonSerializerOptions
+                    payload,
+                    new JsonSerializerOptions
                     {
-                        PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+                        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
                     });
 
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
                 var response = await client.PostAsync(
-                    $"{_settings.BackOfficeURL}",
+                    "https://adp-backend-demo.ashybay-437ca219.uaenorth.azurecontainerapps.io/core/thing-type/66b9a073b241574cd76f0616/adpPallet",
                     content);
 
                 if (!response.IsSuccessStatusCode)
@@ -578,11 +619,15 @@ namespace HumanDetection
                     var error = await response.Content.ReadAsStringAsync();
                     throw new Exception($"API Error: {response.StatusCode} - {error}");
                 }
+
+                _messageQueue.Enqueue("Saved Successfully");
+                LoadingCard.Visibility = Visibility.Collapsed;
+                await PlayAlertForSystem();
             }
             catch (Exception ex)
             {
-                // Log only – never break detection flow
                 Debug.WriteLine($"❌ API upload failed: {ex.Message}");
+                LoadingCard.Visibility = Visibility.Collapsed;
             }
         }
 
@@ -590,8 +635,9 @@ namespace HumanDetection
 
 
 
-        public async Task<List<BitmapImage>> CaptureSingleFrameFromAllCamerasAsync(
-      List<ICameraInfo> cameraInfos, bool FirstTerm)
+
+
+        public async Task<List<BitmapImage>> CaptureSingleFrameFromAllCamerasAsync(List<ICameraInfo> cameraInfos, bool FirstTerm)
         {
             var capturedImages = new List<BitmapImage>();
 
@@ -609,6 +655,7 @@ namespace HumanDetection
                             FlashCamera(FrontFlashEllipse);
                             FlashCamera(LeftFlashEllipse);
                             FlashCamera(RightFlashEllipse);
+                            FlashCamera(CamTopLightPulse);
                             PlayShutterSound();
 
 
@@ -643,36 +690,47 @@ namespace HumanDetection
                     try
                     {
                         //await StartRoutatorWithDuration(_settings.RoutatorTimer!=null?(int)_settings.RoutatorTimer:20);
-                        await StartRoutatorWithDuration(5200);
-                        var firstCamInfo = cameraInfos[0];
-
-                        using (var camera = new Camera(firstCamInfo))
+                        for (int i = 0; i < 3; i++)
                         {
-                            camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
-                            camera.Open();
+                            await TurnOnRotatorAsync();
+                            await Task.Delay(5000);
+                            await StartRoutatorWithDuration(5200); //last was 5200 sec
+                            var firstCamInfo = cameraInfos[0];
 
-                            FlashCamera(FrontFlashEllipse);
-                            PlayShutterSound();
-
-                            Task.Delay(100).Wait();
-
-                            using (IGrabResult grabResult =
-                                camera.StreamGrabber.GrabOne(8000, TimeoutHandling.ThrowException))
+                            using (var camera = new Camera(firstCamInfo))
                             {
-                                if (grabResult.GrabSucceeded)
+                                camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
+                                camera.Open();
+
+                                FlashCamera(FrontFlashEllipse);
+                                PlayShutterSound();
+
+                                Task.Delay(100).Wait();
+
+                                using (IGrabResult grabResult =
+                                    camera.StreamGrabber.GrabOne(8000, TimeoutHandling.ThrowException))
                                 {
-                                    using Mat frame = GrabResultToMat(grabResult);
-                                    var bmp = frame.ToBitmap();
-                                    var bitmapImage = ConvertBitmapToImageSource(bmp);
-                                    bitmapImage.Freeze();
+                                    if (grabResult.GrabSucceeded)
+                                    {
+                                        using Mat frame = GrabResultToMat(grabResult);
+                                        var bmp = frame.ToBitmap();
+                                        var bitmapImage = ConvertBitmapToImageSource(bmp);
+                                        bitmapImage.Freeze();
 
-                                    capturedImages.Add(bitmapImage);
+                                        capturedImages.Add(bitmapImage);
+                                    }
                                 }
-                            }
 
-                            camera.Close();
-                            Console.WriteLine("📸 Extra image captured from first camera (index 0)");
+                                camera.Close();
+                                Console.WriteLine("📸 Extra image captured from first camera (index 0)");
+                            }
+                            await OffRotatorAsync();
                         }
+
+                        //reset position of pallet
+                        await TurnOnRotatorAsync();
+                        await Task.Delay(5000);
+                        await StartRoutatorWithDuration(5200);
                     }
                     catch (Exception ex)
                     {
@@ -684,7 +742,7 @@ namespace HumanDetection
             return capturedImages;
         }
 
-        private async Task<(double AvScore, bool HumanDetected, int NumberOfBox, List<OcrResult> OcrText, double maxPalletHeight)>RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
+        private async Task<(double AvScore, bool HumanDetected, int NumberOfBox, List<byte[]> OCRBytes, double maxPalletHeight)>RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
         {
             UpdateProgressStatus("AI Model Start to detect");
 
@@ -704,18 +762,20 @@ namespace HumanDetection
 
             // Convert BitmapImages to ImageSharp format for inference
             var imageSharpList = capturedImages.Select(img => BitmapImageToImageSharp(img)).ToList();
-            List<OcrResult> ocrResults = new List<OcrResult>();
+            List<byte[]> ocrResults = new List<byte[]>();
             for (int i = 0; i < imageSharpList.Count; i++)
             {
                 ReportProgress($"🧠 AI Processing {i + 1}/{imageSharpList.Count}");
 
-                // Run models in parallel
-                var boxTask = RunBoxCountingModelAsync(imageSharpList[i]);
-                var humanTask = Task.Run(() => RunHumanDetectionModel(imageSharpList[i]));
+                // ✅ CLONE image to avoid async overlap
+                var image = imageSharpList[i].Clone();
+
+                var boxTask = RunBoxCountingModelAsync(image);
+                var humanTask = Task.Run(() => RunHumanDetectionModel(image));
 
                 await Task.WhenAll(boxTask, humanTask);
 
-                var boxResult = await boxTask; // includes OCR
+                var boxResult = boxTask.Result;
                 var humanResult = humanTask.Result;
 
                 NumberOfBox += boxResult.BoxesDetected;
@@ -731,13 +791,16 @@ namespace HumanDetection
                     maxPalletHeight = boxResult.PalletHeight;
                 }
 
-                HumanDetected = HumanDetected || humanResult; // accumulate detection
+                HumanDetected |= humanResult;
 
-                //allOcrTexts=string.Join("", boxResult.OcrResult);
-                ocrResults.Add(boxResult.OcrResult);
+                ocrResults.AddRange(boxResult.OcrResult);
+
+                // ✅ Dispose cloned image if IDisposable
+                image.Dispose();
             }
 
-            
+
+
 
             // Calculate final average score
             double finalAverageScore = avgScoreCount > 0 ? totalAvgScore / avgScoreCount : 0.0;
@@ -745,7 +808,7 @@ namespace HumanDetection
             // Update UI
             Dispatcher.Invoke(() =>
             {
-                NoBoxTxt.Text = $"Boxes: {NumberOfBox}";
+                NoBoxTxt.Text = $"{NumberOfBox}";
                 PalletHeightTxt.Text = $"{maxPalletHeight:F2} m";
                 // Example: OCRTextBlock.Text = combinedOcrText;
             });
@@ -762,7 +825,7 @@ namespace HumanDetection
             });
         }
 
-        private async Task<(int BoxesDetected, double PalletHeight, double AverageScore, OcrResult OcrResult)>RunBoxCountingModelAsync(Image<Rgba32> originalImage)
+        private async Task<(int BoxesDetected, double PalletHeight, double AverageScore, List<byte[]> OcrResult)>RunBoxCountingModelAsync(Image<Rgba32> originalImage)
         {
             UpdateProgressStatus("Box Counting AI Model Start");
 
@@ -784,7 +847,7 @@ namespace HumanDetection
             // ----------------------------------------------------
             // 2. Confidence threshold
             // ----------------------------------------------------
-            double confidenceThreshold = 0.20;
+            double confidenceThreshold = 0.30;
             if (_settings != null &&
                 !string.IsNullOrWhiteSpace(_settings.ConfidenceLevel) &&
                 double.TryParse(_settings.ConfidenceLevel, out var dbValue))
@@ -808,7 +871,7 @@ namespace HumanDetection
                 .ToList();
 
             var tallestPallet = palletCandidates
-                .OrderByDescending(p => p.Rectangle.Bottom - p.Rectangle.Top)
+                .OrderByDescending(p => p.Rectangle.Height)
                 .FirstOrDefault();
 
             // Keep all boxes + 1 pallet
@@ -904,12 +967,6 @@ namespace HumanDetection
             OcrResult ocrResult = null;
             string combinedOcrText = "";
 
-            if (cropByteList.Any())
-            {
-                ocrResult = await RunOcrAsync(cropByteList);
-                  //combinedOcrText = string.Join(" ", OcrResultToString(ocrResult));
-                
-            }
 
             // ----------------------------------------------------
             // 9. Draw detection boxes on resized image for UI
@@ -920,7 +977,7 @@ namespace HumanDetection
                 var colorPallet = new Rgba32(255, 64, 64);
                 var font = SixLabors.Fonts.SystemFonts.CreateFont("Arial", 14, SixLabors.Fonts.FontStyle.Bold);
 
-                foreach (var p in predictions)
+                foreach (var p in rawPredictions)
                 {
                     var color = p.Label.Name.Equals("pallet", StringComparison.OrdinalIgnoreCase)
                         ? colorPallet
@@ -953,7 +1010,7 @@ namespace HumanDetection
                 }
             }
 
-            return (boxCount, palletHeightMeters, averageScore, ocrResult);
+            return (boxCount, palletHeightMeters, averageScore, cropByteList);
         }
 
 
@@ -1254,13 +1311,33 @@ namespace HumanDetection
         {
            RestartProcess();
 
-
+             RebootDeviceAsync();
 
         }
         public async Task RestartProcess()
         {
+            Dispatcher.Invoke(async () =>
+            {
+                EntryTimeTxt.Text = DateTime.Now.ToString("HH:mm:ss");
+                ExitTimeTxt.Text = "";
+
+            });
+            DateExireBox.Background = System.Windows.Media.Brushes.Transparent;           
+            SKUDetectBox.Background = System.Windows.Media.Brushes.Transparent; 
+            HumanDetectBox.Background = System.Windows.Media.Brushes.Transparent;
+            HeightBox.Background = System.Windows.Media.Brushes.Transparent;
+            NoBoxTxt.Text = "0";
+            PalletHeightTxt.Text = "0";
+            HumanDetectedTxt.Text = "";
+            BarcodeSKUText.Text = "";
+            DateExpireTxt.Text = "";
+            ScoreTxt.Text = "0";
+            await StopBuzzer();
+
+
+
             ImageDialogHost.IsOpen = false;
-            await StartRotator();
+            //await StartRotator();
             MaterialDesignThemes.Wpf.DialogHost.CloseDialogCommand.Execute(null, null);
             var allCameras = CameraFinder.Enumerate();
             int cameraCount = allCameras.Count;
@@ -1276,6 +1353,7 @@ namespace HumanDetection
         }
         private void Restart_Click(object sender, EventArgs e)
         {
+            RestartProcess();
         }
         private async void StopProc_Click(object sender, EventArgs e)
         {
@@ -1306,7 +1384,7 @@ namespace HumanDetection
             if (timer != null && timer.IsEnabled)
             {
                 timer.Stop();
-                System.Windows.Application.Current.Shutdown(); // Stops the WPF application
+                //System.Windows.Application.Current.Shutdown(); // Stops the WPF application
             }
         }
 
@@ -1490,6 +1568,10 @@ namespace HumanDetection
             await _ac.TurnOnRotatorAsync();
 
         }
+        public async Task RebootDeviceAsync()
+        { 
+            await _ac.RebootDeviceAsync();
+        }
         #region manage weight machine events
 
         private void StartScale()
@@ -1526,6 +1608,10 @@ namespace HumanDetection
             _reader.Dispose();
             _reader = null;
         }
+        private DateTime? _stableWeightStartTime = null;
+        private const double WeightThreshold = 5.0;     // kg
+        private const double WeightTolerance = 0.2;      // ± fluctuation allowed
+        private double _lastWeight = 0;
 
         private void Reader_WeightReceived(object? sender, double w)
         {
@@ -1533,22 +1619,39 @@ namespace HumanDetection
             {
                 WeightText.Text = $"{w:0.##} KG";
 
-                if(w >= 5)
-        {
-                    if (!_isPalletDetectionRunning)
-                    {
-                        _isPalletDetectionRunning = true;
-                        await StartPalletDetectionProcAsync();
-                    }
-                }
-        else
+                // BELOW threshold → reset everything
+                if (w < WeightThreshold)
                 {
+                    _stableWeightStartTime = null;
+
                     if (_isPalletDetectionRunning)
                     {
                         _isPalletDetectionRunning = false;
                         await StopPalletDetectionProc();
                     }
+                    return;
                 }
+
+                // Weight fluctuation detected → reset stability timer
+                if (Math.Abs(w - _lastWeight) > WeightTolerance)
+                {
+                    _stableWeightStartTime = DateTime.Now;
+                }
+                else
+                {
+                    // Start stability timer if not started yet
+                    _stableWeightStartTime ??= DateTime.Now;
+
+                    // Check if weight stable for 5 seconds
+                    if (!_isPalletDetectionRunning &&
+                        (DateTime.Now - _stableWeightStartTime.Value).TotalSeconds >= 5)
+                    {
+                        _isPalletDetectionRunning = true;
+                        await StartPalletDetectionProcAsync();
+                    }
+                }
+
+                _lastWeight = w;
             });
         }
 
