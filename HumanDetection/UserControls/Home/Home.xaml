@@ -127,14 +127,25 @@
 
                                     <!-- Center Camera Icon -->
                                     <StackPanel Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                        <Border BorderBrush="Gray"  BorderThickness="2"  Background="#111"
-                                           CornerRadius="8" Width="118" Height="126" Padding="2,10,2,2" x:Name="CamTopLightPulse">
-                                            <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
-                                                <Image Source="pack://application:,,,/Resources/Images/camera.png" Height="64" Width="64"/>
-                                                <TextBlock FontSize="20" Foreground="White" Text="Cam Top" Margin="0,10,0,0" HorizontalAlignment="Center"/>
-                                            </StackPanel>
-                                        </Border>
-                                    </StackPanel>
+                                            <Border  x:Name="CamTopLightPulse" BorderBrush="Gray" BorderThickness="2"  Background="#111"
+                                                    CornerRadius="8" Width="118" Height="126" Padding="2,10,2,2">
+                                                                                                <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
+                                                                                                    <Grid Width="64" Height="64">
+                                                                                                        <Ellipse x:Name="TopFlashEllipse"
+                                                          Fill="#00FF00"
+                                                          Opacity="0.0"
+                                                          Width="64"
+                                                          Height="64">
+                                                            <Ellipse.Effect>
+                                                                <DropShadowEffect Color="#00FF00" BlurRadius="20" ShadowDepth="0"/>
+                                                            </Ellipse.Effect>
+                                                        </Ellipse>
+                                                        <Image x:Name="CameraImage" Source="pack://application:,,,/Resources/Images/camera.png" Height="64" Width="64"/>
+                                                    </Grid>
+                                                    <TextBlock FontSize="18" Foreground="White" Text="Cam Left" Margin="0,10,0,0" HorizontalAlignment="Center"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </StackPanel>
 
                                     <!-- Right Side: Human Image & Info -->
                                     <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Bottom">
@@ -367,27 +378,7 @@ BorderThickness="2">
                                             </DockPanel>
                                         </materialDesign:Card>
 
-                                        <!-- Expiry Date -->
-                                        <materialDesign:Card Grid.Row="2" x:Name="DateExireBox"
-                                        Margin="8"
-                                        Padding="16"
-                                        UniformCornerRadius="6"
-                                        BorderBrush="SlateBlue"
-                                        BorderThickness="2">
-                                            <DockPanel>
-                                                <materialIcons:MaterialIcon Kind="CalendarClock"
-               Width="36"
-               Height="36"
-               Foreground="White"
-               DockPanel.Dock="Left"/>
-                                                <StackPanel Margin="12,0,0,0">
-                                                    <TextBlock  Foreground="White" Text="Expiry Date"
-  FontWeight="SemiBold"/>
-                                                    <TextBlock  Foreground="White" x:Name="DateExpireTxt"
-  FontWeight="Bold"/>
-                                                </StackPanel>
-                                            </DockPanel>
-                                        </materialDesign:Card>
+                                      
                                     </Grid>
                                     <Image Grid.Column="1"
                                x:Name="PaletImage"
@@ -402,7 +393,32 @@ BorderThickness="2">
                                             <TranslateTransform x:Name="PaletImageTransform" X="0" Y="0"/>
                                         </Image.RenderTransform>
                                     </Image>
-                                            <Grid Grid.Column="2"></Grid>
+                                            <Grid Grid.Column="2">
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="auto"></RowDefinition>
+                                                    <RowDefinition Height="auto"></RowDefinition>
+                                                </Grid.RowDefinitions>
+                                                <materialDesign:Card Grid.Row="0" x:Name="DateExireBox"
+                                      Margin="8"
+                                      Padding="16"
+                                      UniformCornerRadius="6"
+                                      BorderBrush="SlateBlue"
+                                      BorderThickness="2">
+                                                    <DockPanel>
+                                                        <materialIcons:MaterialIcon Kind="CalendarClock"
+             Width="36"
+             Height="36"
+             Foreground="White"
+             DockPanel.Dock="Left"/>
+                                                        <StackPanel Margin="12,0,0,0">
+                                                            <TextBlock  Foreground="White" Text="Expiry Date"
+FontWeight="SemiBold"/>
+                                                            <TextBlock  Foreground="White" x:Name="DateExpireTxt"
+FontWeight="Bold"/>
+                                                        </StackPanel>
+                                                    </DockPanel>
+                                                </materialDesign:Card>
+                                            </Grid>
                                         </Grid>
                                     </Grid>
                                 <!-- Bottom Camera Controls -->
@@ -428,7 +444,7 @@ BorderThickness="2">
                                                             <DropShadowEffect Color="#00FF00" BlurRadius="20" ShadowDepth="0"/>
                                                         </Ellipse.Effect>
                                                     </Ellipse>
-                                                    <Image x:Name="CameraImage" Source="pack://application:,,,/Resources/Images/camera.png" Height="64" Width="64"/>
+                                                    <Image Source="pack://application:,,,/Resources/Images/camera.png" Height="64" Width="64"/>
                                                 </Grid>
                                                 <TextBlock FontSize="18" Foreground="White" Text="Cam Left" Margin="0,10,0,0" HorizontalAlignment="Center"/>
                                             </StackPanel>
