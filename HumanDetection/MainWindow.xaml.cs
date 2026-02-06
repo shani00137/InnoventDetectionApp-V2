@@ -86,8 +86,7 @@ namespace HumanDetection
             HomeNavBtn.Foreground = new SolidColorBrush(NavForegroundColor);
             HomeNavBtn.Background = new SolidColorBrush(NavBackgroundColor);
 
-            LivePreviewNavBtn.Foreground = new SolidColorBrush(Colors.White);
-            LivePreviewNavBtn.Background = new SolidColorBrush(Colors.Transparent);
+          
 
             SettingNavBtn.Foreground = new SolidColorBrush(Colors.White);
             SettingNavBtn.Background = new SolidColorBrush(Colors.Transparent);
@@ -102,8 +101,7 @@ namespace HumanDetection
             SettingNavBtn.Foreground = new SolidColorBrush(NavForegroundColor);
             SettingNavBtn.Background = new SolidColorBrush(NavBackgroundColor);
 
-            LivePreviewNavBtn.Foreground = new SolidColorBrush(Colors.White);
-            LivePreviewNavBtn.Background = new SolidColorBrush(Colors.Transparent);
+            
 
             HomeNavBtn.Foreground = new SolidColorBrush(Colors.White);
             HomeNavBtn.Background = new SolidColorBrush(Colors.Transparent);
@@ -116,9 +114,6 @@ namespace HumanDetection
 
             SettingNavBtn.Foreground = new SolidColorBrush(Colors.White);
             SettingNavBtn.Background = new SolidColorBrush(Colors.Transparent);
-
-            LivePreviewNavBtn.Foreground = new SolidColorBrush(NavForegroundColor);
-            LivePreviewNavBtn.Background = new SolidColorBrush(NavBackgroundColor);
 
             HomeNavBtn.Foreground = new SolidColorBrush(Colors.White);
             HomeNavBtn.Background = new SolidColorBrush(Colors.Transparent);

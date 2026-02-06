@@ -2,103 +2,114 @@ from flask import Flask, request, jsonify
 import os
 import tempfile
 import time
-from paddleocr import PaddleOCR
-import paddle
-from pyzbar.pyzbar import decode
-from PIL import Image
+import numpy as np
+import cv2
 import re
+
+import paddle
+from paddleocr import PaddleOCR
+from pyzbar.pyzbar import decode
 
 app = Flask(__name__)
 
 # -----------------------------
 # CONFIG
 # -----------------------------
-MAX_SIZE = 1024  # Maximum width/height for resizing
-DATE_REGEX = r'\b\d{2}[./-]\d{2}[./-]\d{4}\b'  # DD/MM/YYYY or DD.MM.YYYY
+MAX_SIZE = 1024
+DATE_REGEX = r'\b\d{2}[./-]\d{2}[./-]\d{4}\b'
 
 # -----------------------------
-# INITIALIZE OCR
+# OCR INIT (GPU AUTO)
 # -----------------------------
-ocr = PaddleOCR(use_textline_orientation=True, lang='en')
+ocr = PaddleOCR(
+    lang="en",
+    use_textline_orientation=True
+)
 
 # -----------------------------
 # GPU SETTINGS
 # -----------------------------
 paddle.set_device("gpu:0")
-# Warm up GPU
-ocr.predict([Image.new("RGB", (100, 100))])
+
+# ✅ SAFE GPU WARM-UP (NumPy, NOT PIL)
+dummy = np.zeros((100, 100, 3), dtype=np.uint8)
+ocr.ocr(dummy)
 
 # -----------------------------
-# HELPER FUNCTIONS
+# HELPERS
 # -----------------------------
 def extract_dates(text):
     return re.findall(DATE_REGEX, text)
 
-def extract_barcodes(image_path):
+
+def resize_image_np(img):
+    h, w = img.shape[:2]
+    max_dim = max(h, w)
+    if max_dim > MAX_SIZE:
+        scale = MAX_SIZE / max_dim
+        img = cv2.resize(img, (int(w * scale), int(h * scale)))
+    return img
+
+
+def mono8_to_rgb(img):
+    """
+    Convert MONO8 (H,W) → RGB (H,W,3)
+    """
+    if len(img.shape) == 2:
+        return cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+    return img
+
+
+def extract_barcodes(img_rgb):
     barcodes = []
-    with Image.open(image_path) as img:
-        decoded_objects = decode(img)
-        for obj in decoded_objects:
-            barcodes.append(obj.data.decode('utf-8'))
+    for obj in decode(img_rgb):
+        barcodes.append(obj.data.decode("utf-8"))
     return barcodes
 
-def resize_image(image_path):
-    with Image.open(image_path) as img:
-        w, h = img.size
-        max_dim = max(w, h)
-        if max_dim > MAX_SIZE:
-            scale = MAX_SIZE / max_dim
-            new_w = int(w * scale)
-            new_h = int(h * scale)
-            img_resized = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-            tmp_resized = tempfile.NamedTemporaryFile(delete=False, suffix=".bmp")
-            img_resized.save(tmp_resized.name)
-            return tmp_resized.name
-    return image_path
 
-def process_image(image_path):
-    start_time = time.time()
-    resized_path = resize_image(image_path)
-    temp_created = resized_path != image_path
+def process_image_np(img_np):
+    start = time.time()
 
-    try:
-        result = ocr.predict(resized_path)
-    finally:
-        if temp_created:
-            try:
-                os.remove(resized_path)
-            except PermissionError:
-                print(f"Could not delete temp file: {resized_path}, still in use")
+    # Ensure RGB
+    img_np = mono8_to_rgb(img_np)
 
-    # OCR text collection
-    all_texts = []
+    # Resize for speed
+    img_np = resize_image_np(img_np)
+
+    # OCR
+    result = ocr.ocr(img_np)
+
+    # Collect text
+    texts = []
     for item in result:
         if isinstance(item, dict):
-            all_texts.extend(item.get('rec_texts', []))
+            texts.extend(item.get("rec_texts", []))
         elif isinstance(item, list):
             for entry in item:
                 try:
                     _, (text, _) = entry
-                    all_texts.append(text)
+                    texts.append(text)
                 except Exception:
                     pass
 
-    all_dates = []
-    for text in all_texts:
-        all_dates.extend(extract_dates(text))
+    # Dates
+    dates = []
+    for t in texts:
+        dates.extend(extract_dates(t))
 
-    all_barcodes = extract_barcodes(image_path)
+    # Barcodes
+    barcodes = extract_barcodes(img_np)
 
-    elapsed_time = round(time.time() - start_time, 3)
+    elapsed = round(time.time() - start, 3)
 
     return {
-        "text_count": len(all_texts),
-        "dates": all_dates,
-        "date_count": len(all_dates),
-        "barcodes": all_barcodes,
-        "barcode_count": len(all_barcodes),
-        "raw_text": all_texts,
-        "processing_time_sec": elapsed_time
+        "text_count": len(texts),
+        "raw_text": texts,
+        "dates": dates,
+        "date_count": len(dates),
+        "barcodes": barcodes,
+        "barcode_count": len(barcodes),
+        "processing_time_sec": elapsed
     }
 
 # -----------------------------
@@ -112,41 +123,42 @@ def ocr_endpoint():
     files = request.files.getlist("images")
     results = {}
 
-    start_total_time = time.time()
+    total_start = time.time()
 
     for file in files:
-        ext = os.path.splitext(file.filename)[1].lower()
-        if ext not in [".jpg", ".jpeg", ".png", ".bmp"]:
-            results[file.filename] = {"error": f"Unsupported file type: {ext}"}
+        suffix = os.path.splitext(file.filename)[1].lower()
+        if suffix not in [".jpg", ".jpeg", ".png", ".bmp"]:
+            results[file.filename] = {"error": "Unsupported file type"}
             continue
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             file.save(tmp.name)
-            temp_file_path = tmp.name
+            path = tmp.name
 
         try:
-            res = process_image(temp_file_path)
-            results[file.filename] = res
-        finally:
-            try:
-                os.remove(temp_file_path)
-            except PermissionError:
-                print(f"Could not delete temp file: {temp_file_path}, still in use")
+            # Read as MONO or COLOR
+            img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+            if img is None:
+                results[file.filename] = {"error": "Could not read image"}
+                continue
 
-    total_elapsed = time.time() - start_total_time
-    total_time_sec = round(total_elapsed, 3)
-    total_time_min = round(total_elapsed / 60, 2)
+            results[file.filename] = process_image_np(img)
+        finally:
+            os.remove(path)
+
+    total_elapsed = time.time() - total_start
 
     return jsonify({
         "results": results,
         "total_images": len(files),
-        "total_time_sec": total_time_sec,
-        "total_time_min": total_time_min
+        "total_time_sec": round(total_elapsed, 3),
+        "total_time_min": round(total_elapsed / 60, 3)
     })
 
 # -----------------------------
-# RUN APP
+# RUN
 # -----------------------------
 if __name__ == "__main__":
     print("CUDA available:", paddle.is_compiled_with_cuda())
+    print("GPU count:", paddle.device.cuda.device_count())
     app.run(host="0.0.0.0", port=5000, debug=True)

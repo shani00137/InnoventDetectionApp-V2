@@ -9,14 +9,15 @@
 		<PlatformTarget>x64</PlatformTarget>
 		<UseWPF>true</UseWPF>
 	</PropertyGroup>
+	<ItemGroup>
+		<Content Remove="paddle_env\**" />
+		<None Remove="paddle_env\**" />
+		<Compile Remove="paddle_env\**" />
+	</ItemGroup>
+
+
 
 	<ItemGroup>
-		<None Remove="Assets\boxes.png" />
-		<None Remove="Assets\boxvideo.mp4" />
-		<None Remove="Assets\ocrvideo.mp4" />
-		<None Remove="Assets\plcommpro.dll" />
-		<None Remove="Assets\reader.py" />
-		<None Remove="Assets\receipt.png" />
 		<None Remove="Assets\Weights\customBoxCount.onnx" />
 		<None Remove="Assets\Weights\YoloBox.onnx" />
 		<None Remove="Images\innovent.ico" />
@@ -37,12 +38,6 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<Content Include="Assets\boxes.png">
-			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Assets\boxvideo.mp4">
-			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</Content>
 		<Content Include="Assets\DLL\libareacode.dll" />
 		<Content Include="Assets\DLL\plcommpro.dll">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
@@ -68,24 +63,6 @@
 		<Content Include="Assets\DLL\ZKCommuCryptoClient.dll">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</Content>
-		<Content Include="Assets\ocrvideo.mp4">
-			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Assets\ocr_api.py">
-		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Assets\paddle_api.py">
-		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Assets\plcommpro.dll">
-		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Assets\reader.py">
-		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Assets\receipt.png">
-			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</Content>
 		<Content Include="Assets\Weights\YoloBox.onnx">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</Content>
@@ -105,6 +82,12 @@
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 			<Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
 		</None>
+	</ItemGroup>
+	<ItemGroup>
+	  <Compile Remove="obj\**" />
+	  <EmbeddedResource Remove="obj\**" />
+	  <None Remove="obj\**" />
+	  <Page Remove="obj\**" />
 	</ItemGroup>
 	<ItemGroup>
 		<Content Include="Resources\Audio\warning.wav">
@@ -227,9 +210,6 @@
 	  <None Remove="Assets\DLL\pltcpcomm.dll" />
 	  <None Remove="Assets\DLL\plusbcomm.dll" />
 	  <None Remove="Assets\DLL\ZKCommuCryptoClient.dll" />
-	  <None Remove="Assets\ocr_api.py" />
-	  <None Remove="Assets\paddle_api.py" />
-	  <None Remove="Assets\plcommpro.dll" />
 	  <None Remove="Assets\Weights\customBoxCount.onnx" />
 	  <None Remove="Resources\Audio\shutter.mp3" />
 	</ItemGroup>
@@ -261,5 +241,8 @@
 	    <HintPath>Assets\Basler.Pylon.dll</HintPath>
 	  </Reference>
 	</ItemGroup>
+
+
+
 
 </Project>

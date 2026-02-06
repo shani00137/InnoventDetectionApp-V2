@@ -16,7 +16,7 @@
 
             <Grid.RowDefinitions>
                 <RowDefinition Height="30"/>
-            <RowDefinition Height="40"/>
+          
             <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
             <Grid Grid.Row="0" Background="Black">
@@ -31,7 +31,22 @@
                     <Image Source="/Images/innovent.ico" Width="20" Height="20" Margin="0,0,5,0"/>
                     <!-- Application title -->
                     <TextBlock Text="Vistion AI" Foreground="White" FontSize="14" VerticalAlignment="Center"/>
-                </StackPanel>
+                <Button x:Name="HomeNavBtn" Click="NavToHomePage_Click" Background="Transparent" Width="100" Height="32" Foreground="White" Margin="0" Padding="10,0"
+         BorderBrush="Transparent" BorderThickness="0">
+                    <StackPanel Orientation="Horizontal">
+                        <materialIcons:MaterialIcon Kind="HomeAlertOutline" Width="20" Height="20" Margin="0,0,5,0"/>
+                        <TextBlock Text="Home"  VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+
+                <Button x:Name="SettingNavBtn" Click="NavToSettingPage_Click" Background="Transparent" Width="100" Height="32" Foreground="White"  Padding="10,0"
+         BorderBrush="Transparent" BorderThickness="0">
+                    <StackPanel Orientation="Horizontal">
+                        <materialIcons:MaterialIcon Kind="SettingsOutline" Width="20" Height="20" Margin="0,0,0,0"/>
+                        <TextBlock Text="Settings"  VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </StackPanel>
 
                 <!-- Right Side - Window Controls -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
@@ -52,46 +67,8 @@
                     </Button>
                 </StackPanel>
             </Grid>
-        <!-- Secondary Navigation Bar -->
-        <Grid x:Name="MenuNavBar" Grid.Row="1" Background="#000000">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <!-- First Column for Logo and Navigation Buttons -->
-                <ColumnDefinition Width="*"/>
-                <!-- Second Column for Navigation Links -->
-                <ColumnDefinition Width="Auto"/>
-                <!-- Third Column for User Info -->
-            </Grid.ColumnDefinitions>
-
-          
-
-            <!-- Second Section: Navigation Links -->
-            <StackPanel  Orientation="Horizontal" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center">
-                <Button x:Name="HomeNavBtn" Click="NavToHomePage_Click" Background="Transparent" Width="100" Height="32" Foreground="White" Margin="0" Padding="10,0"
-                        BorderBrush="Transparent" BorderThickness="0">
-                    <StackPanel Orientation="Horizontal">
-                        <materialIcons:MaterialIcon Kind="HomeAlertOutline" Width="20" Height="20" Margin="0,0,5,0"/>
-                        <TextBlock Text="Home"  VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Button>
-                <Button x:Name="LivePreviewNavBtn" Click="NavToLivePreviewPage_Click" Background="Transparent" Width="130" Height="32" Foreground="White" Margin="5" Padding="10,0"
-                        BorderBrush="Transparent" BorderThickness="0">
-                    <StackPanel Orientation="Horizontal">
-                        <materialIcons:MaterialIcon Kind="CameraMarkerOutline" Width="20" Height="20" Margin="0,0,5,0"/>
-                        <TextBlock Text="Live Preview"  VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Button>
-                <Button x:Name="SettingNavBtn" Click="NavToSettingPage_Click" Background="Transparent" Width="100" Height="32" Foreground="White" Margin="5" Padding="10,0"
-                        BorderBrush="Transparent" BorderThickness="0">
-                    <StackPanel Orientation="Horizontal">
-                        <materialIcons:MaterialIcon Kind="SettingsOutline" Width="20" Height="20" Margin="0,0,5,0"/>
-                        <TextBlock Text="Settings"  VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Button>
-            </StackPanel>
-
-        </Grid>
-        <Grid Grid.Row="2" Background="Black" Margin="10">
+    
+        <Grid Grid.Row="1" Background="Black" Margin="10">
 
             <Frame x:Name="MainFrame" NavigationUIVisibility="Hidden" />
         </Grid>

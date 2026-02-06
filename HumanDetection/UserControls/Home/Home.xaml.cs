@@ -228,6 +228,7 @@ namespace HumanDetection
         }
 
         private async void LoadModels()
+
         {
             var sessionOptions = new Microsoft.ML.OnnxRuntime.SessionOptions();
             try
@@ -306,7 +307,21 @@ namespace HumanDetection
 
             try
             {
+               var image=await CaptureSingleFrameFromCameraAsync(cameraInfo);
+                Image<Rgba32> ConvertedImage = BitmapImageToImageSharp(image);
+                var result = await RunBoxCountingModelAsync(ConvertedImage);
 
+                bool palletAngleOk = Math.Abs(result.palletAngleDeg) <= 2.0;
+                if (!palletAngleOk)
+                {
+                    Console.WriteLine($"Pallet misaligned: {result.palletAngleDeg:F1}°");
+                    // 🚨 DO NOT CONTINUE PROCESS
+                }
+                else
+                {
+                    Console.WriteLine("Pallet angle OK");
+                    // ✅ Continue normal flow
+                }
 
                 await Dispatcher.InvokeAsync(async () =>
                 {
@@ -704,6 +719,48 @@ namespace HumanDetection
 
             return capturedImages;
         }
+        public async Task<BitmapImage?> CaptureSingleFrameFromCameraAsync(ICameraInfo cameraInfo)
+        {
+            return await Task.Run(() =>
+            {
+                try
+                {
+                    using (var camera = new Camera(cameraInfo))
+                    {
+                        camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
+                        camera.Open();
+
+                        // 🔦 Flash + sound (adjust if needed)
+                        FlashCamera(FrontFlashEllipse);
+                        PlayShutterSound();
+
+                        using (IGrabResult grabResult =
+                            camera.StreamGrabber.GrabOne(3000, TimeoutHandling.ThrowException))
+                        {
+                            if (grabResult.GrabSucceeded)
+                            {
+                                using Mat frame = GrabResultToMat(grabResult);
+
+                                var bmp = frame.ToBitmap();
+                                var bitmapImage = ConvertBitmapToImageSource(bmp);
+                                bitmapImage.Freeze();
+
+                                Console.WriteLine($"📸 Captured frame from {cameraInfo[CameraInfoKey.ModelName]}");
+                                return bitmapImage;
+                            }
+                        }
+
+                        camera.Close();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"⚠️ Capture failed from {cameraInfo[CameraInfoKey.ModelName]}: {ex.Message}");
+                }
+
+                return null;
+            });
+        }
 
         private async Task<(double AvScore, bool HumanDetected, int NumberOfBox, List<byte[]> OCRBytes, double maxPalletHeight)>RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
         {
@@ -789,7 +846,7 @@ namespace HumanDetection
             });
         }
 
-        private async Task<(int BoxesDetected, double PalletHeight, double AverageScore, List<byte[]> OcrResult)>RunBoxCountingModelAsync(Image<Rgba32> originalImage)
+        private async Task<(int BoxesDetected, double PalletHeight, double AverageScore, List<byte[]> OcrResult,double palletAngleDeg)>RunBoxCountingModelAsync(Image<Rgba32> originalImage)
         {
             UpdateProgressStatus("Box Counting AI Model Start");
 
@@ -927,7 +984,7 @@ namespace HumanDetection
             }
 
 
-
+            double palletAngleDeg = 0.0;
             OcrResult ocrResult = null;
             string combinedOcrText = "";
 
@@ -980,6 +1037,24 @@ namespace HumanDetection
                     });
                 }
 
+                
+
+                if (tallestPallet != null && tallestPallet.Score > 0.70)
+                {
+                    float scaleX1 = (float)originalImage.Width / modelWidth;
+                    float scaleY1 = (float)originalImage.Height / modelHeight;
+
+                    int px = (int)(tallestPallet.Rectangle.X * scaleX1);
+                    int py = (int)(tallestPallet.Rectangle.Y * scaleY1);
+                    int pw = (int)(tallestPallet.Rectangle.Width * scaleX1);
+                    int ph = (int)(tallestPallet.Rectangle.Height * scaleY1);
+
+                    var palletRect = new SixLabors.ImageSharp.Rectangle(px, py, pw, ph);
+
+                    using var palletCrop = originalImage.Clone(x => x.Crop(palletRect));
+
+                    palletAngleDeg = CalculatePalletAngle(palletCrop);
+                }
 
                 using (var ms = new MemoryStream())
                 {
@@ -997,7 +1072,48 @@ namespace HumanDetection
                 }
             }
 
-            return (boxCount, palletHeightMeters, averageScore, cropByteList);
+            return (boxCount, palletHeightMeters, averageScore, cropByteList, palletAngleDeg);
+        }
+
+        private double CalculatePalletAngle(Image<Rgba32> palletImage)
+        {
+            using var ms = new MemoryStream();
+            palletImage.SaveAsBmp(ms);
+            byte[] imageBytes = ms.ToArray();
+
+            Mat mat = Cv2.ImDecode(imageBytes, ImreadModes.Grayscale);
+
+            Cv2.GaussianBlur(mat, mat, new OpenCvSharp.Size(5, 5), 0);
+
+            Mat edges = new();
+            Cv2.Canny(mat, edges, 50, 150);
+
+            var lines = Cv2.HoughLinesP(
+                edges,
+                1,
+                Math.PI / 180,
+                100,
+                minLineLength: mat.Width * 0.5,
+                maxLineGap: 10
+            );
+
+            if (lines == null || lines.Length == 0)
+                return 0;
+
+            List<double> angles = new();
+
+            foreach (var line in lines)
+            {
+                double angle = Math.Atan2(
+                    line.P2.Y - line.P1.Y,
+                    line.P2.X - line.P1.X
+                ) * 180.0 / Math.PI;
+
+                if (Math.Abs(angle) < 45)
+                    angles.Add(angle);
+            }
+
+            return angles.Count > 0 ? angles.Median() : 0;
         }
 
 
