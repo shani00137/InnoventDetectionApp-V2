@@ -13,6 +13,7 @@ using Microsoft.ML.OnnxRuntime;
 using Microsoft.VisualBasic.ApplicationServices;
 using Model;
 using NAudio.CoreAudioApi;
+using NAudio.Wave.Asio;
 using Newtonsoft.Json;
 using OpenCvSharp;
 using OpenCvSharp.Extensions;
@@ -36,6 +37,7 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -136,6 +138,7 @@ namespace HumanDetection
              //LoadModels();
 
         }
+        #region Load Application Model and Devices
         private async void MainWindow_LoadedAsync(object sender, RoutedEventArgs e)
         {
             try
@@ -150,16 +153,11 @@ namespace HumanDetection
                 ResultDataList = new ObservableCollection<ResutlModel>();
 
                 // Show loading indicator
-                LoadingOverlay.Visibility = Visibility.Visible;
-                await Task.Run(() =>
-                {
-                    _capture = new VideoCapture(0);
-                    _frame = new Mat();
-                    LoadModels();
-                });
-                await TurnOnRotatorAsync();
+                await PrepareAllDevicesAndModels();
+              
+               
 
-                StartScale();
+               
                 snackbarMesssage.MessageQueue = _messageQueue; // Assign queue
 
             }
@@ -170,10 +168,208 @@ namespace HumanDetection
             }
             finally
             {
-                LoadingOverlay.Visibility = Visibility.Collapsed;
             }
 
         }
+        public async Task PrepareAllDevicesAndModels()
+        {
+            LoadingOverlay.Visibility = Visibility.Visible;
+
+            bool modelOk = await RunModelCheck( AiLoading,AiCheck, AiError, LoadModelsAsync);
+
+            if (!modelOk)
+            {
+                ProgressTxt.Text = "AI Model loading failed!";
+                //return; // stop further checks
+            }
+            await Task.Delay(500);
+            bool weightOk = await RunDeviceCheck( WeightLoading, WeightCheck,WeightError, StartScaleAsync);
+
+            if (!weightOk)
+            {
+                ProgressTxt.Text = "Weight scale not detected!";
+                //return; // stop startup if critical
+            }
+
+            bool gpioOk = await RunDeviceCheck( GpioLoading, GpioCheck, GpioError, CheckGpioAsync);
+
+            if (!gpioOk)
+            {
+                ProgressTxt.Text = "GPIO device not reachable!";
+                //return;
+            }
+            else {
+                await TurnOnRotatorAsync();
+            }
+
+            bool cameraOk = await RunDeviceCheck(CameraLoading, CameraCheck, CameraError, CheckCameraAsync);
+
+            if (!cameraOk)
+            {
+                ProgressTxt.Text = "Camera not detected or insufficient cameras!";
+               
+            }
+
+           
+
+            await Task.Delay(500);
+            LoadingOverlay.Visibility = Visibility.Collapsed;
+        }
+
+        private async Task RunCheck( ProgressBar loader, TextBlock success,TextBlock error,int delay)
+        {
+            loader.Visibility = Visibility.Visible;
+            success.Visibility = Visibility.Collapsed;
+            error.Visibility = Visibility.Collapsed;
+
+            await Task.Delay(delay); // replace with real device check
+
+            bool ok = true; // replace with actual result
+
+            loader.Visibility = Visibility.Collapsed;
+            (ok ? success : error).Visibility = Visibility.Visible;
+        }
+        private async Task<bool> RunModelCheck( ProgressBar loader,TextBlock success, TextBlock error, Func<Task<bool>> action)
+        {
+            loader.Visibility = Visibility.Visible;
+            success.Visibility = Visibility.Collapsed;
+            error.Visibility = Visibility.Collapsed;
+
+            bool result = false;
+
+            try
+            {
+                result = await action();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+                result = false;
+            }
+
+            loader.Visibility = Visibility.Collapsed;
+
+            if (result)
+                success.Visibility = Visibility.Visible;
+            else
+                error.Visibility = Visibility.Visible;
+
+            return result;
+        }
+        private async Task<bool> RunDeviceCheck(ProgressBar loader,TextBlock success, TextBlock error, Func<Task<bool>> action)
+        {
+            loader.Visibility = Visibility.Visible;
+            success.Visibility = Visibility.Collapsed;
+            error.Visibility = Visibility.Collapsed;
+
+            bool result = false;
+
+            try
+            {
+                result = await action();
+            }
+            catch
+            {
+                result = false;
+            }
+
+            loader.Visibility = Visibility.Collapsed;
+            (result ? success : error).Visibility = Visibility.Visible;
+
+            return result;
+        }
+        private async Task<bool> CheckGpioAsync()
+        {
+            try
+            {
+                if (_settings == null || string.IsNullOrWhiteSpace(_settings.MoxIP))
+                    return false;
+
+                // 1️⃣ PING CHECK
+                using var ping = new Ping();
+                var reply = await ping.SendPingAsync(_settings.MoxIP, 100);
+
+                if (reply.Status != IPStatus.Success)
+                    return false;
+
+                // 2️⃣ CREATE CONTROLLER
+                _ac = new AccessController(_settings.MoxIP);
+
+                // 3️⃣ TOKEN CHECK (REAL DEVICE TEST)
+                bool tokenOk = await _ac.RefreshToken();
+
+                return tokenOk;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("GPIO check failed: " + ex.Message);
+                return false;
+            }
+        }
+        private async Task<bool> CheckCameraAsync()
+        {
+            return await Task.Run(() =>
+            {
+                try
+                {
+                    var cameraList = CameraFinder.Enumerate();
+
+                    if (cameraList == null)
+                        return false;
+
+                    int count = cameraList.Count();
+
+                    Console.WriteLine($"Camera count detected: {count}");
+
+                    return count > 1;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("Camera check failed: " + ex.Message);
+                    return false;
+                }
+            });
+        }
+
+        public static void KillProcessesUsingPort(int port)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = $"/c netstat -ano | findstr :{port}",
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using var process = Process.Start(psi);
+                string output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit();
+
+                foreach (var line in output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    // Example line:
+                    // TCP    0.0.0.0:9000     0.0.0.0:0     LISTENING     12345
+                    var parts = Regex.Split(line.Trim(), @"\s+");
+                    if (parts.Length >= 5 && int.TryParse(parts[^1], out int pid))
+                    {
+                        try
+                        {
+                            Process.GetProcessById(pid).Kill(true);
+                            Debug.WriteLine($"Killed process PID {pid} using port {port}");
+                        }
+                        catch { /* ignore access denied */ }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("KillProcessesUsingPort error: " + ex.Message);
+            }
+        }
+        #endregion 
         public async Task StartPalletDetectionProcAsync()
         {
             Dispatcher.Invoke(async () =>
@@ -227,74 +423,58 @@ namespace HumanDetection
             StopScale();
         }
 
-        private async void LoadModels()
-
+        private async Task<bool> LoadModelsAsync()
         {
-            var sessionOptions = new Microsoft.ML.OnnxRuntime.SessionOptions();
-            try
+            return await Task.Run(() =>
             {
-                sessionOptions.AppendExecutionProvider_DML();
-
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"DirectML failed: {ex.Message}");
-                sessionOptions.AppendExecutionProvider_CPU(); // Fallback to CPU
-            }
-            var providers = OrtEnv.Instance().GetAvailableProviders();
-            Console.WriteLine("Available providers: " + string.Join(", ", providers));
-            var modelPathBoxCounting = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets/Weights/customBoxCount.onnx");
-            _scorerBoxCountingModel = new YoloScorer<YoloCustomModel>(modelPathBoxCounting, sessionOptions);
-
-            var modelPathHumanDetection = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets/Weights/yolov5s.onnx");
-            _scorerHumanModel = new YoloScorer<YoloCocoP5Model>(modelPathHumanDetection, sessionOptions);
-
-
-            var fontPath = "C:/Windows/Fonts/consola.ttf";
-            _font = new SixLabors.Fonts.Font(new FontCollection().Add(fontPath), 16);
-            //StartFlaskApi();
-
-
-
-        }
-        
-        public static void KillProcessesUsingPort(int port)
-        {
-            try
-            {
-                var psi = new ProcessStartInfo
+                try
                 {
-                    FileName = "cmd.exe",
-                    Arguments = $"/c netstat -ano | findstr :{port}",
-                    RedirectStandardOutput = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
+                    var sessionOptions = new Microsoft.ML.OnnxRuntime.SessionOptions();
 
-                using var process = Process.Start(psi);
-                string output = process.StandardOutput.ReadToEnd();
-                process.WaitForExit();
-
-                foreach (var line in output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
-                {
-                    // Example line:
-                    // TCP    0.0.0.0:9000     0.0.0.0:0     LISTENING     12345
-                    var parts = Regex.Split(line.Trim(), @"\s+");
-                    if (parts.Length >= 5 && int.TryParse(parts[^1], out int pid))
+                    try
                     {
-                        try
-                        {
-                            Process.GetProcessById(pid).Kill(true);
-                            Debug.WriteLine($"Killed process PID {pid} using port {port}");
-                        }
-                        catch { /* ignore access denied */ }
+                        sessionOptions.AppendExecutionProvider_DML();
                     }
+                    catch
+                    {
+                        sessionOptions.AppendExecutionProvider_CPU();
+                    }
+
+                    var modelPathBoxCounting =
+                        System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                        "Assets/Weights/customBoxCount.onnx");
+
+                    if (!File.Exists(modelPathBoxCounting))
+                        throw new FileNotFoundException("BoxCount model missing");
+
+                    _scorerBoxCountingModel =
+                        new YoloScorer<YoloCustomModel>(modelPathBoxCounting, sessionOptions);
+
+                    var modelPathHumanDetection =
+                        System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                        "Assets/Weights/yolov5s.onnx");
+
+                    if (!File.Exists(modelPathHumanDetection))
+                        throw new FileNotFoundException("Human detection model missing");
+
+                    _scorerHumanModel =
+                        new YoloScorer<YoloCocoP5Model>(modelPathHumanDetection, sessionOptions);
+
+                    var fontPath = @"C:\Windows\Fonts\consola.ttf";
+                    if (!File.Exists(fontPath))
+                        throw new FileNotFoundException("Font missing");
+
+                    _font = new SixLabors.Fonts.Font(
+                        new FontCollection().Add(fontPath), 16);
+
+                    return true;
                 }
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine("KillProcessesUsingPort error: " + ex.Message);
-            }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("Model load error: " + ex.Message);
+                    return false;
+                }
+            });
         }
 
         private ObservableCollection<OcrFrameResult> _ocrResults = new ObservableCollection<OcrFrameResult>();
@@ -1716,29 +1896,41 @@ namespace HumanDetection
 
         #region manage weight machine events
 
-        private void StartScale()
+        private async Task<bool> StartScaleAsync()
         {
-            if (_reader != null && _reader.IsOpen) return;
-
-            _reader = new ScaleSerialReader
+            return await Task.Run(() =>
             {
-                PortName = $"{_settings.ComPort}",
-                BaudRate = 9600
-            };
+                try
+                {
+                    if (_reader != null && _reader.IsOpen)
+                        return true;
 
-            _reader.WeightReceived += Reader_WeightReceived;
-            _reader.Error += Reader_Error;
+                    _reader = new ScaleSerialReader
+                    {
+                        PortName = _settings.ComPort,
+                        BaudRate = 9600
+                    };
 
-            try
-            {
-                _reader.Start();
-            }
-            catch (Exception ex)
-            {
-                WeightText.Text = "ERR";
-                // optional: MessageBox.Show(ex.Message);
-            }
+                    _reader.WeightReceived += Reader_WeightReceived;
+                    _reader.Error += Reader_Error;
+
+                    _reader.Start(); // THIS CAN THROW
+
+                    return true; // SUCCESS
+                }
+                catch (Exception ex)
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        WeightText.Text = "ERR";
+                    });
+
+                    Console.WriteLine("Scale error: " + ex.Message);
+                    return false; // FAILURE
+                }
+            });
         }
+
         private void StopScale()
         {
             if (_reader == null) return;

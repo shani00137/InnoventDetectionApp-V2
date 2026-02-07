@@ -674,29 +674,130 @@ Effect="{DynamicResource DropShadow}">
                 </Grid>
             </Border>
             <!-- Loading Overlay -->
-            <Grid x:Name="LoadingOverlay" 
-                     Grid.RowSpan="2" 
-                     Panel.ZIndex="999" 
-                     Background="#CC000000" 
-                     Visibility="Visible">
-                <Border Background="#333" 
-       CornerRadius="10" 
-       Padding="20" 
-       HorizontalAlignment="Center" 
-       VerticalAlignment="Center">
-                    <StackPanel Orientation="Vertical" 
-               HorizontalAlignment="Center" 
-               VerticalAlignment="Center">
-                        <ProgressBar IsIndeterminate="True" 
-                    Width="200" 
-                    Height="20" 
-                    Margin="0,0,0,10"/>
-                        <TextBlock x:Name="ProgressTxt" Text="Please wait loading AI Models..." 
-                  Foreground="White" 
-                  HorizontalAlignment="Center"/>
+            <Grid x:Name="LoadingOverlay"
+      Grid.RowSpan="2"
+      Panel.ZIndex="999"
+      Background="#CC000000"
+      Visibility="Visible">
+
+                <Border Background="#333"
+            CornerRadius="10"
+            Padding="25"
+            Width="420"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center">
+
+                    <StackPanel>
+
+                        <!-- CHECK LIST -->
+                        <StackPanel Margin="0,0,0,20">
+
+                            <!-- AI MODEL -->
+                            <StackPanel Orientation="Horizontal" Margin="0,4">
+                                <ProgressBar x:Name="AiLoading"
+                                 Width="20" Style="{StaticResource MaterialDesignCircularProgressBar}" 
+                                     Foreground="LimeGreen"
+                                 IsIndeterminate="True"/>
+                                <TextBlock x:Name="AiCheck"
+                               Text="✔"
+                               Foreground="LimeGreen"
+                               FontSize="16"
+                               Visibility="Collapsed"
+                               Margin="2,0,0,0"/>
+                                <TextBlock x:Name="AiError"
+                                   Text="✖"
+                                   Foreground="Red"
+                                   FontSize="16"
+                                   Visibility="Collapsed"
+                                   Margin="2,0,0,0"/>
+
+                                <TextBlock Text="Prepare AI Model"
+                               Foreground="White"
+                               Margin="10,0,0,0"/>
+                            </StackPanel>
+
+                            <!-- WEIGHT MACHINE -->
+                            <StackPanel Orientation="Horizontal" Margin="0,4">
+                                <ProgressBar x:Name="WeightLoading"
+                                 Width="20" Style="{StaticResource MaterialDesignCircularProgressBar}"
+                                 Height="20"
+                                 IsIndeterminate="True"/>
+                                <TextBlock x:Name="WeightCheck"
+                               Text="✔"
+                               Foreground="LimeGreen"
+                               FontSize="16"
+                               Visibility="Collapsed"/>
+                                <TextBlock x:Name="WeightError"
+                                           Text="✖"
+                                           Foreground="Red"
+                                           FontSize="16"
+                                           Visibility="Collapsed"
+                                           Margin="2,0,0,0"/>
+                                <TextBlock Text="Checking Weight Machine"
+                               Foreground="White"
+                               Margin="10,0,0,0"/>
+                            </StackPanel>
+
+                            <!-- GPIO -->
+                            <StackPanel Orientation="Horizontal" Margin="0,4">
+                                <ProgressBar x:Name="GpioLoading"
+                                 Width="20" Style="{StaticResource MaterialDesignCircularProgressBar}"
+                                 Height="20"
+                                 IsIndeterminate="True"/>
+                                <TextBlock x:Name="GpioCheck"
+                               Text="✔"
+                               Foreground="LimeGreen"
+                               FontSize="16"
+                               Visibility="Collapsed"/>
+                                <TextBlock x:Name="GpioError"
+                                           Text="✖"
+                                           Foreground="Red"
+                                           FontSize="16"
+                                           Visibility="Collapsed"
+                                           Margin="2,0,0,0"/>
+                                <TextBlock Text="Check GPIO Device"
+                               Foreground="White"
+                               Margin="10,0,0,0"/>
+                            </StackPanel>
+
+                            <!-- PALLET SENSOR -->
+                            <StackPanel Orientation="Horizontal" Margin="0,4">
+                                <ProgressBar x:Name="CameraLoading"
+                                 Width="20" Style="{StaticResource MaterialDesignCircularProgressBar}"
+                                 Height="20"
+                                 IsIndeterminate="True"/>
+                                <TextBlock x:Name="CameraCheck"
+                               Text="✔"
+                               Foreground="LimeGreen"
+                               FontSize="16"
+                               Visibility="Collapsed"/>
+                                <TextBlock x:Name="CameraError"
+                                         Text="✖"
+                                         Foreground="Red"
+                                         FontSize="16"
+                                         Visibility="Collapsed"
+                                         Margin="2,0,0,0"/>
+                                <TextBlock Text="Check Camera"
+                               Foreground="White"
+                               Margin="10,0,0,0"/>
+                            </StackPanel>
+
+                            <!-- HEIGHT SENSOR -->
+                          
+                        </StackPanel>
+
+                        <!-- MAIN PROGRESS -->
+                        <ProgressBar IsIndeterminate="True"
+                         Height="18"
+                         Margin="0,10,0,8"/>
+
+                        <TextBlock x:Name="ProgressTxt" Text="Please wait loading AI Models..."
+                       Foreground="White"
+                       HorizontalAlignment="Center"/>
                     </StackPanel>
                 </Border>
             </Grid>
+
             <materialDesign:Card x:Name="LoadingCard" UniformCornerRadius="14" Padding="4"
                       VerticalAlignment="Bottom" HorizontalAlignment="Left" 
                       Margin="15,0,0,5" Width="60" Height="60" Visibility="Collapsed">
