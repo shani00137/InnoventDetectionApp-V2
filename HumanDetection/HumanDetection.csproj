@@ -38,31 +38,11 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<Content Include="Assets\DLL\libareacode.dll" />
-		<Content Include="Assets\DLL\plcommpro.dll">
+		<Content Include="Assets\ocr_api.py">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</Content>
-		<Content Include="Assets\DLL\plcomms.dll">
-		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Assets\DLL\plcommutils.dll">
-		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Assets\DLL\plrscagent.dll">
-		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Assets\DLL\plrscomm.dll">
-		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Assets\DLL\pltcpcomm.dll">
-		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Assets\DLL\plusbcomm.dll">
-		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Assets\DLL\ZKCommuCryptoClient.dll">
-		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</Content>
+	
+		
 		<Content Include="Assets\Weights\YoloBox.onnx">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</Content>

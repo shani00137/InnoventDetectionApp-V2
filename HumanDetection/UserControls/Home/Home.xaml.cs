@@ -36,6 +36,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
@@ -209,8 +210,19 @@ namespace HumanDetection
                 ProgressTxt.Text = "Camera not detected or insufficient cameras!";
                
             }
+            bool apiOk = await RunDeviceCheck(
+                                                APILoading,
+                                                APICheck,
+                                                APIError,
+                                                StartFlaskApiAsync);
 
-           
+            if (!apiOk)
+            {
+                ProgressTxt.Text = "OCR service failed to start!";
+                return;
+            }
+
+
 
             await Task.Delay(500);
             LoadingOverlay.Visibility = Visibility.Collapsed;
@@ -329,6 +341,81 @@ namespace HumanDetection
                     return false;
                 }
             });
+        }
+        public async Task<bool> StartFlaskApiAsync()
+        {
+            try
+            {
+                KillProcessesUsingPort(5000);
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = pythonExe,
+                    Arguments = "ocr_api.py",
+                    WorkingDirectory = System.IO.Path.Combine(
+                        AppDomain.CurrentDomain.BaseDirectory,
+                        "Assets"
+                    ),
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+
+                var flaskProcess = new Process
+                {
+                    StartInfo = psi,
+                    EnableRaisingEvents = true
+                };
+
+                flaskProcess.OutputDataReceived += (s, e) =>
+                {
+                    if (!string.IsNullOrWhiteSpace(e.Data))
+                        Debug.WriteLine("PY: " + e.Data);
+                };
+
+                flaskProcess.ErrorDataReceived += (s, e) =>
+                {
+                    if (!string.IsNullOrWhiteSpace(e.Data))
+                        Debug.WriteLine("PY ERR: " + e.Data);
+                };
+
+                flaskProcess.Start();
+                flaskProcess.BeginOutputReadLine();
+                flaskProcess.BeginErrorReadLine();
+
+                // VERY IMPORTANT → Wait until API actually responds
+                bool alive = await WaitForFlaskApiAsync();
+
+                return alive;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("Flask start error: " + ex.Message);
+                return false;
+            }
+        }
+        private async Task<bool> WaitForFlaskApiAsync()
+        {
+            using var http = new HttpClient();
+
+            for (int i = 0; i < 30; i++) // wait max ~10 sec
+            {
+                try
+                {
+                    var resp = await http.GetAsync("http://127.0.0.1:5000/ocr");
+                    if (resp.StatusCode==HttpStatusCode.MethodNotAllowed)
+                        return true;
+                }
+                catch
+                {
+                    // ignore while starting
+                }
+
+                await Task.Delay(1000);
+            }
+
+            return false;
         }
 
         public static void KillProcessesUsingPort(int port)
@@ -1367,25 +1454,7 @@ namespace HumanDetection
                 return bitmapImage;
             }
         }
-        public string ExtractTextToJson(string imagePath)
-        {
-            try
-            {
-                string pythonExe = @"C:\Users\Abhishaik Sharma\AppData\Local\Programs\Python\Python310\python.exe"; // Python path
-
-                var scriptPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "reader.py");
-
-                string ocrText = RunOCR(pythonExe, scriptPath, imagePath);
-
-                return ocrText;
-            }
-            catch (Exception ex)
-            {
-                // Handle exception or log it
-                // You can return an empty string or an error message
-                return $"Error during OCR: {ex.Message}";
-            }
-        }
+      
         public string RunOCR(string pythonExe, string scriptPath, string imagePath)
         {
             var psi = new ProcessStartInfo
