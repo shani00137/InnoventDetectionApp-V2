@@ -41,6 +41,7 @@ using System.Net.Http;
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Security.Policy;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -456,60 +457,6 @@ namespace HumanDetection
                 Debug.WriteLine("KillProcessesUsingPort error: " + ex.Message);
             }
         }
-        #endregion 
-        public async Task StartPalletDetectionProcAsync()
-        {
-            Dispatcher.Invoke(async () =>
-            {
-                EntryTimeTxt.Text = DateTime.Now.ToString("HH:mm:ss");
-                
-            });
-        
-            //// Enumerate all Basler cameras
-            var allCameras = CameraFinder.Enumerate();
-            int cameraCount = allCameras.Count;
-            // Start tasks for each camera (up to 3)
-            List<Task> cameraTasks = new List<Task>();
-
-            if (cameraCount > 0)
-                SetCameraUI(CamFrontLightPulse, cameraCount >= 1);
-            await Task.Delay(200);
-
-            cameraTasks.Add(Task.Run(() => CheckPalletStatus(allCameras[0])));
-
-            if (cameraCount > 1)
-                //cameraTasks.Add(Task.Run(() => ReadTextFromBaslerCamera(allCameras[1])));
-                SetCameraUI(CamTopLightPulse, cameraCount >= 1);
-
-
-            if (cameraCount > 2)
-                SetCameraUI(CamRightLightPulse, cameraCount >= 1);
-
-            await Task.WhenAll(cameraTasks);
-           
-
-
-
-        }
-        public async Task StopPalletDetectionProc()
-        {
-            //await StopBuzzer();
-            await OffBlower();
-            await OffRotatorAsync();
-            Dispatcher.Invoke(async () =>
-            {
-                
-                ExitTimeTxt.Text = DateTime.Now.ToString("HH:mm:ss");
-            });
-        }
-       
-
-
-        private void Page_Unloaded(object sender, RoutedEventArgs e)
-        {
-            StopScale();
-        }
-
         private async Task<bool> LoadModelsAsync()
         {
             return await Task.Run(() =>
@@ -564,6 +511,61 @@ namespace HumanDetection
             });
         }
 
+        #endregion 
+        public async Task StartPalletDetectionProcAsync()
+        {
+            Dispatcher.Invoke(async () =>
+            {
+                EntryTimeTxt.Text = DateTime.Now.ToString("HH:mm:ss");
+                
+            });
+        
+            //// Enumerate all Basler cameras
+            var allCameras = CameraFinder.Enumerate();
+            int cameraCount = allCameras.Count;
+            // Start tasks for each camera (up to 3)
+            List<Task> cameraTasks = new List<Task>();
+
+            if (cameraCount > 0)
+                SetCameraUI(CamFrontLightPulse, cameraCount >= 1);
+            await Task.Delay(200);
+
+            cameraTasks.Add(Task.Run(() => CheckPalletStatus(allCameras[0])));
+
+            if (cameraCount > 1)
+                //cameraTasks.Add(Task.Run(() => ReadTextFromBaslerCamera(allCameras[1])));
+                SetCameraUI(CamTopLightPulse, cameraCount >= 1);
+
+
+            if (cameraCount > 2)
+                SetCameraUI(CamRightLightPulse, cameraCount >= 1);
+
+            await Task.WhenAll(cameraTasks);
+           
+
+
+
+        }
+        public async Task StopPalletDetectionProc()
+        {
+            //await StopBuzzer();
+            await OffBlower();
+            await OffRotatorAsync();
+            Dispatcher.Invoke(async () =>
+            {
+                
+                ExitTimeTxt.Text = DateTime.Now.ToString("HH:mm:ss");
+            });
+        }
+       
+
+
+        private void Page_Unloaded(object sender, RoutedEventArgs e)
+        {
+            StopScale();
+        }
+
+       
         private ObservableCollection<OcrFrameResult> _ocrResults = new ObservableCollection<OcrFrameResult>();
 
         private CancellationTokenSource _ocrCancellationTokenSource;
@@ -576,17 +578,19 @@ namespace HumanDetection
             {
                var image=await CaptureSingleFrameFromCameraAsync(cameraInfo);
                 Image<Rgba32> ConvertedImage = BitmapImageToImageSharp(image);
-                var result = await RunBoxCountingModelAsync(ConvertedImage);
+                ImagePredictionResult result = await RunBoxCountingModelAsync(ConvertedImage, PalletSide.Front);
 
-                bool palletAngleOk = Math.Abs(result.palletAngleDeg) <= 2.0;
+                bool palletAngleOk = Math.Abs(result.PalletAngleDeg) <= 2.0;
                 if (!palletAngleOk)
                 {
-                    Console.WriteLine($"Pallet misaligned: {result.palletAngleDeg:F1}°");
+                    _messageQueue.Enqueue($"Pallet misaligned: {result.PalletAngleDeg:F1}°");
+                    
                     // 🚨 DO NOT CONTINUE PROCESS
                 }
                 else
                 {
-                    Console.WriteLine("Pallet angle OK");
+                    
+                    _messageQueue.Enqueue("Pallet angle OK");
                     // ✅ Continue normal flow
                 }
 
@@ -613,7 +617,7 @@ namespace HumanDetection
         }
 
 
-
+        //Catpure Image form all Camers
         private async Task CaptureAndDisplayAllCamerasAsync()
         {
             try
@@ -812,7 +816,11 @@ namespace HumanDetection
                 MessageBox.Show(ex.Message);
             }
         }
-       
+        /// <summary>
+        /// Save Result to API
+        /// </summary>
+        /// <param name="request"></param>
+        /// <returns></returns>
         private async Task PostDetectionRequestAsync(string request)
         {
             try
@@ -875,13 +883,6 @@ namespace HumanDetection
                 LoadingCard.Visibility = Visibility.Collapsed;
             }
         }
-
-
-
-
-
-
-
         public async Task<List<BitmapImage>> CaptureSingleFrameFromAllCamerasAsync(List<ICameraInfo> cameraInfos, bool FirstTerm)
         {
             var capturedImages = new List<BitmapImage>();
@@ -1050,6 +1051,15 @@ namespace HumanDetection
             // Convert BitmapImages to ImageSharp format for inference
             var imageSharpList = capturedImages.Select(img => BitmapImageToImageSharp(img)).ToList();
             List<byte[]> ocrResults = new List<byte[]>();
+            var boxPredicitonList = new List<YoloPrediction>();
+            PalletSide[] captureOrder =
+                            {
+                                PalletSide.Front,
+                                PalletSide.Right,
+                                PalletSide.Back,
+                                PalletSide.Left
+                            };
+
             for (int i = 0; i < imageSharpList.Count; i++)
             {
                 ReportProgress($"🧠 AI Processing {i + 1}/{imageSharpList.Count}");
@@ -1057,15 +1067,16 @@ namespace HumanDetection
                 // ✅ CLONE image to avoid async overlap
                 var image = imageSharpList[i].Clone();
 
-                var boxTask = RunBoxCountingModelAsync(image);
+                var boxTask = RunBoxCountingModelAsync(image, captureOrder[i]);
                 var humanTask = Task.Run(() => RunHumanDetectionModel(image));
+               
 
                 await Task.WhenAll(boxTask, humanTask);
 
                 var boxResult = boxTask.Result;
                 var humanResult = humanTask.Result;
-
-                NumberOfBox += boxResult.BoxesDetected;
+                boxPredicitonList.AddRange(boxResult.BoxPredictions);
+                //NumberOfBox += boxResult.BoxesDetected;
 
                 if (boxResult.AverageScore > 0)
                 {
@@ -1073,14 +1084,14 @@ namespace HumanDetection
                     avgScoreCount++;
                 }
 
-                if (boxResult.PalletHeight > maxPalletHeight)
+                if (boxResult.PalletHeightMeters > maxPalletHeight)
                 {
-                    maxPalletHeight = boxResult.PalletHeight;
+                    maxPalletHeight = boxResult.PalletHeightMeters;
                 }
 
                 HumanDetected |= humanResult;
 
-                ocrResults.AddRange(boxResult.OcrResult);
+                ocrResults.AddRange(boxResult.BoxesImages);
 
                 // ✅ Dispose cloned image if IDisposable
                 image.Dispose();
@@ -1113,7 +1124,8 @@ namespace HumanDetection
             });
         }
 
-        private async Task<(int BoxesDetected, double PalletHeight, double AverageScore, List<byte[]> OcrResult,double palletAngleDeg)>RunBoxCountingModelAsync(Image<Rgba32> originalImage)
+        private async Task<ImagePredictionResult> RunBoxCountingModelAsync( Image<Rgba32> originalImage, PalletSide side)
+
         {
             UpdateProgressStatus("Box Counting AI Model Start");
 
@@ -1166,6 +1178,8 @@ namespace HumanDetection
             var predictions = rawPredictions
                 .Where(p => !p.Label.Name.Equals("pallet", StringComparison.OrdinalIgnoreCase))
                 .ToList();
+
+           
 
             //if (tallestPallet != null)
             //    predictions.Add(tallestPallet);
@@ -1339,7 +1353,16 @@ namespace HumanDetection
                 }
             }
 
-            return (boxCount, palletHeightMeters, averageScore, cropByteList, palletAngleDeg);
+            return new ImagePredictionResult
+            {
+                Side = side,
+                BoxPredictions = boxPredictions,
+                PalletHeightMeters = palletHeightMeters,
+                AverageScore = averageScore,
+                PalletAngleDeg = palletAngleDeg,
+                BoxesImages=cropByteList
+            };
+
         }
 
         private double CalculatePalletAngle(Image<Rgba32> palletImage)
