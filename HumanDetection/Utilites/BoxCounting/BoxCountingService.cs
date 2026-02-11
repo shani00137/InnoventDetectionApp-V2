@@ -1,43 +1,72 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Text;
+using System.Linq;
 using Yolov5Net.Scorer;
 
 namespace Utilites.BoxCounting
 {
     public class BoxCountingService
     {
-        public List<int> GetRowPattern(List<YoloPrediction> boxes)
+        public static int CountBox(
+            List<YoloPrediction> frontBoxes,
+            List<YoloPrediction> rightBoxes,
+            List<YoloPrediction> backBoxes,
+            List<YoloPrediction> leftBoxes)
         {
-            var rows = new List<int>();
+            // Remove overlap columns
+            frontBoxes = RemoveOverlapColumn(frontBoxes, true);
+            rightBoxes = RemoveOverlapColumn(rightBoxes, false);
+            backBoxes = RemoveOverlapColumn(backBoxes, false);
+            leftBoxes = RemoveOverlapColumn(leftBoxes, false);
 
-            if (!boxes.Any())
-                return rows;
+            // Safe null handling
+            int frontCount = frontBoxes?.Count ?? 0;
+            int rightCount = rightBoxes?.Count ?? 0;
+            int backCount = backBoxes?.Count ?? 0;
+            int leftCount = leftBoxes?.Count ?? 0;
 
-            var sorted = boxes.OrderBy(b => b.CenterY).ToList();
-            float avgHeight = sorted.Average(b => b.Height);
+            // Final total
+            int totalBoxes = frontCount + rightCount + backCount + leftCount;
 
-            float threshold = avgHeight * 0.6f;
-
-            var currentRow = new List<YoloPrediction> { sorted[0] };
-
-            for (int i = 1; i < sorted.Count; i++)
-            {
-                if (Math.Abs(sorted[i].CenterY - currentRow[0].CenterY) < threshold)
-                {
-                    currentRow.Add(sorted[i]);
-                }
-                else
-                {
-                    rows.Add(currentRow.Count);
-                    currentRow = new List<YoloPrediction> { sorted[i] };
-                }
-            }
-
-            rows.Add(currentRow.Count);
-
-            return rows;
+            return totalBoxes;
         }
 
+        public static List<YoloPrediction> RemoveOverlapColumn(
+            List<YoloPrediction> boxes,
+            bool isFrontImage)
+        {
+            // FRONT image keeps everything
+            if (isFrontImage)
+                return boxes ?? new List<YoloPrediction>();
+
+            if (boxes == null || boxes.Count == 0)
+                return boxes ?? new List<YoloPrediction>();
+
+            // Sort boxes left → right
+            var sorted = boxes
+                .OrderBy(b => b.Rectangle.X + b.Rectangle.Width / 2)
+                .ToList();
+
+            // Get median width
+            var widths = sorted
+                .Select(b => b.Rectangle.Width)
+                .OrderBy(w => w)
+                .ToList();
+
+            float medianWidth = widths[widths.Count / 2];
+
+            // First column threshold
+            float firstColumnLimit =
+                (sorted[0].Rectangle.X + sorted[0].Rectangle.Width / 2)
+                + medianWidth * 0.6f;
+
+            // Remove overlap column
+            var filtered = sorted
+                .Where(b =>
+                    (b.Rectangle.X + b.Rectangle.Width / 2) > firstColumnLimit)
+                .ToList();
+
+            return filtered;
+        }
     }
 }

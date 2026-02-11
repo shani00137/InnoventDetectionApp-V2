@@ -57,6 +57,7 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using Tesseract;
 using Utilites;
+using Utilites.BoxCounting;
 using Utilites.PythonScripts;
 using Utilites.Weight;
 using Yolov5Net.Scorer;
@@ -1030,86 +1031,123 @@ namespace HumanDetection
             });
         }
 
-        private async Task<(double AvScore, bool HumanDetected, int NumberOfBox, List<byte[]> OCRBytes, double maxPalletHeight)>RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
+        private async Task<(double AvScore, bool HumanDetected, int NumberOfBox, List<byte[]> OCRBytes, double maxPalletHeight)>
+RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
         {
             UpdateProgressStatus("AI Model Start to detect");
 
             if (capturedImages == null || capturedImages.Count < 1)
             {
                 MessageBox.Show("❌ Not enough images to process AI models.");
-                return (0.0, false, 0, null,0);
+                return (0.0, false, 0, null, 0);
             }
 
             int NumberOfBox = 0;
-            double maxPalletHeight = 0.0; // Track the highest height
+            double maxPalletHeight = 0.0;
             double totalAvgScore = 0.0;
             int avgScoreCount = 0;
             bool HumanDetected = false;
 
-            string allOcrTexts = ""; // To collect OCR results
+            // Convert BitmapImages to ImageSharp
+            var imageSharpList = capturedImages
+                                    .Select(img => BitmapImageToImageSharp(img))
+                                    .ToList();
 
-            // Convert BitmapImages to ImageSharp format for inference
-            var imageSharpList = capturedImages.Select(img => BitmapImageToImageSharp(img)).ToList();
-            List<byte[]> ocrResults = new List<byte[]>();
-            var boxPredicitonList = new List<YoloPrediction>();
+            List<byte[]> ocrResults = new();
+
+            // Store predictions per side
+            List<YoloPrediction> frontBoxes = new();
+            List<YoloPrediction> rightBoxes = new();
+            List<YoloPrediction> backBoxes = new();
+            List<YoloPrediction> leftBoxes = new();
+
             PalletSide[] captureOrder =
-                            {
-                                PalletSide.Front,
-                                PalletSide.Right,
-                                PalletSide.Back,
-                                PalletSide.Left
-                            };
+            {
+        PalletSide.Front,
+        PalletSide.Right,
+        PalletSide.Back,
+        PalletSide.Left
+    };
 
-            for (int i = 0; i < imageSharpList.Count; i++)
+            for (int i = 0; i < imageSharpList.Count && i < captureOrder.Length; i++)
             {
                 ReportProgress($"🧠 AI Processing {i + 1}/{imageSharpList.Count}");
 
-                // ✅ CLONE image to avoid async overlap
                 var image = imageSharpList[i].Clone();
+                var currentSide = captureOrder[i];
 
-                var boxTask = RunBoxCountingModelAsync(image, captureOrder[i]);
+                var boxTask = RunBoxCountingModelAsync(image, currentSide);
                 var humanTask = Task.Run(() => RunHumanDetectionModel(image));
-               
 
                 await Task.WhenAll(boxTask, humanTask);
 
                 var boxResult = boxTask.Result;
                 var humanResult = humanTask.Result;
-                boxPredicitonList.AddRange(boxResult.BoxPredictions);
-                //NumberOfBox += boxResult.BoxesDetected;
 
+                // ✅ Collect average score
                 if (boxResult.AverageScore > 0)
                 {
                     totalAvgScore += boxResult.AverageScore;
                     avgScoreCount++;
                 }
 
+                // ✅ Track max pallet height
                 if (boxResult.PalletHeightMeters > maxPalletHeight)
                 {
                     maxPalletHeight = boxResult.PalletHeightMeters;
                 }
 
+                // ✅ Human detection
                 HumanDetected |= humanResult;
 
-                ocrResults.AddRange(boxResult.BoxesImages);
+                // ✅ OCR images
+                if (boxResult.BoxesImages != null)
+                    ocrResults.AddRange(boxResult.BoxesImages);
 
-                // ✅ Dispose cloned image if IDisposable
+                // ✅ Store predictions by side
+                switch (currentSide)
+                {
+                    case PalletSide.Front:
+                        frontBoxes = boxResult.BoxPredictions ?? new();
+                        break;
+
+                    case PalletSide.Right:
+                        rightBoxes = boxResult.BoxPredictions ?? new();
+                        break;
+
+                    case PalletSide.Back:
+                        backBoxes = boxResult.BoxPredictions ?? new();
+                        break;
+
+                    case PalletSide.Left:
+                        leftBoxes = boxResult.BoxPredictions ?? new();
+                        break;
+                }
+
                 image.Dispose();
-               
             }
 
+            // ✅ Count boxes properly
+            NumberOfBox = BoxCountingService.CountBox(
+                frontBoxes,
+                rightBoxes,
+                backBoxes,
+                leftBoxes
+            );
 
+            // ✅ Dispose original ImageSharp images
+            foreach (var img in imageSharpList)
+                img.Dispose();
 
+            // Final average score
+            double finalAverageScore =
+                avgScoreCount > 0 ? totalAvgScore / avgScoreCount : 0.0;
 
-            // Calculate final average score
-            double finalAverageScore = avgScoreCount > 0 ? totalAvgScore / avgScoreCount : 0.0;
-
-            // Update UI
+            // ✅ Update UI safely
             Dispatcher.Invoke(() =>
             {
                 NoBoxTxt.Text = $"{NumberOfBox}";
                 PalletHeightTxt.Text = $"{maxPalletHeight:F2} m";
-                // Example: OCRTextBlock.Text = combinedOcrText;
             });
 
             return (finalAverageScore, HumanDetected, NumberOfBox, ocrResults, maxPalletHeight);
