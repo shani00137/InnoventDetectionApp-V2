@@ -14,6 +14,28 @@ namespace Model
         public int text_count { get; set; }
         public List<RawTextItem> raw_text { get; set; }
     }
+    public class OcrApiResponse
+    {
+        public Dictionary<string, OcrImageResult> results { get; set; }
+        public int total_images { get; set; }
+        public double total_time_min { get; set; }
+        public double total_time_sec { get; set; }
+    }
+    public class OcrImageResult
+    {
+        public int barcode_count { get; set; }
+        public List<string> barcodes { get; set; }
+
+        public int date_count { get; set; }
+        public List<string> dates { get; set; }
+
+        public int text_count { get; set; }
+        public List<string> raw_text { get; set; }
+
+        public double processing_time_sec { get; set; }
+
+        public string error { get; set; }   // optional (unsupported file case)
+    }
     public class BarcodeItem
     {
         public string value { get; set; }

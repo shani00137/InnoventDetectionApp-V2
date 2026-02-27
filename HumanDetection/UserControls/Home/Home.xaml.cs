@@ -226,8 +226,11 @@ namespace HumanDetection
 
 
 
-            await Task.Delay(500);
+            
             LoadingOverlay.Visibility = Visibility.Collapsed;
+            await Task.Delay(1000);
+            _messageQueue.Enqueue("Process start manuly");
+            await StartPalletDetectionProcAsync();
         }
 
         private async Task RunCheck( ProgressBar loader, TextBlock success,TextBlock error,int delay)
@@ -572,39 +575,48 @@ namespace HumanDetection
         private CancellationTokenSource _ocrCancellationTokenSource;
 
         #region AIModel Detection
-        private async void CheckPalletStatus(ICameraInfo cameraInfo)
+        private async Task CheckPalletStatus(ICameraInfo cameraInfo)
         {
-
             try
             {
-               var image=await CaptureSingleFrameFromCameraAsync(cameraInfo);
-                Image<Rgba32> ConvertedImage = BitmapImageToImageSharp(image);
-                ImagePredictionResult result = await RunBoxCountingModelAsync(ConvertedImage, PalletSide.Front);
-
-                bool palletAngleOk = Math.Abs(result.PalletAngleDeg) <= 2.0;
-                if (!palletAngleOk)
+                bool palletAligned = false;
+                _messageQueue.Enqueue($"Checking Pallet alignment");
+                while (!palletAligned)
                 {
-                    _messageQueue.Enqueue($"Pallet misaligned: {result.PalletAngleDeg:F1}°");
-                    
-                    // 🚨 DO NOT CONTINUE PROCESS
+                    var image = await CaptureSingleFrameFromCameraAsync(cameraInfo);
+                    Image<Rgba32> convertedImage = BitmapImageToImageSharp(image);
+                    ImagePredictionResult result = await RunBoxCountingModelAsync(convertedImage, PalletSide.Front);
+
+                    // Check pallet angle
+                    palletAligned = result.PalletAngleDeg > 0;
+
+                    if (!palletAligned)
+                    {
+                        _messageQueue.Enqueue($"Pallet misaligned");
+
+                        // Restart rotator
+                        await TurnOnRotatorAsync();
+                        await Task.Delay(5000); // Wait for rotator to stabilize
+                        await StartRoutatorWithDuration(2000);
+
+                        // Optionally, small delay before taking next picture
+                        await Task.Delay(500);
+                    }
+                    else
+                    {
+                        _messageQueue.Enqueue("Pallet angle OK");
+                    }
                 }
-                else
-                {
-                    
-                    _messageQueue.Enqueue("Pallet angle OK");
-                    // ✅ Continue normal flow
-                }
 
-                await Dispatcher.InvokeAsync(async () =>
-                {
-                    ShowPalletFromLeft();
-                    await Task.Delay(100);
-                    await PalletDetectedSoundStart();
-                    await Task.Delay(100);
-                    await CaptureAndDisplayAllCamerasAsync();
-
-
-                });
+                // Pallet aligned → continue normal workflow
+                //await Dispatcher.InvokeAsync(async () =>
+                //{
+                //    ShowPalletFromLeft();
+                //    await Task.Delay(100);
+                //    await PalletDetectedSoundStart();
+                //    await Task.Delay(100);
+                //    await CaptureAndDisplayAllCamerasAsync();
+                //});
             }
             catch (Exception ex)
             {
@@ -694,13 +706,21 @@ namespace HumanDetection
                         HumanDetectedTxt.Text = "Yes";
                     }
                     var cropByteList = aiResult.OCRBytes;
-                   List<OcrResult>  ocrResultList=new List<OcrResult>();
+                    List<OcrImageResult> ocrResultList = new List<OcrImageResult>();
+
                     if (cropByteList.Any())
                     {
-                        var res = await RunOcrAsync(cropByteList);
-                        ocrResultList.Add(res);
-                        //combinedOcrText = string.Join(" ", OcrResultToString(ocrResult));
+                        var api = await RunOcrAsync(cropByteList);
 
+                        if (api?.results != null)
+                        {
+                            var valid = api.results
+                                .Where(x => !string.IsNullOrWhiteSpace(x.Key))          // skip empty filename
+                                .Where(x => string.IsNullOrWhiteSpace(x.Value?.error))  // skip error images
+                                .Select(x => x.Value);
+
+                            ocrResultList.AddRange(valid);
+                        }
                     }
                     LoadingCard.Visibility = Visibility.Collapsed;
                     StopCountdown();
@@ -716,12 +736,11 @@ namespace HumanDetection
 
 
                     int distinctBarcodes = ocrResultList
-                                            .Where(r => r.barcodes != null)
-                                            .SelectMany(r => r.barcodes)
-                                            .Select(b => b.value)
-                                            .Where(v => !string.IsNullOrWhiteSpace(v))
-                                            .Distinct(StringComparer.OrdinalIgnoreCase)
-                                            .Count();
+                                    .Where(r => r?.barcodes != null)
+                                    .SelectMany(r => r.barcodes)
+                                    .Where(v => !string.IsNullOrWhiteSpace(v) && v.Length > 6)
+                                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                                    .Count();
 
                     if (distinctBarcodes > 1)
                     {
@@ -730,14 +749,13 @@ namespace HumanDetection
                         BarcodeSKUText.Text = "Yes";
                         await PlayAlertForSystem();
                     }
-                    
+
                     int distinctDates = ocrResultList
-                                        .Where(r => r.dates != null)
-                                        .SelectMany(r => r.dates)
-                                        .Select(d => d.value)
-                                        .Where(v => !string.IsNullOrWhiteSpace(v))
-                                        .Distinct()
-                                        .Count();
+                            .Where(r => r?.dates != null)
+                            .SelectMany(r => r.dates)
+                            .Where(v => !string.IsNullOrWhiteSpace(v))
+                            .Distinct()
+                            .Count();
 
                     if (distinctDates >= 3)
                     {
@@ -748,9 +766,10 @@ namespace HumanDetection
                     }
 
                     string OCRResultInString = "";
+
                     foreach (var q in ocrResultList)
                     {
-                        OCRResultInString = string.Join("", OcrResultToString(q));
+                        OCRResultInString += OcrResultToString(q) + Environment.NewLine;
                     }
                     Dispatcher.Invoke(() =>
                     {
@@ -917,6 +936,10 @@ namespace HumanDetection
                                     bitmapImage.Freeze();
 
                                     capturedImages.Add(bitmapImage);
+                                    Dispatcher.Invoke(() =>
+                                    {
+                                        PaletImage.Source = bitmapImage;
+                                    });
                                 }
                             }
 
@@ -1298,8 +1321,26 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
                 using var crop = originalImage.Clone(ctx => ctx.Crop(cropRect));
 
                 using var ms = new MemoryStream();
+                // Create unique temp file name
+                //string tempFolder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "BoxCrops");
+
+                //// Ensure folder exists
+                //Directory.CreateDirectory(tempFolder);
+
+                //string fileName = $"crop_{DateTime.Now:yyyyMMdd_HHmmss_fff}_{Guid.NewGuid():N}.jpg";
+                //string filePath = System.IO.Path.Combine(tempFolder, fileName);
+
+                // Save to memory (existing logic)
+                //using var ms = new MemoryStream();
+                //crop.SaveAsJpeg(ms);
                 crop.SaveAsJpeg(ms); // OCR works well with JPEG
                 cropByteList.Add(ms.ToArray());
+
+                //ms.Position = 0;
+                //using (var fs = new FileStream(filePath, FileMode.Create, FileAccess.Write))
+                //{
+                //    ms.CopyTo(fs);
+                //}
             }
 
 
@@ -1356,23 +1397,26 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
                     });
                 }
 
-                
 
-                if (tallestPallet != null && tallestPallet.Score > 0.70)
+
+                if (averageScore != null && averageScore < 0.70)
                 {
-                    float scaleX1 = (float)originalImage.Width / modelWidth;
-                    float scaleY1 = (float)originalImage.Height / modelHeight;
+                    //float scaleX1 = (float)originalImage.Width / modelWidth;
+                    //float scaleY1 = (float)originalImage.Height / modelHeight;
 
-                    int px = (int)(tallestPallet.Rectangle.X * scaleX1);
-                    int py = (int)(tallestPallet.Rectangle.Y * scaleY1);
-                    int pw = (int)(tallestPallet.Rectangle.Width * scaleX1);
-                    int ph = (int)(tallestPallet.Rectangle.Height * scaleY1);
+                    //int px = (int)(tallestPallet.Rectangle.X * scaleX1);
+                    //int py = (int)(tallestPallet.Rectangle.Y * scaleY1);
+                    //int pw = (int)(tallestPallet.Rectangle.Width * scaleX1);
+                    //int ph = (int)(tallestPallet.Rectangle.Height * scaleY1);
 
-                    var palletRect = new SixLabors.ImageSharp.Rectangle(px, py, pw, ph);
+                    //var palletRect = new SixLabors.ImageSharp.Rectangle(px, py, pw, ph);
 
-                    using var palletCrop = originalImage.Clone(x => x.Crop(palletRect));
+                    //using var palletCrop = originalImage.Clone(x => x.Crop(palletRect));
 
-                    palletAngleDeg = CalculatePalletAngle(palletCrop);
+                    palletAngleDeg = -1;
+                }
+                else {
+                    palletAngleDeg = 1;
                 }
 
                 using (var ms = new MemoryStream())
@@ -1460,18 +1504,22 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
         }
        
 
-        private async Task<OcrResult> RunOcrAsync(List<byte[]> images)
+        private async Task<OcrApiResponse> RunOcrAsync(List<byte[]> images)
         {
+            
             using var client = new HttpClient();
             using var content = new MultipartFormDataContent();
             client.Timeout = TimeSpan.FromMinutes(5);
+            int index = 0;
+
             foreach (var img in images)
             {
                 var byteContent = new ByteArrayContent(img);
                 byteContent.Headers.ContentType =
                     new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
 
-                content.Add(byteContent, "image", "capture.jpg");
+                string fileName = $"capture_{index++}.jpg";   // ✅ unique name
+                content.Add(byteContent, "images", fileName);
             }
 
             var response = await client.PostAsync(
@@ -1481,8 +1529,7 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
 
             response.EnsureSuccessStatusCode();
             var json = await response.Content.ReadAsStringAsync();
-
-            return JsonConvert.DeserializeObject<OcrResult>(json);
+            return JsonConvert.DeserializeObject<OcrApiResponse>(json);
         }
 
 
@@ -1767,7 +1814,7 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
             ImageDialogHost.IsOpen = true;
           
         }
-        private string OcrResultToString(OcrResult result)
+        private string OcrResultToString(OcrImageResult result)
         {
             if (result == null)
                 return "No OCR result";
@@ -1780,7 +1827,7 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
                 sb.AppendLine("📦 Barcodes:");
                 foreach (var b in result.barcodes)
                 {
-                    sb.AppendLine($"  • {b.value}  (conf: {b.confidence:0.00}, src: {b.source})");
+                    sb.AppendLine($"  • {b}");
                 }
                 sb.AppendLine();
             }
@@ -1791,7 +1838,7 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
                 sb.AppendLine("📅 Dates:");
                 foreach (var d in result.dates)
                 {
-                    sb.AppendLine($"  • {d.value}  (conf: {d.confidence:0.00})");
+                    sb.AppendLine($"  • {d}");
                 }
                 sb.AppendLine();
             }
@@ -1802,13 +1849,12 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
                 sb.AppendLine("📝 Text:");
                 foreach (var t in result.raw_text)
                 {
-                    sb.AppendLine($"  • {t.text}  (conf: {t.confidence:0.00})");
+                    sb.AppendLine($"  • {t}");
                 }
             }
 
             return sb.ToString();
         }
-
         #endregion
         #region UIControls
         private void StartCountdown()
