@@ -108,7 +108,7 @@
                             Foreground="#9D4EDD"
                             DockPanel.Dock="Left"/>
                                                             <StackPanel Margin="12,0,0,0">
-                                                                <TextBlock  Foreground="White" Text="Duplicate Barcode"
+                                                                <TextBlock FontSize="10" Foreground="White" Text="Duplicate Barcode"
                FontWeight="SemiBold"/>
                                                                 <TextBlock Text="{Binding DublicateBarcode}"
                FontWeight="Bold"
@@ -240,7 +240,42 @@
                                                 </Grid>
 
                                             </StackPanel>
+                                            <StackPanel>
+                                                <ScrollViewer Margin="10,10,10,10"
+                                                  VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled">
 
+                                                    <TextBox Text="{Binding AllDatesList}"
+                                                     TextWrapping="Wrap"
+                                                     IsReadOnly="True"
+                                                     BorderThickness="0"
+                                                     Background="Transparent"
+                                                     Foreground="White"
+                                                     FontSize="16"
+                                                     AcceptsReturn="True"
+                                                     VerticalScrollBarVisibility="Disabled"/>
+
+                                                </ScrollViewer>
+
+                                            </StackPanel>
+                                            <StackPanel>
+                                                <ScrollViewer Margin="10,10,10,10"
+        VerticalScrollBarVisibility="Auto"
+        HorizontalScrollBarVisibility="Disabled">
+
+                                                    <TextBox Text="{Binding BarcodeList}"
+                                                   TextWrapping="Wrap"
+                                                   IsReadOnly="True"
+                                                   BorderThickness="0"
+                                                   Background="Transparent"
+                                                   Foreground="White"
+                                                   FontSize="16"
+                                                   AcceptsReturn="True"
+                                                   VerticalScrollBarVisibility="Disabled"/>
+
+                                                </ScrollViewer>
+
+                                            </StackPanel>
 
                                             <ScrollViewer VerticalScrollBarVisibility="Auto"
               Height="200"
@@ -304,7 +339,7 @@
                                                         </Setter>
                                                     </Style>
                                                 </ScrollViewer.Resources>
- 
+                                               
                                                 <TextBox Text="{Binding OCRResult}"
                                                  TextWrapping="Wrap"
                                                  IsReadOnly="True" MinHeight="200"

@@ -8,28 +8,70 @@ namespace Utilites.BoxCounting
     public class BoxCountingService
     {
         public static int CountBox(
-            List<YoloPrediction> frontBoxes,
-            List<YoloPrediction> rightBoxes,
-            List<YoloPrediction> backBoxes,
-            List<YoloPrediction> leftBoxes)
+        List<YoloPrediction> front,
+        List<YoloPrediction> right,
+        List<YoloPrediction> back,
+        List<YoloPrediction> left)
         {
-            // Remove overlap columns
-            frontBoxes = RemoveOverlapColumn(frontBoxes, true);
-            rightBoxes = RemoveOverlapColumn(rightBoxes, false);
-            backBoxes = RemoveOverlapColumn(backBoxes, false);
-            leftBoxes = RemoveOverlapColumn(leftBoxes, false);
+            int layers = CountLayers(front);
+            int depth = CountDepth(right);
 
-            // Safe null handling
-            int frontCount = frontBoxes?.Count ?? 0;
-            int rightCount = rightBoxes?.Count ?? 0;
-            int backCount = backBoxes?.Count ?? 0;
-            int leftCount = leftBoxes?.Count ?? 0;
+            if (layers == 0)
+                layers = CountLayers(back);
 
-            // Final total
-            int totalBoxes = frontCount + rightCount + backCount + leftCount;
+            if (depth == 0)
+                depth = CountDepth(left);
 
-            return totalBoxes;
+            int total = layers * depth;
+
+            return total;
         }
+
+        private static int CountLayers(List<YoloPrediction> predictions)
+        {
+            if (predictions == null || predictions.Count == 0)
+                return 0;
+
+            return predictions
+                .Select(p => Math.Round(p.Rectangle.Y / 50.0))
+                .Distinct()
+                .Count();
+        }
+
+        private static int CountDepth(List<YoloPrediction> predictions)
+        {
+            if (predictions == null || predictions.Count == 0)
+                return 0;
+
+            return predictions
+                .Select(p => Math.Round(p.Rectangle.X / 50.0))
+                .Distinct()
+                .Count();
+        }
+
+        //public static int CountBox(
+        //    List<YoloPrediction> frontBoxes,
+        //    List<YoloPrediction> rightBoxes,
+        //    List<YoloPrediction> backBoxes,
+        //    List<YoloPrediction> leftBoxes)
+        //{
+        //    // Remove overlap columns
+        //    frontBoxes = RemoveOverlapColumn(frontBoxes, true);
+        //    rightBoxes = RemoveOverlapColumn(rightBoxes, false);
+        //    backBoxes = RemoveOverlapColumn(backBoxes, false);
+        //    leftBoxes = RemoveOverlapColumn(leftBoxes, false);
+
+        //    // Safe null handling
+        //    int frontCount = frontBoxes?.Count ?? 0;
+        //    int rightCount = rightBoxes?.Count ?? 0;
+        //    int backCount = backBoxes?.Count ?? 0;
+        //    int leftCount = leftBoxes?.Count ?? 0;
+
+        //    // Final total
+        //    int totalBoxes = frontCount + rightCount + backCount + leftCount;
+
+        //    return totalBoxes;
+        //}
 
         public static List<YoloPrediction> RemoveOverlapColumn(
             List<YoloPrediction> boxes,

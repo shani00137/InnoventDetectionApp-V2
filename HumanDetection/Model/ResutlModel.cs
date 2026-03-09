@@ -13,12 +13,16 @@ namespace Model
         public string? SupplierName { get; set; }
         public int? BarcodeCodeCount { get; set; }
         public bool? DublicateBarcode { get; set; }
+        public int? DublicateBarcodeCount { get; set; }
         public string? HumanDetect { get; set; }
         public DateTime? StartTime { get; set; }
         public DateTime? EndTime { get; set; }
         public string? OCRResult { get; set; }
         public double? Score { get; set; }
         public string? Name {get;set;}
-       
+        public string? AllDatesList { get; set; }
+        public string? BarcodeList { get; set; }
+
+
     }
 }

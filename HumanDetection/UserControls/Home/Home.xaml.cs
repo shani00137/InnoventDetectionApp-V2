@@ -93,7 +93,7 @@ namespace HumanDetection
         private IAudioManager audioManager;
         private bool _isAlertPlaying = false;
         private bool _isSidebarOpen = false;
-        public  AccessController _ac;
+        public AccessController _ac;
 
         private const int TargetFPS = 8;
         private const int DetectionWidth = 640;
@@ -107,10 +107,10 @@ namespace HumanDetection
         public ObservableCollection<BitmapImage> CapturedImages { get; set; }
         public ObservableCollection<ResutlModel> ResultDataList { get; set; }
         private ScaleSerialReader? _reader;
-        private  OcrPythonClient _ocrHost;
+        private OcrPythonClient _ocrHost;
         private bool _isPalletDetectionRunning = false;
         private CancellationTokenSource? _palletCts;
-        public bool FirstTerm=true;
+        public bool FirstTerm = true;
         public string pythonExe = @"C:\Users\Owner\AppData\Local\Programs\Python\Python310\python.exe";
         //public string pythonExe = @" C:\Users\USER\AppData\Local\Programs\Python\Python310\python.exe";
         private readonly SnackbarMessageQueue _messageQueue = new SnackbarMessageQueue(TimeSpan.FromSeconds(3));
@@ -138,7 +138,7 @@ namespace HumanDetection
         {
 
             _frame = new Mat();
-             //LoadModels();
+            //LoadModels();
 
         }
         #region Load Application Model and Devices
@@ -146,21 +146,21 @@ namespace HumanDetection
         {
             try
             {
-                
+
                 _settings = SettingsRepository.GetSettings();
-                if(_settings!=null)
-               _ac =new AccessController($"{_settings.MoxIP}");
-        
+                if (_settings != null)
+                    _ac = new AccessController($"{_settings.MoxIP}");
+
                 ResultDialoag.Visibility = Visibility.Visible;
 
                 ResultDataList = new ObservableCollection<ResutlModel>();
 
                 // Show loading indicator
                 await PrepareAllDevicesAndModels();
-              
-               
 
-               
+
+
+
                 snackbarMesssage.MessageQueue = _messageQueue; // Assign queue
 
             }
@@ -178,7 +178,7 @@ namespace HumanDetection
         {
             LoadingOverlay.Visibility = Visibility.Visible;
 
-            bool modelOk = await RunModelCheck( AiLoading,AiCheck, AiError, LoadModelsAsync);
+            bool modelOk = await RunModelCheck(AiLoading, AiCheck, AiError, LoadModelsAsync);
 
             if (!modelOk)
             {
@@ -186,7 +186,7 @@ namespace HumanDetection
                 //return; // stop further checks
             }
             await Task.Delay(500);
-            bool weightOk = await RunDeviceCheck( WeightLoading, WeightCheck,WeightError, StartScaleAsync);
+            bool weightOk = await RunDeviceCheck(WeightLoading, WeightCheck, WeightError, StartScaleAsync);
 
             if (!weightOk)
             {
@@ -194,14 +194,15 @@ namespace HumanDetection
                 //return; // stop startup if critical
             }
 
-            bool gpioOk = await RunDeviceCheck( GpioLoading, GpioCheck, GpioError, CheckGpioAsync);
+            bool gpioOk = await RunDeviceCheck(GpioLoading, GpioCheck, GpioError, CheckGpioAsync);
 
             if (!gpioOk)
             {
                 ProgressTxt.Text = "GPIO device not reachable!";
                 //return;
             }
-            else {
+            else
+            {
                 await TurnOnRotatorAsync();
             }
 
@@ -210,7 +211,7 @@ namespace HumanDetection
             if (!cameraOk)
             {
                 ProgressTxt.Text = "Camera not detected or insufficient cameras!";
-               
+
             }
             bool apiOk = await RunDeviceCheck(
                                                 APILoading,
@@ -226,14 +227,14 @@ namespace HumanDetection
 
 
 
-            
+
             LoadingOverlay.Visibility = Visibility.Collapsed;
             await Task.Delay(1000);
             _messageQueue.Enqueue("Process start manuly");
             await StartPalletDetectionProcAsync();
         }
 
-        private async Task RunCheck( ProgressBar loader, TextBlock success,TextBlock error,int delay)
+        private async Task RunCheck(ProgressBar loader, TextBlock success, TextBlock error, int delay)
         {
             loader.Visibility = Visibility.Visible;
             success.Visibility = Visibility.Collapsed;
@@ -246,7 +247,7 @@ namespace HumanDetection
             loader.Visibility = Visibility.Collapsed;
             (ok ? success : error).Visibility = Visibility.Visible;
         }
-        private async Task<bool> RunModelCheck( ProgressBar loader,TextBlock success, TextBlock error, Func<Task<bool>> action)
+        private async Task<bool> RunModelCheck(ProgressBar loader, TextBlock success, TextBlock error, Func<Task<bool>> action)
         {
             loader.Visibility = Visibility.Visible;
             success.Visibility = Visibility.Collapsed;
@@ -273,7 +274,7 @@ namespace HumanDetection
 
             return result;
         }
-        private async Task<bool> RunDeviceCheck(ProgressBar loader,TextBlock success, TextBlock error, Func<Task<bool>> action)
+        private async Task<bool> RunDeviceCheck(ProgressBar loader, TextBlock success, TextBlock error, Func<Task<bool>> action)
         {
             loader.Visibility = Visibility.Visible;
             success.Visibility = Visibility.Collapsed;
@@ -409,7 +410,7 @@ namespace HumanDetection
                 try
                 {
                     var resp = await http.GetAsync("http://127.0.0.1:5000/ocr");
-                    if (resp.StatusCode==HttpStatusCode.MethodNotAllowed)
+                    if (resp.StatusCode == HttpStatusCode.MethodNotAllowed)
                         return true;
                 }
                 catch
@@ -521,9 +522,9 @@ namespace HumanDetection
             Dispatcher.Invoke(async () =>
             {
                 EntryTimeTxt.Text = DateTime.Now.ToString("HH:mm:ss");
-                
+
             });
-        
+
             //// Enumerate all Basler cameras
             var allCameras = CameraFinder.Enumerate();
             int cameraCount = allCameras.Count;
@@ -545,7 +546,7 @@ namespace HumanDetection
                 SetCameraUI(CamRightLightPulse, cameraCount >= 1);
 
             await Task.WhenAll(cameraTasks);
-           
+
 
 
 
@@ -557,11 +558,11 @@ namespace HumanDetection
             await OffRotatorAsync();
             Dispatcher.Invoke(async () =>
             {
-                
+
                 ExitTimeTxt.Text = DateTime.Now.ToString("HH:mm:ss");
             });
         }
-       
+
 
 
         private void Page_Unloaded(object sender, RoutedEventArgs e)
@@ -569,7 +570,7 @@ namespace HumanDetection
             StopScale();
         }
 
-       
+
         private ObservableCollection<OcrFrameResult> _ocrResults = new ObservableCollection<OcrFrameResult>();
 
         private CancellationTokenSource _ocrCancellationTokenSource;
@@ -581,42 +582,49 @@ namespace HumanDetection
             {
                 bool palletAligned = false;
                 _messageQueue.Enqueue($"Checking Pallet alignment");
+                await Dispatcher.InvokeAsync(async () =>
+                {
+                    LoadingCard.Visibility = Visibility.Visible;
+                });
                 while (!palletAligned)
                 {
                     var image = await CaptureSingleFrameFromCameraAsync(cameraInfo);
                     Image<Rgba32> convertedImage = BitmapImageToImageSharp(image);
                     ImagePredictionResult result = await RunBoxCountingModelAsync(convertedImage, PalletSide.Front);
 
-                    // Check pallet angle
                     palletAligned = result.PalletAngleDeg > 0;
 
                     if (!palletAligned)
                     {
-                        _messageQueue.Enqueue($"Pallet misaligned");
 
-                        // Restart rotator
+
                         await TurnOnRotatorAsync();
-                        await Task.Delay(5000); // Wait for rotator to stabilize
-                        await StartRoutatorWithDuration(2000);
-
-                        // Optionally, small delay before taking next picture
+                        await Task.Delay(5000);
+                        await StartRoutatorWithDuration(2500);
                         await Task.Delay(500);
                     }
                     else
                     {
-                        _messageQueue.Enqueue("Pallet angle OK");
+                        Dispatcher.Invoke(() =>
+                        {
+                            _messageQueue.Enqueue("Pallet angle OK");
+                        });
                     }
                 }
+                await Dispatcher.InvokeAsync(async () =>
+                {
+                    LoadingCard.Visibility = Visibility.Collapsed;
+                });
 
                 // Pallet aligned → continue normal workflow
-                //await Dispatcher.InvokeAsync(async () =>
-                //{
-                //    ShowPalletFromLeft();
-                //    await Task.Delay(100);
-                //    await PalletDetectedSoundStart();
-                //    await Task.Delay(100);
-                //    await CaptureAndDisplayAllCamerasAsync();
-                //});
+                await Dispatcher.InvokeAsync(async () =>
+                {
+                    ShowPalletFromLeft();
+                    await Task.Delay(100);
+                    await PalletDetectedSoundStart();
+                    await Task.Delay(100);
+                    await CaptureAndDisplayAllCamerasAsync();
+                });
             }
             catch (Exception ex)
             {
@@ -648,19 +656,20 @@ namespace HumanDetection
                 while (!detectionPassed)
                 {
                     attempTaken++;
-                    var obj = new ResutlModel {
-                    StartTime = DateTime.Now,
-                    EndTime=null,
-                    TotalBoxes=0,
-                     BarcodeCodeCount=0,
-                      DublicateBarcode=null,
-                       ExpiryDate=null,
-                        HumanDetect=null,
-                         OCRResult=null,
-                          PalletHeight=0,
-                          Score=0,
-                           SupplierName=null,
-                            TotalWeight=null
+                    var obj = new ResutlModel
+                    {
+                        StartTime = DateTime.Now,
+                        EndTime = null,
+                        TotalBoxes = 0,
+                        BarcodeCodeCount = 0,
+                        DublicateBarcode = null,
+                        ExpiryDate = null,
+                        HumanDetect = null,
+                        OCRResult = null,
+                        PalletHeight = 0,
+                        Score = 0,
+                        SupplierName = null,
+                        TotalWeight = null
                     };
                     AddResult(obj, true);
 
@@ -690,17 +699,17 @@ namespace HumanDetection
                     double avgScore = aiResult.AvScore;
                     bool humanDetected = aiResult.HumanDetected;
                     int numberOfBox = aiResult.NumberOfBox;
-                   ScoreTxt.Text = $"{avgScore * 100:0}%";
+                    ScoreTxt.Text = $"{avgScore * 100:0}%";
                     LoadingOverlay.Visibility = Visibility.Collapsed;
 
                     _messageQueue.Enqueue("Please wait Calculate result..");
 
-                   
+
                     LoadingCard.Visibility = Visibility.Visible;
                     if (humanDetected == true)
                     {
                         HumanDetectBox.Background = System.Windows.Media.Brushes.Red;
-                      
+
                         await StartBuzzlerWithDuration(6000, 1);
                         await PlayAlertForSystem();
                         HumanDetectedTxt.Text = "Yes";
@@ -725,11 +734,11 @@ namespace HumanDetection
                     LoadingCard.Visibility = Visibility.Collapsed;
                     StopCountdown();
 
-                    if (aiResult.maxPalletHeight>1.7)
+                    if (aiResult.maxPalletHeight > 1.7)
                     {
                         HeightBox.Background = System.Windows.Media.Brushes.Red;
                         await StartBuzzer();
-                       await PlayAlertForSystem();
+                        await PlayAlertForSystem();
 
 
                     }
@@ -756,6 +765,23 @@ namespace HumanDetection
                             .Where(v => !string.IsNullOrWhiteSpace(v))
                             .Distinct()
                             .Count();
+                    string AllDatesList = string.Join(", ",
+                                            ocrResultList
+                                                .Where(r => r?.dates != null)
+                                                .SelectMany(r => r.dates)
+                                                .Where(d => !string.IsNullOrWhiteSpace(d))
+                                        );
+                    int barcodeCounts = ocrResultList
+                                        .Where(r => r?.barcodes != null)
+                                        .SelectMany(r => r.barcodes)
+                                        .Where(v => !string.IsNullOrWhiteSpace(v) && v.Length > 6)
+                                        .Count();
+
+                    string barcodeList =string.Join(", ", ocrResultList
+                                       .Where(r => r?.barcodes != null)
+                                       .SelectMany(r => r.barcodes)
+                                       .Where(v => !string.IsNullOrWhiteSpace(v) && v.Length > 6)
+                                       .ToList());
 
                     if (distinctDates >= 3)
                     {
@@ -781,23 +807,25 @@ namespace HumanDetection
                             StartTime = DateTime.Now,
                             EndTime = DateTime.Now,
                             TotalBoxes = numberOfBox,
-                            BarcodeCodeCount = 0,
-                            DublicateBarcode = null,
+                            BarcodeCodeCount = barcodeCounts,
+                            DublicateBarcodeCount = distinctBarcodes,
                             ExpiryDate = DateExpireTxt.Text,
                             HumanDetect = humanDetected.ToString(),
                             OCRResult = OCRResultInString,
                             PalletHeight = aiResult.maxPalletHeight,
                             Score = avgScore,
                             SupplierName = null,
-                            TotalWeight = WeightText.Text
+                            TotalWeight = WeightText.Text,
+                            AllDatesList = AllDatesList,
+                            BarcodeList= barcodeList
 
                         };
                         AddResult(obj, false);
                         // OCR result available here
-                       
+
 
                     });
-                    string ResultTooPost =  $"AvgScore {avgScore} TotalWight {WeightText.Text} OCRResponse:{OCRResultInString}";
+                    string ResultTooPost = $"AvgScore {avgScore} TotalWight {WeightText.Text} OCRResponse:{OCRResultInString}";
                     if (avgScore >= 0.60)
                     {
                         detectionPassed = true;
@@ -851,7 +879,7 @@ namespace HumanDetection
                 var payload = new
                 {
                     Name = request,
-                   
+
                     Image = "https://adp-backend-demo.ashybay-437ca219.uaenorth.azurecontainerapps.io/core/uploads/image-1769680856546.png"
                 };
 
@@ -895,7 +923,7 @@ namespace HumanDetection
                 LoadingCard.Visibility = Visibility.Collapsed;
                 await PlayAlertForSystem();
                 //await StartBuzzlerWithDuration(6000, 3);
-                await ResetRecords();
+                //await ResetRecords();
             }
             catch (Exception ex)
             {
@@ -939,7 +967,10 @@ namespace HumanDetection
                                     Dispatcher.Invoke(() =>
                                     {
                                         PaletImage.Source = bitmapImage;
+                                        QuickCamPreview.Source = bitmapImage;
+
                                     });
+                                   
                                 }
                             }
 
@@ -986,8 +1017,12 @@ namespace HumanDetection
                                         var bmp = frame.ToBitmap();
                                         var bitmapImage = ConvertBitmapToImageSource(bmp);
                                         bitmapImage.Freeze();
-
+                                        
                                         capturedImages.Add(bitmapImage);
+                                        Dispatcher.Invoke(() =>
+                                        {
+                                            QuickCamPreview.Source = bitmapImage;
+                                        });
                                     }
                                 }
 
@@ -1036,7 +1071,7 @@ namespace HumanDetection
                                 var bmp = frame.ToBitmap();
                                 var bitmapImage = ConvertBitmapToImageSource(bmp);
                                 bitmapImage.Freeze();
-
+                                //QuickCamPreview.Source= bitmapImage;
                                 Console.WriteLine($"📸 Captured frame from {cameraInfo[CameraInfoKey.ModelName]}");
                                 return bitmapImage;
                             }
@@ -1185,7 +1220,7 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
             });
         }
 
-        private async Task<ImagePredictionResult> RunBoxCountingModelAsync( Image<Rgba32> originalImage, PalletSide side)
+        private async Task<ImagePredictionResult> RunBoxCountingModelAsync(Image<Rgba32> originalImage, PalletSide side)
 
         {
             UpdateProgressStatus("Box Counting AI Model Start");
@@ -1208,7 +1243,7 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
             // ----------------------------------------------------
             // 2. Confidence threshold
             // ----------------------------------------------------
-            double confidenceThreshold = 0.60;
+            double confidenceThreshold = 0.80;
             if (_settings != null &&
                 !string.IsNullOrWhiteSpace(_settings.ConfidenceLevel) &&
                 double.TryParse(_settings.ConfidenceLevel, out var dbValue))
@@ -1221,7 +1256,7 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
             // ----------------------------------------------------
             var rawPredictions = _scorerBoxCountingModel
                 .Predict(resizedImage)
-                .Where(p => p.Score >= confidenceThreshold)
+                .Where(p => p.Score >= 0.60f)
                 .ToList();
 
             // ----------------------------------------------------
@@ -1240,7 +1275,7 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
                 .Where(p => !p.Label.Name.Equals("pallet", StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
-           
+
 
             //if (tallestPallet != null)
             //    predictions.Add(tallestPallet);
@@ -1252,15 +1287,15 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
                 p.Label.Name.Equals("box", StringComparison.OrdinalIgnoreCase));
 
             double palletHeightMeters = 0.0;
-            if (tallestPallet != null && tallestPallet.Score>0.70)
-            {
-                double heightPixels = tallestPallet.Rectangle.Height; // already pixels
+            //if (tallestPallet != null && tallestPallet.Score>0.70)
+            //{
+            //    double heightPixels = tallestPallet.Rectangle.Height; // already pixels
 
-                double mmPerPixel = 2.50; // your calibration at reference distance
+            //    double mmPerPixel = 2.50; // your calibration at reference distance
 
-                double heightMm = heightPixels * mmPerPixel;
-                palletHeightMeters = heightMm / 1000.0;
-            }
+            //    double heightMm = heightPixels * mmPerPixel;
+            //    palletHeightMeters = heightMm / 1000.0;
+            //}
 
             // ----------------------------------------------------
             // 6. Average confidence (box + pallet)
@@ -1270,10 +1305,10 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
                 .Where(p => p.Label.Name.Equals("box", StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
-            if (boxPredictions.Any() && tallestPallet != null)
+            if (boxPredictions.Any())
             {
                 double boxAvg = boxPredictions.Average(p => p.Score);
-                averageScore = (boxAvg + tallestPallet.Score) / 2.0;
+                averageScore = boxAvg;
             }
 
             // ----------------------------------------------------
@@ -1397,25 +1432,20 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
                     });
                 }
 
+                double ScorePercentage = averageScore * 100;
 
-
-                if (averageScore != null && averageScore < 0.70)
+                if (ScorePercentage < 70)
                 {
-                    //float scaleX1 = (float)originalImage.Width / modelWidth;
-                    //float scaleY1 = (float)originalImage.Height / modelHeight;
-
-                    //int px = (int)(tallestPallet.Rectangle.X * scaleX1);
-                    //int py = (int)(tallestPallet.Rectangle.Y * scaleY1);
-                    //int pw = (int)(tallestPallet.Rectangle.Width * scaleX1);
-                    //int ph = (int)(tallestPallet.Rectangle.Height * scaleY1);
-
-                    //var palletRect = new SixLabors.ImageSharp.Rectangle(px, py, pw, ph);
-
-                    //using var palletCrop = originalImage.Clone(x => x.Crop(palletRect));
 
                     palletAngleDeg = -1;
+                    Dispatcher.Invoke(async () =>
+                    {
+                        ScoreTxt.Text = $"{averageScore * 100:0}%";
+
+                    });
                 }
-                else {
+                else
+                {
                     palletAngleDeg = 1;
                 }
 
@@ -1442,7 +1472,7 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
                 PalletHeightMeters = palletHeightMeters,
                 AverageScore = averageScore,
                 PalletAngleDeg = palletAngleDeg,
-                BoxesImages=cropByteList
+                BoxesImages = cropByteList
             };
 
         }
@@ -1492,21 +1522,26 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
         private bool RunHumanDetectionModel(Image<Rgba32> image)
         {
             UpdateProgressStatus("Human Detection AI Model Start");
+
             var predictions = _scorerHumanModel.Predict(image);
 
             bool humanDetected = predictions.Any(p =>
-                p.Label.Name.Equals("person", StringComparison.OrdinalIgnoreCase) ||
-                p.Label.Name.Equals("human", StringComparison.OrdinalIgnoreCase) ||
-                p.Label.Name.Equals("man", StringComparison.OrdinalIgnoreCase) ||
-                p.Label.Name.Equals("woman", StringComparison.OrdinalIgnoreCase));
+                (
+                    p.Label.Name.Equals("person", StringComparison.OrdinalIgnoreCase) ||
+                    p.Label.Name.Equals("human", StringComparison.OrdinalIgnoreCase) ||
+                    p.Label.Name.Equals("man", StringComparison.OrdinalIgnoreCase) ||
+                    p.Label.Name.Equals("woman", StringComparison.OrdinalIgnoreCase)
+                )
+                && p.Score >= 0.82f   // ✅ confidence check
+            );
 
             return humanDetected;
         }
-       
+
 
         private async Task<OcrApiResponse> RunOcrAsync(List<byte[]> images)
         {
-            
+
             using var client = new HttpClient();
             using var content = new MultipartFormDataContent();
             client.Timeout = TimeSpan.FromMinutes(5);
@@ -1562,7 +1597,7 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
                 return bitmapImage;
             }
         }
-      
+
         public string RunOCR(string pythonExe, string scriptPath, string imagePath)
         {
             var psi = new ProcessStartInfo
@@ -1661,6 +1696,15 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
 
                 if (!string.IsNullOrWhiteSpace(input.HumanDetect))
                     resultModel.HumanDetect = input.HumanDetect;
+                if (!string.IsNullOrWhiteSpace(input.AllDatesList))
+                    resultModel.AllDatesList = input.AllDatesList;
+                if (input.DublicateBarcodeCount.HasValue)
+                    resultModel.DublicateBarcodeCount = input.DublicateBarcodeCount;
+                if (!string.IsNullOrWhiteSpace( input.BarcodeList))
+                    resultModel.BarcodeList = input.BarcodeList;
+
+
+                
             }
             // 🔹 ADD NEW RESULT
             else if (isNew)
@@ -1697,7 +1741,7 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
                 PictureDialog.Visibility = Visibility.Visible;
 
                 ResultDialoag.Visibility = Visibility.Collapsed;
-               
+
             }
         }
 
@@ -1714,9 +1758,9 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
 
         private void ResultDialog_RestartProcessClicked(object sender, EventArgs e)
         {
-           RestartProcess();
+            RestartProcess();
 
-             RebootDeviceAsync();
+            RebootDeviceAsync();
 
         }
         public async Task RestartProcess()
@@ -1727,8 +1771,8 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
                 ExitTimeTxt.Text = "";
 
             });
-            DateExireBox.Background = System.Windows.Media.Brushes.Transparent;           
-            SKUDetectBox.Background = System.Windows.Media.Brushes.Transparent; 
+            DateExireBox.Background = System.Windows.Media.Brushes.Transparent;
+            SKUDetectBox.Background = System.Windows.Media.Brushes.Transparent;
             HumanDetectBox.Background = System.Windows.Media.Brushes.Transparent;
             HeightBox.Background = System.Windows.Media.Brushes.Transparent;
             NoBoxTxt.Text = "0";
@@ -1752,10 +1796,11 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
                 SetCameraUI(CamTopLightPulse, cameraCount >= 2);
                 CheckPalletStatus(allCameras[0]);
             }
-            else {
+            else
+            {
                 MessageBox.Show("No Camera found");
             }
-                
+
         }
         public async Task ResetRecords()
         {
@@ -1802,7 +1847,7 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
         }
         private async void StopProc_Click(object sender, EventArgs e)
         {
-           await StopPalletDetectionProc();
+            await StopPalletDetectionProc();
         }
         private void ShowResult_Click(object sender, EventArgs e)
         {
@@ -1812,7 +1857,7 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
             ResultDialoag.Visibility = Visibility.Visible;
 
             ImageDialogHost.IsOpen = true;
-          
+
         }
         private string OcrResultToString(OcrImageResult result)
         {
@@ -2013,7 +2058,7 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
         #endregion
 
         // Create ONE shared controller for the whole class
-       
+
         public async Task StartBuzzer()
         {
             await _ac.StartBuzzerAsync();
@@ -2027,9 +2072,9 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
         public async Task StartBlower()
         {
             await _ac.StartBlowerAsync();
-           
+
         }
-        
+
 
         public async Task OffBlower()
         {
@@ -2055,7 +2100,7 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
 
         }
         public async Task RebootDeviceAsync()
-        { 
+        {
             await _ac.RebootDeviceAsync();
         }
         public async Task StartBuzzlerWithDuration(int duration, int repeat)

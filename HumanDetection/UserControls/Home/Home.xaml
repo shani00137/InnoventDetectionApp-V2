@@ -688,12 +688,19 @@ Effect="{DynamicResource DropShadow}">
             VerticalAlignment="Center">
 
                     <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"></ColumnDefinition>
+                                <ColumnDefinition Width="auto"></ColumnDefinition>
 
+                            </Grid.ColumnDefinitions>
+                              
                         <!-- CHECK LIST -->
-                        <StackPanel Margin="0,0,0,20">
+                        <StackPanel Grid.Column="0" Margin="0,0,0,20">
 
                             <!-- AI MODEL -->
                             <StackPanel Orientation="Horizontal" Margin="0,4">
+                               
                                 <ProgressBar x:Name="AiLoading"
                                  Width="20" Style="{StaticResource MaterialDesignCircularProgressBar}" 
                                      Foreground="LimeGreen"
@@ -804,7 +811,14 @@ Effect="{DynamicResource DropShadow}">
                             <!-- HEIGHT SENSOR -->
                           
                         </StackPanel>
+                            <Border Margin="10" Grid.Column="1">
 
+                                <Image x:Name="QuickCamPreview"
+               Width="150"
+               Height="150"
+               Stretch="Uniform"/>
+                            </Border>
+                        </Grid>
                         <!-- MAIN PROGRESS -->
                         <ProgressBar IsIndeterminate="True"
                          Height="18"

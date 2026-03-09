@@ -30,6 +30,7 @@ namespace HumanDetection
         }
         public void UpdateResults(ObservableCollection<ResutlModel> results)
         {
+            
             ResultDataList = results;
             this.DataContext = null;
             this.DataContext = this; // refresh binding
