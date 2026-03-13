@@ -55,4 +55,12 @@ namespace Model
         // 4 points, each point = [x, y]
         public List<List<double>> box { get; set; }
     }
+    public class OcrGridItem
+    {
+        public int ImageIndex { get; set; }
+
+        public string Barcodes { get; set; }
+
+        public string Dates { get; set; }
+    }
 }

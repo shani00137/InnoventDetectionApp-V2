@@ -10,7 +10,8 @@ namespace Model
         Front,
         Right,
         Back,
-        Left
+        Left,
+        Top
     }
 
     public class ImagePredictionResult

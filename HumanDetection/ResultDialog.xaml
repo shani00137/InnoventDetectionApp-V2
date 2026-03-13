@@ -207,9 +207,9 @@
                             Foreground="#3498DB"
                             DockPanel.Dock="Left"/>
                                                             <StackPanel Margin="12,0,0,0">
-                                                                <TextBlock  Foreground="White" Text="Supplier"
+                                                                <TextBlock  Foreground="White" Text="Lable Cont"
                FontWeight="SemiBold"/>
-                                                                <TextBlock  Foreground="White" Text="{Binding SupplierName}"
+                                                                <TextBlock  Foreground="White" Text="{Binding LableCount}"
                FontWeight="Bold"
                TextTrimming="CharacterEllipsis"/>
                                                             </StackPanel>
@@ -239,6 +239,59 @@
                                                     </materialDesign:Card>
                                                 </Grid>
 
+                                            </StackPanel>
+                                            <StackPanel>
+                                                <ItemsControl ItemsSource="{Binding GridItems}" Margin="5">
+
+                                                    <!-- Force 4 boxes per row -->
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <UniformGrid Columns="4"/>
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+
+                                                            <Border Width="150"
+                    Height="80"
+                    Margin="3"
+                    Padding="5"
+                    CornerRadius="4"
+                    BorderThickness="1"
+                    BorderBrush="Gray"
+                    Background="Transparent">
+
+                                                                <StackPanel>
+
+                                                                    <!-- Image Number -->
+                                                                    <TextBlock Text="{Binding ImageIndex}"
+                               FontWeight="Bold"
+                               FontSize="11"
+                               HorizontalAlignment="Center"
+                               Margin="0,0,0,1"/>
+
+                                                             
+
+                                                                    <TextBlock Text="{Binding Barcodes}"
+                               TextWrapping="Wrap"
+                               FontSize="10"
+                               Margin="0,0,0,2"/>
+
+                                                
+
+                                                                    <TextBlock Text="{Binding Dates}"
+                               TextWrapping="Wrap"
+                               FontSize="10"/>
+
+                                                                </StackPanel>
+
+                                                            </Border>
+
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+
+                                                </ItemsControl>
                                             </StackPanel>
                                             <StackPanel>
                                                 <ScrollViewer Margin="10,10,10,10"

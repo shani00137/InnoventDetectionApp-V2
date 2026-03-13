@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+﻿from flask import Flask, request, jsonify
 import os
 import tempfile
 import time
@@ -9,6 +9,7 @@ import re
 import paddle
 from paddleocr import PaddleOCR
 from pyzbar.pyzbar import decode
+from werkzeug.datastructures.mixins import V
 
 app = Flask(__name__)
 
@@ -31,7 +32,7 @@ ocr = PaddleOCR(
 # -----------------------------
 paddle.set_device("gpu:0")
 
-# ✅ SAFE GPU WARM-UP (NumPy, NOT PIL)
+# ✅ SAFE GPU WARM-UP
 dummy = np.zeros((100, 100, 3), dtype=np.uint8)
 ocr.ocr(dummy)
 
@@ -52,9 +53,6 @@ def resize_image_np(img):
 
 
 def mono8_to_rgb(img):
-    """
-    Convert MONO8 (H,W) → RGB (H,W,3)
-    """
     if len(img.shape) == 2:
         return cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
     return img
@@ -64,6 +62,18 @@ def extract_barcodes(img_rgb):
     barcodes = []
     for obj in decode(img_rgb):
         barcodes.append(obj.data.decode("utf-8"))
+    return barcodes
+
+
+def extract_possible_barcodes(texts):
+    barcodes = []
+
+    for t in texts:
+        cleaned = re.sub(r'\D', '', t)
+
+        if len(cleaned) >= 6:
+            barcodes.append(cleaned)
+
     return barcodes
 
 
@@ -97,8 +107,18 @@ def process_image_np(img_np):
     for t in texts:
         dates.extend(extract_dates(t))
 
-    # Barcodes
-    barcodes = extract_barcodes(img_np)
+    # -----------------------------
+    # BARCODE DETECTION
+    # -----------------------------
+
+    # Barcodes from image
+    barcodes_image = extract_barcodes(img_np)
+
+    # Barcodes from OCR text
+    barcodes_text = extract_possible_barcodes(texts)
+
+    # Combine both
+    barcodes = list(set(barcodes_image + barcodes_text))
 
     elapsed = round(time.time() - start, 3)
 
@@ -136,13 +156,13 @@ def ocr_endpoint():
             path = tmp.name
 
         try:
-            # Read as MONO or COLOR
             img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
             if img is None:
                 results[file.filename] = {"error": "Could not read image"}
                 continue
 
             results[file.filename] = process_image_np(img)
+
         finally:
             os.remove(path)
 
@@ -161,5 +181,5 @@ def ocr_endpoint():
 if __name__ == "__main__":
     print("CUDA available:", paddle.is_compiled_with_cuda())
     print("GPU count:", paddle.device.cuda.device_count())
-  
+
     app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)

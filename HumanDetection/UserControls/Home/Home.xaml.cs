@@ -58,6 +58,7 @@ using System.Windows.Threading;
 using Tesseract;
 using Utilites;
 using Utilites.BoxCounting;
+using Utilites.CameraSettings;
 using Utilites.PythonScripts;
 using Utilites.Weight;
 using Yolov5Net.Scorer;
@@ -516,40 +517,45 @@ namespace HumanDetection
             });
         }
 
-        #endregion 
+        #endregion
         public async Task StartPalletDetectionProcAsync()
         {
-            Dispatcher.Invoke(async () =>
+            Dispatcher.Invoke(() =>
             {
                 EntryTimeTxt.Text = DateTime.Now.ToString("HH:mm:ss");
-
             });
 
-            //// Enumerate all Basler cameras
             var allCameras = CameraFinder.Enumerate();
-            int cameraCount = allCameras.Count;
-            // Start tasks for each camera (up to 3)
             List<Task> cameraTasks = new List<Task>();
 
-            if (cameraCount > 0)
-                SetCameraUI(CamFrontLightPulse, cameraCount >= 1);
-            await Task.Delay(200);
+            foreach (var camera in allCameras)
+            {
+                string serial = camera[CameraInfoKey.SerialNumber];
+                CameraPosition position = CameraHelper.GetCameraPosition(serial);
 
-            cameraTasks.Add(Task.Run(() => CheckPalletStatus(allCameras[0])));
+                switch (position)
+                {
+                    case CameraPosition.Front:
+                        SetCameraUI(CamFrontLightPulse, true);
+                        cameraTasks.Add(Task.Run(() => CheckPalletStatus(camera, CameraPosition.Front)));
+                        break;
 
-            if (cameraCount > 1)
-                //cameraTasks.Add(Task.Run(() => ReadTextFromBaslerCamera(allCameras[1])));
-                SetCameraUI(CamTopLightPulse, cameraCount >= 1);
+                    case CameraPosition.Top:
+                        SetCameraUI(CamTopLightPulse, true);
+                        //cameraTasks.Add(Task.Run(() => CheckPalletStatus(camera, CameraPosition.Top)));
+                        break;
 
+                    case CameraPosition.Left:
+                        SetCameraUI(CamLeftLightPulse, true);
+                        break;
 
-            if (cameraCount > 2)
-                SetCameraUI(CamRightLightPulse, cameraCount >= 1);
+                    case CameraPosition.Right:
+                        SetCameraUI(CamRightLightPulse, true);
+                        break;
+                }
+            }
 
             await Task.WhenAll(cameraTasks);
-
-
-
-
         }
         public async Task StopPalletDetectionProc()
         {
@@ -576,7 +582,7 @@ namespace HumanDetection
         private CancellationTokenSource _ocrCancellationTokenSource;
 
         #region AIModel Detection
-        private async Task CheckPalletStatus(ICameraInfo cameraInfo)
+        private async Task CheckPalletStatus(ICameraInfo cameraInfo, CameraPosition position)
         {
             try
             {
@@ -677,20 +683,20 @@ namespace HumanDetection
                     var cameraList = CameraFinder.Enumerate();
 
                     // Capture images (MAIN THREAD)
-                    var images = await CaptureSingleFrameFromAllCamerasAsync(cameraList, true);
+                    var imagesWithCamPosition = await CaptureSingleFrameFromAllCamerasAsync(cameraList, true);
 
                     Dispatcher.Invoke(() =>
                     {
                         CapturedImages.Clear();
-                        foreach (var img in images)
-                            CapturedImages.Add(img);
+                        foreach (var img in imagesWithCamPosition)
+                            CapturedImages.Add(img.Image);
                     });
 
                     ReportProgress("🧠 Running AI + OCR in parallel...");
 
                     // 🔥 RUN BOTH TASKS IN PARALLEL
                     var aiTask = Task.Run(() =>
-                        RunAllAIDetectionsAsync(images)
+                        RunAllAIDetectionsAsync(imagesWithCamPosition)
                     );
 
                     StartCountdown();
@@ -797,6 +803,24 @@ namespace HumanDetection
                     {
                         OCRResultInString += OcrResultToString(q) + Environment.NewLine;
                     }
+                    List<OcrGridItem> gridItems = new List<OcrGridItem>();
+
+                    int index = 1;
+
+                    foreach (var item in ocrResultList)
+                    {
+                       
+
+                            gridItems.Add(new OcrGridItem
+                            {
+                                ImageIndex = index++,
+                                Barcodes = item.barcodes != null ? string.Join(", ", item.barcodes) : "",
+                                Dates = item.dates != null ? string.Join(", ", item.dates) : ""
+                            });
+                        
+                    }
+                    int LableCount = ocrResultList
+    .Count(r => r?.dates != null && r.dates.Any(d => !string.IsNullOrWhiteSpace(d)));
                     Dispatcher.Invoke(() =>
                     {
                         ExitTimeTxt.Text = DateTime.Now.ToString("HH:mm:ss");
@@ -817,7 +841,9 @@ namespace HumanDetection
                             SupplierName = null,
                             TotalWeight = WeightText.Text,
                             AllDatesList = AllDatesList,
-                            BarcodeList= barcodeList
+                            BarcodeList= barcodeList,
+                            GridItems= gridItems,
+                            LableCount = LableCount
 
                         };
                         AddResult(obj, false);
@@ -931,9 +957,10 @@ namespace HumanDetection
                 LoadingCard.Visibility = Visibility.Collapsed;
             }
         }
-        public async Task<List<BitmapImage>> CaptureSingleFrameFromAllCamerasAsync(List<ICameraInfo> cameraInfos, bool FirstTerm)
+        public async Task<List<CapturedCameraImage>> CaptureSingleFrameFromAllCamerasAsync(
+     List<ICameraInfo> cameraInfos, bool FirstTerm)
         {
-            var capturedImages = new List<BitmapImage>();
+            var capturedImages = new List<CapturedCameraImage>();
 
             await Task.Run(async () =>
             {
@@ -941,21 +968,73 @@ namespace HumanDetection
                 {
                     try
                     {
-                        using (var camera = new Camera(camInfo))
+                        CameraPosition position =
+                            CameraHelper.GetCameraPosition(camInfo[CameraInfoKey.SerialNumber]);
+
+                        // ===============================
+                        // TOP CAMERA → ONLY 1 IMAGE
+                        // ===============================
+                        if (position == CameraPosition.Top)
                         {
+                            using var camera = new Camera(camInfo);
                             camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
                             camera.Open();
 
-                            FlashCamera(FrontFlashEllipse);
-                            FlashCamera(LeftFlashEllipse);
-                            FlashCamera(RightFlashEllipse);
                             FlashCamera(TopFlashEllipse);
                             PlayShutterSound();
 
+                            using IGrabResult grabResult =
+                                camera.StreamGrabber.GrabOne(3000, TimeoutHandling.ThrowException);
 
-                            using (IGrabResult grabResult =
-                                camera.StreamGrabber.GrabOne(3000, TimeoutHandling.ThrowException))
+                            if (grabResult.GrabSucceeded)
                             {
+                                using Mat frame = GrabResultToMat(grabResult);
+                                var bmp = frame.ToBitmap();
+                                var bitmapImage = ConvertBitmapToImageSource(bmp);
+                                bitmapImage.Freeze();
+
+                                capturedImages.Add(new CapturedCameraImage
+                                {
+                                    Position = CameraPosition.Top,
+                                    Image = bitmapImage
+                                });
+
+                                Dispatcher.Invoke(() =>
+                                {
+                                    QuickCamPreview.Source = bitmapImage;
+                                });
+                            }
+
+                            camera.Close();
+
+                            Console.WriteLine("📸 Top camera image captured");
+                        }
+
+                        // ======================================
+                        // FRONT CAMERA → 4 SIDES (ROTATION)
+                        // ======================================
+                        if (position == CameraPosition.Front)
+                        {
+                            var sides = new[]
+                            {
+                        CameraPosition.Front,
+                        CameraPosition.Right,
+                        CameraPosition.Back,
+                        CameraPosition.Left
+                    };
+
+                            foreach (var side in sides)
+                            {
+                                using var camera = new Camera(camInfo);
+                                camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
+                                camera.Open();
+
+                                FlashCamera(FrontFlashEllipse);
+                                PlayShutterSound();
+
+                                using IGrabResult grabResult =
+                                    camera.StreamGrabber.GrabOne(3000, TimeoutHandling.ThrowException);
+
                                 if (grabResult.GrabSucceeded)
                                 {
                                     using Mat frame = GrabResultToMat(grabResult);
@@ -963,83 +1042,37 @@ namespace HumanDetection
                                     var bitmapImage = ConvertBitmapToImageSource(bmp);
                                     bitmapImage.Freeze();
 
-                                    capturedImages.Add(bitmapImage);
+                                    capturedImages.Add(new CapturedCameraImage
+                                    {
+                                        Position = side,
+                                        Image = bitmapImage
+                                    });
+
                                     Dispatcher.Invoke(() =>
                                     {
                                         PaletImage.Source = bitmapImage;
                                         QuickCamPreview.Source = bitmapImage;
-
                                     });
-                                   
-                                }
-                            }
 
-                            camera.Close();
-                            Console.WriteLine($"✅ Captured one frame from {camInfo[CameraInfoKey.ModelName]}");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"⚠️ Failed to capture from {camInfo[CameraInfoKey.ModelName]}: {ex.Message}");
-                    }
-                }
-
-                // 🔹 EXTRA CAPTURE WHEN FirstTerm == false
-                if (FirstTerm && cameraInfos.Count > 0)
-                {
-
-                    try
-                    {
-                        //await StartRoutatorWithDuration(_settings.RoutatorTimer!=null?(int)_settings.RoutatorTimer:20);
-                        for (int i = 0; i < 3; i++)
-                        {
-                            await TurnOnRotatorAsync();
-                            await Task.Delay(5000);
-                            await StartRoutatorWithDuration(5200); //last was 5200 sec
-                            var firstCamInfo = cameraInfos[0];
-
-                            using (var camera = new Camera(firstCamInfo))
-                            {
-                                camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
-                                camera.Open();
-
-                                FlashCamera(FrontFlashEllipse);
-                                PlayShutterSound();
-
-                                Task.Delay(100).Wait();
-
-                                using (IGrabResult grabResult =
-                                    camera.StreamGrabber.GrabOne(8000, TimeoutHandling.ThrowException))
-                                {
-                                    if (grabResult.GrabSucceeded)
-                                    {
-                                        using Mat frame = GrabResultToMat(grabResult);
-                                        var bmp = frame.ToBitmap();
-                                        var bitmapImage = ConvertBitmapToImageSource(bmp);
-                                        bitmapImage.Freeze();
-                                        
-                                        capturedImages.Add(bitmapImage);
-                                        Dispatcher.Invoke(() =>
-                                        {
-                                            QuickCamPreview.Source = bitmapImage;
-                                        });
-                                    }
+                                    Console.WriteLine($"📸 Captured {side} side from Front camera");
                                 }
 
                                 camera.Close();
-                                Console.WriteLine("📸 Extra image captured from first camera (index 0)");
-                            }
-                            await OffRotatorAsync();
-                        }
 
-                        //reset position of pallet
-                        await TurnOnRotatorAsync();
-                        await Task.Delay(5000);
-                        await StartRoutatorWithDuration(5200);
+                                // rotate pallet for next side
+                                if (side != CameraPosition.Left)
+                                {
+                                    await TurnOnRotatorAsync();
+                                    await Task.Delay(5000);
+                                    await StartRoutatorWithDuration(5200);
+                                    await OffRotatorAsync();
+                                }
+                            }
+                        }
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"⚠️ Failed extra capture from first camera: {ex.Message}");
+                        Console.WriteLine($"⚠️ Capture failed: {ex.Message}");
                     }
                 }
             });
@@ -1054,6 +1087,7 @@ namespace HumanDetection
                 {
                     using (var camera = new Camera(cameraInfo))
                     {
+
                         camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
                         camera.Open();
 
@@ -1090,7 +1124,7 @@ namespace HumanDetection
         }
 
         private async Task<(double AvScore, bool HumanDetected, int NumberOfBox, List<byte[]> OCRBytes, double maxPalletHeight)>
-RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
+RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
         {
             UpdateProgressStatus("AI Model Start to detect");
 
@@ -1108,7 +1142,7 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
 
             // Convert BitmapImages to ImageSharp
             var imageSharpList = capturedImages
-                                    .Select(img => BitmapImageToImageSharp(img))
+                                    .Select(img => BitmapImageToImageSharp(img.Image))
                                     .ToList();
 
             List<byte[]> ocrResults = new();
@@ -1118,23 +1152,42 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
             List<YoloPrediction> rightBoxes = new();
             List<YoloPrediction> backBoxes = new();
             List<YoloPrediction> leftBoxes = new();
+            List<YoloPrediction> topBoxes = new();
 
             PalletSide[] captureOrder =
             {
-        PalletSide.Front,
-        PalletSide.Right,
-        PalletSide.Back,
-        PalletSide.Left
-    };
+                PalletSide.Front,
+                PalletSide.Right,
+                PalletSide.Back,
+                PalletSide.Left,
+                PalletSide.Top
+            };
 
-            for (int i = 0; i < imageSharpList.Count && i < captureOrder.Length; i++)
+            foreach (var captured in capturedImages)
             {
-                ReportProgress($"🧠 AI Processing {i + 1}/{imageSharpList.Count}");
+                PalletSide side;
+                switch (captured.Position)
+                {
+                    case CameraPosition.Front:
+                        side = PalletSide.Front;
+                        break;
+                    case CameraPosition.Right:
+                        side = PalletSide.Right;
+                        break;
+                    case CameraPosition.Left:
+                        side = PalletSide.Left;
+                        break;
+                    case CameraPosition.Top:
+                        side = PalletSide.Top;
+                        break;
+                    default:
+                        side = PalletSide.Front;
+                        break;
+                }
+                using var image = BitmapImageToImageSharp(captured.Image);
+                
 
-                var image = imageSharpList[i].Clone();
-                var currentSide = captureOrder[i];
-
-                var boxTask = RunBoxCountingModelAsync(image, currentSide);
+                var boxTask = RunBoxCountingModelAsync(image, side);
                 var humanTask = Task.Run(() => RunHumanDetectionModel(image));
 
                 await Task.WhenAll(boxTask, humanTask);
@@ -1163,7 +1216,7 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
                     ocrResults.AddRange(boxResult.BoxesImages);
 
                 // ✅ Store predictions by side
-                switch (currentSide)
+                switch (side)
                 {
                     case PalletSide.Front:
                         frontBoxes = boxResult.BoxPredictions ?? new();
@@ -1180,17 +1233,18 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
                     case PalletSide.Left:
                         leftBoxes = boxResult.BoxPredictions ?? new();
                         break;
+                    case PalletSide.Top:
+                        topBoxes = boxResult.BoxPredictions ?? new(); break;
                 }
 
                 image.Dispose();
             }
 
             // ✅ Count boxes properly
-            NumberOfBox = BoxCountingService.CountBox(
+            NumberOfBox = BoxCountingService.CountBoxes(
+                
                 frontBoxes,
-                rightBoxes,
-                backBoxes,
-                leftBoxes
+                rightBoxes
             );
 
             // ✅ Dispose original ImageSharp images
@@ -1210,7 +1264,6 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
 
             return (finalAverageScore, HumanDetected, NumberOfBox, ocrResults, maxPalletHeight);
         }
-
 
         private void ReportProgress(string message)
         {
@@ -1243,7 +1296,7 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
             // ----------------------------------------------------
             // 2. Confidence threshold
             // ----------------------------------------------------
-            double confidenceThreshold = 0.80;
+            double confidenceThreshold = 0.60;
             if (_settings != null &&
                 !string.IsNullOrWhiteSpace(_settings.ConfidenceLevel) &&
                 double.TryParse(_settings.ConfidenceLevel, out var dbValue))
@@ -1357,25 +1410,25 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
 
                 using var ms = new MemoryStream();
                 // Create unique temp file name
-                //string tempFolder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "BoxCrops");
+                string tempFolder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "BoxCrops");
 
-                //// Ensure folder exists
-                //Directory.CreateDirectory(tempFolder);
+                // Ensure folder exists
+                Directory.CreateDirectory(tempFolder);
 
-                //string fileName = $"crop_{DateTime.Now:yyyyMMdd_HHmmss_fff}_{Guid.NewGuid():N}.jpg";
-                //string filePath = System.IO.Path.Combine(tempFolder, fileName);
+                string fileName = $"crop_{DateTime.Now:yyyyMMdd_HHmmss_fff}_{Guid.NewGuid():N}.jpg";
+                string filePath = System.IO.Path.Combine(tempFolder, fileName);
 
-                // Save to memory (existing logic)
-                //using var ms = new MemoryStream();
-                //crop.SaveAsJpeg(ms);
+                
+                
+             ;
                 crop.SaveAsJpeg(ms); // OCR works well with JPEG
                 cropByteList.Add(ms.ToArray());
 
-                //ms.Position = 0;
-                //using (var fs = new FileStream(filePath, FileMode.Create, FileAccess.Write))
-                //{
-                //    ms.CopyTo(fs);
-                //}
+                ms.Position = 0;
+                using (var fs = new FileStream(filePath, FileMode.Create, FileAccess.Write))
+                {
+                    ms.CopyTo(fs);
+                }
             }
 
 
@@ -1434,7 +1487,7 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
 
                 double ScorePercentage = averageScore * 100;
 
-                if (ScorePercentage < 70)
+                if (ScorePercentage < 80)
                 {
 
                     palletAngleDeg = -1;
@@ -1702,9 +1755,13 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
                     resultModel.DublicateBarcodeCount = input.DublicateBarcodeCount;
                 if (!string.IsNullOrWhiteSpace( input.BarcodeList))
                     resultModel.BarcodeList = input.BarcodeList;
+                if (input.LableCount.HasValue)
+                    resultModel.LableCount = input.LableCount;
+                if (input.GridItems.Count>0)
+                    resultModel.GridItems = input.GridItems;
 
 
-                
+
             }
             // 🔹 ADD NEW RESULT
             else if (isNew)
@@ -1790,11 +1847,34 @@ RunAllAIDetectionsAsync(List<BitmapImage> capturedImages)
             MaterialDesignThemes.Wpf.DialogHost.CloseDialogCommand.Execute(null, null);
             var allCameras = CameraFinder.Enumerate();
             int cameraCount = allCameras.Count;
+
             if (cameraCount > 0)
             {
-                SetCameraUI(CamFrontLightPulse, cameraCount >= 1);
-                SetCameraUI(CamTopLightPulse, cameraCount >= 2);
-                CheckPalletStatus(allCameras[0]);
+                foreach (var camera in allCameras)
+                {
+                    string serial = camera[CameraInfoKey.SerialNumber];
+                    CameraPosition position = CameraHelper.GetCameraPosition(serial);
+
+                    switch (position)
+                    {
+                        case CameraPosition.Front:
+                            SetCameraUI(CamFrontLightPulse, true);
+                            _ = CheckPalletStatus(camera, CameraPosition.Front);
+                            break;
+
+                        case CameraPosition.Top:
+                            SetCameraUI(CamTopLightPulse, true);
+                            break;
+
+                        case CameraPosition.Left:
+                            SetCameraUI(CamLeftLightPulse, true);
+                            break;
+
+                        case CameraPosition.Right:
+                            SetCameraUI(CamRightLightPulse, true);
+                            break;
+                    }
+                }
             }
             else
             {

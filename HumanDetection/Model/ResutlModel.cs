@@ -22,6 +22,8 @@ namespace Model
         public string? Name {get;set;}
         public string? AllDatesList { get; set; }
         public string? BarcodeList { get; set; }
+        public List<OcrGridItem>? GridItems { get; set; }
+        public int? LableCount { get; set; }
 
 
     }
