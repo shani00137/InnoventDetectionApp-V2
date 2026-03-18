@@ -183,6 +183,25 @@ namespace ACGPUIO
 
         }
 
+
+        public async Task StartRotatorReverseForDurationAsync(int Seconds)
+        {
+            // DO1 (rotator) ON
+
+            await SendDOCommand(4, 1);
+
+            await Task.Delay(Seconds);
+            _ = Task.Run(async () =>
+            {
+                // Wait 4 seconds
+                await SendDOCommand(1, 0); // Turn off
+                await SendDOCommand(4, 0); // Turn off
+
+
+            });
+
+        }
+
         public async Task OffRotatorAsync()
         {
             // DO1 (rotator) OFF

@@ -8,6 +8,7 @@ using Dynamsoft.Utility;
 using HumanDetection.Model;
 using HumanDetection.Utilites.Animation;
 using HumanDetection.Utilites.Audio;
+using HumanDetection.Utilites.PalletAPI;
 using MaterialDesignThemes.Wpf;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.VisualBasic.ApplicationServices;
@@ -53,12 +54,14 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
+using System.Windows.Media.Media3D;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using Tesseract;
 using Utilites;
 using Utilites.BoxCounting;
 using Utilites.CameraSettings;
+using Utilites.PalletAPI;
 using Utilites.PythonScripts;
 using Utilites.Weight;
 using Yolov5Net.Scorer;
@@ -586,50 +589,69 @@ namespace HumanDetection
         {
             try
             {
-                bool palletAligned = false;
-                _messageQueue.Enqueue($"Checking Pallet alignment");
-                await Dispatcher.InvokeAsync(async () =>
+                int fullRotation = 10000;
+                int step =2000;
+
+                List<(int time, double score)> scanResults = new();
+
+                _messageQueue.Enqueue("Scanning pallet alignment");
+
+                await Dispatcher.InvokeAsync(() =>
                 {
                     LoadingCard.Visibility = Visibility.Visible;
                 });
-                while (!palletAligned)
+
+                int elapsed = 0;
+
+                while (elapsed <= fullRotation)
                 {
                     var image = await CaptureSingleFrameFromCameraAsync(cameraInfo);
                     Image<Rgba32> convertedImage = BitmapImageToImageSharp(image);
-                    ImagePredictionResult result = await RunBoxCountingModelAsync(convertedImage, PalletSide.Front);
 
-                    palletAligned = result.PalletAngleDeg > 0;
+                    ImagePredictionResult result =
+                        await RunBoxCountingModelAsync(convertedImage, PalletSide.Front);
 
-                    if (!palletAligned)
+                    double score = result.PalletAngleDeg;
+
+                    scanResults.Add((elapsed, score));
+
+                    Dispatcher.Invoke(() =>
                     {
+                        ScoreTxt.Text = $"{score:0.0}%";
+                    });
 
+                    await TurnOnRotatorAsync();
+                    await Task.Delay(5000);
+                    await StartRoutatorWithDuration(step);
+                    await OffRotatorAsync();
 
-                        await TurnOnRotatorAsync();
-                        await Task.Delay(5000);
-                        await StartRoutatorWithDuration(2500);
-                        await Task.Delay(500);
-                    }
-                    else
-                    {
-                        Dispatcher.Invoke(() =>
-                        {
-                            _messageQueue.Enqueue("Pallet angle OK");
-                        });
-                    }
+                    elapsed += step;
+
+                    await Task.Delay(100);
                 }
-                await Dispatcher.InvokeAsync(async () =>
+
+                // Find best alignment
+                var best = scanResults.OrderByDescending(x => x.score).First();
+
+                int reverseDuration = fullRotation - best.time;
+
+                _messageQueue.Enqueue($"Best score {best.score:0}% at {best.time} ms");
+                await TurnOnRotatorAsync();
+                await Task.Delay(5000);
+                // Reverse to best position
+                await StartRotatorReverseForDurationAsync(reverseDuration);
+                await OffRotatorAsync();
+                await Dispatcher.InvokeAsync(() =>
                 {
                     LoadingCard.Visibility = Visibility.Collapsed;
                 });
-
-                // Pallet aligned → continue normal workflow
                 await Dispatcher.InvokeAsync(async () =>
                 {
                     ShowPalletFromLeft();
-                    await Task.Delay(100);
-                    await PalletDetectedSoundStart();
-                    await Task.Delay(100);
-                    await CaptureAndDisplayAllCamerasAsync();
+                    //await Task.Delay(100);
+                    //await PalletDetectedSoundStart();
+                    //await Task.Delay(100);
+                    //await CaptureAndDisplayAllCamerasAsync();
                 });
             }
             catch (Exception ex)
@@ -642,7 +664,6 @@ namespace HumanDetection
                 Console.WriteLine("[Camera] Process stopped.");
             }
         }
-
 
         //Catpure Image form all Camers
         private async Task CaptureAndDisplayAllCamerasAsync()
@@ -861,7 +882,37 @@ namespace HumanDetection
                         };
                         _messageQueue.Enqueue("70% score found..  result are saved");
                         // 🔥 POST TO API
-                        await PostDetectionRequestAsync(ResultTooPost);
+                        var payload = new PalletRequest
+                        {
+                            name = "Pallet Scan",
+
+                            palletWeight = WeightText.Text,
+                            palletHeight = aiResult.maxPalletHeight.ToString(),
+                            NO_OfBoxs = numberOfBox.ToString(),
+
+                            startTime = EntryTimeTxt.Text,
+                            endTime = ExitTimeTxt.Text,
+
+                            trustScoreLevel = (avgScore * 100).ToString("0"),
+
+                            productionDate = null,
+                            exipreDate = distinctDates.ToString(),
+
+                            barCode = barcodeList,
+
+                            palletCondition = avgScore >= 0.7 ? "Good" : "Rejected",
+
+                            humenDetection = humanDetected ? "Yes" : "No",
+
+                            image = "https://adp-backend-demo.ashybay-437ca219.uaenorth.azurecontainerapps.io/core/uploads/image-1769754805619.jpg"
+                        };
+                        var service = new PalletApiService(
+                               "YOUR_TOKEN_HERE",
+                               "99927ec1-8668-45ae-8709-2db03366e680",
+                               "https://adp-backend-demo.ashybay-437ca219.uaenorth.azurecontainerapps.io/core/thing-type/66b9a073b241574cd76f0616/adpPallet"
+                           );
+
+                        bool isSuccess = await service.PostPalletDataAsync(payload);
                         await StopPalletDetectionProc();
                         await ResetRecords();
                     }
@@ -895,68 +946,7 @@ namespace HumanDetection
         /// </summary>
         /// <param name="request"></param>
         /// <returns></returns>
-        private async Task PostDetectionRequestAsync(string request)
-        {
-            try
-            {
-                LoadingCard.Visibility = Visibility.Visible;
-
-                // Payload exactly like API expects
-                var payload = new
-                {
-                    Name = request,
-
-                    Image = "https://adp-backend-demo.ashybay-437ca219.uaenorth.azurecontainerapps.io/core/uploads/image-1769680856546.png"
-                };
-
-                using var client = new HttpClient
-                {
-                    Timeout = TimeSpan.FromSeconds(120)
-                };
-
-                // ✅ ADD HEADERS
-                client.DefaultRequestHeaders.Authorization =
-                    new System.Net.Http.Headers.AuthenticationHeaderValue(
-                        "Bearer",
-                        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwYXlsb2FkIjp7ImVtYWlsIjoia2xwMjF1c2VyQGdtYWlsLmNvbSIsInVzZXJOYW1lIjoia2xwMjEiLCJfaWQiOiI2NmI1YmM3Nzc1MDA5M2U0MWU1ODNiZTYifSwiaWF0IjoxNzY2NzU2NDQwfQ.lzAMd9HXsj-18U9TMfOij5OF8bUIkMosUYxl1rgM-pE"
-                    );
-
-                client.DefaultRequestHeaders.Add(
-                    "x-api-key",
-                    "99927ec1-8668-45ae-8709-2db03366e680"
-                );
-
-                var json = System.Text.Json.JsonSerializer.Serialize(
-                    payload,
-                    new JsonSerializerOptions
-                    {
-                        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-                    });
-
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-                var response = await client.PostAsync(
-                    "https://adp-backend-demo.ashybay-437ca219.uaenorth.azurecontainerapps.io/core/thing-type/66b9a073b241574cd76f0616/adpPallet",
-                    content);
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    var error = await response.Content.ReadAsStringAsync();
-                    throw new Exception($"API Error: {response.StatusCode} - {error}");
-                }
-
-                _messageQueue.Enqueue("Saved Successfully");
-                LoadingCard.Visibility = Visibility.Collapsed;
-                await PlayAlertForSystem();
-                //await StartBuzzlerWithDuration(6000, 3);
-                //await ResetRecords();
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"❌ API upload failed: {ex.Message}");
-                LoadingCard.Visibility = Visibility.Collapsed;
-            }
-        }
+      
         public async Task<List<CapturedCameraImage>> CaptureSingleFrameFromAllCamerasAsync(
      List<ICameraInfo> cameraInfos, bool FirstTerm)
         {
@@ -976,7 +966,7 @@ namespace HumanDetection
                         // ===============================
                         if (position == CameraPosition.Top)
                         {
-                            using var camera = new Camera(camInfo);
+                            using var camera = new Basler.Pylon.Camera(camInfo);
                             camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
                             camera.Open();
 
@@ -1025,7 +1015,7 @@ namespace HumanDetection
 
                             foreach (var side in sides)
                             {
-                                using var camera = new Camera(camInfo);
+                                using var camera = new Basler.Pylon.Camera(camInfo);
                                 camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
                                 camera.Open();
 
@@ -1076,7 +1066,10 @@ namespace HumanDetection
                     }
                 }
             });
-
+            //reset position of pallet
+            await TurnOnRotatorAsync();
+            await Task.Delay(5000);
+            await StartRoutatorWithDuration(5200);
             return capturedImages;
         }
         public async Task<BitmapImage?> CaptureSingleFrameFromCameraAsync(ICameraInfo cameraInfo)
@@ -1085,7 +1078,7 @@ namespace HumanDetection
             {
                 try
                 {
-                    using (var camera = new Camera(cameraInfo))
+                    using (var camera = new Basler.Pylon.Camera(cameraInfo))
                     {
 
                         camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
@@ -1244,7 +1237,7 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             NumberOfBox = BoxCountingService.CountBoxes(
                 
                 frontBoxes,
-                rightBoxes
+                topBoxes
             );
 
             // ✅ Dispose original ImageSharp images
@@ -1296,12 +1289,13 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             // ----------------------------------------------------
             // 2. Confidence threshold
             // ----------------------------------------------------
-            double confidenceThreshold = 0.60;
+            double confidenceThreshold = 0.0;
+
             if (_settings != null &&
                 !string.IsNullOrWhiteSpace(_settings.ConfidenceLevel) &&
                 double.TryParse(_settings.ConfidenceLevel, out var dbValue))
             {
-                confidenceThreshold = dbValue;
+                confidenceThreshold = Math.Clamp(dbValue / 100.0, 0.0, 1.0);
             }
 
             // ----------------------------------------------------
@@ -1309,7 +1303,7 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             // ----------------------------------------------------
             var rawPredictions = _scorerBoxCountingModel
                 .Predict(resizedImage)
-                .Where(p => p.Score >= 0.60f)
+                .Where(p => p.Score >= confidenceThreshold)
                 .ToList();
 
             // ----------------------------------------------------
@@ -1485,22 +1479,17 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                     });
                 }
 
-                double ScorePercentage = averageScore * 100;
-
-                if (ScorePercentage < 80)
+                 //palletAngleDeg = tallestPallet?.Score * 100 ?? 0;
+                if (averageScore != null)
                 {
-
-                    palletAngleDeg = -1;
-                    Dispatcher.Invoke(async () =>
-                    {
-                        ScoreTxt.Text = $"{averageScore * 100:0}%";
-
-                    });
+                   
+                    palletAngleDeg = averageScore;
                 }
                 else
                 {
-                    palletAngleDeg = 1;
+                    palletAngleDeg = 0; // or keep previous value
                 }
+
 
                 using (var ms = new MemoryStream())
                 {
@@ -2172,6 +2161,11 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
         public async Task StartRoutatorWithDuration(int sec)
         {
             await _ac.StartRotatorForDurationAsync(sec);
+
+        }
+        public async Task StartRotatorReverseForDurationAsync(int sec)
+        {
+            await _ac.StartRotatorReverseForDurationAsync(sec);
 
         }
         public async Task TurnOnRotatorAsync()

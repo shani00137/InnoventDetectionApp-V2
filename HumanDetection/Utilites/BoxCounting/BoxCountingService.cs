@@ -7,52 +7,54 @@ namespace Utilites.BoxCounting
 {
     public class BoxCountingService
     {
-        public static int CountBoxes(List<YoloPrediction> frontPredictions, List<YoloPrediction> rightPredictions)
+        public static int CountBoxes(
+            List<YoloPrediction> frontPredictions,
+            List<YoloPrediction> topPredictions)
         {
-            if (frontPredictions == null || rightPredictions == null)
+            if (frontPredictions == null || frontPredictions.Count == 0)
                 return 0;
 
-            int layers = CountLayers(frontPredictions); // vertical stacks
-            int width = CountWidth(frontPredictions);   // horizontal boxes in front
-            int depth = CountDepth(rightPredictions);   // horizontal boxes from right
+            // Total visible boxes from front
+            int frontBoxCount = frontPredictions.Count;
 
-            return layers * width * depth;
+            // Rows from top view
+            int rows = CountTopRows(topPredictions);
+
+            // Safety rule
+            if (rows <= 0)
+                rows = 1;
+
+            return frontBoxCount * rows;
         }
 
-        // Count vertical layers from front view
-        private static int CountLayers(List<YoloPrediction> predictions)
+        // Detect number of rows in top image
+        private static int CountTopRows(List<YoloPrediction> predictions)
         {
             if (predictions == null || predictions.Count == 0)
-                return 0;
+                return 1;
 
-            return predictions
-                .Select(p => Math.Round(p.Rectangle.Y / 50.0))
-                .Distinct()
-                .Count();
-        }
+            // sort by Y position
+            var sorted = predictions
+                .OrderBy(p => p.Rectangle.Y)
+                .ToList();
 
-        // Count boxes horizontally in front image
-        private static int CountWidth(List<YoloPrediction> predictions)
-        {
-            if (predictions == null || predictions.Count == 0)
-                return 0;
+            // estimate average height
+            float avgHeight = sorted.Average(p => p.Rectangle.Height);
 
-            return predictions
-                .Select(p => Math.Round(p.Rectangle.X / 50.0))
-                .Distinct()
-                .Count();
-        }
+            // threshold for new row detection
+            float rowThreshold = avgHeight * 0.6f;
 
-        // Count boxes depth from right image
-        private static int CountDepth(List<YoloPrediction> predictions)
-        {
-            if (predictions == null || predictions.Count == 0)
-                return 0;
+            int rows = 1;
 
-            return predictions
-                .Select(p => Math.Round(p.Rectangle.X / 50.0))
-                .Distinct()
-                .Count();
+            for (int i = 1; i < sorted.Count; i++)
+            {
+                if (Math.Abs(sorted[i].Rectangle.Y - sorted[i - 1].Rectangle.Y) > rowThreshold)
+                {
+                    rows++;
+                }
+            }
+
+            return rows;
         }
     }
 }
