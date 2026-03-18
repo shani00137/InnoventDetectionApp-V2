@@ -233,9 +233,9 @@ namespace HumanDetection
 
 
             LoadingOverlay.Visibility = Visibility.Collapsed;
-            await Task.Delay(1000);
-            _messageQueue.Enqueue("Process start manuly");
-            await StartPalletDetectionProcAsync();
+            //await Task.Delay(1000);
+            //_messageQueue.Enqueue("Process start manuly");
+            //await StartPalletDetectionProcAsync();
         }
 
         private async Task RunCheck(ProgressBar loader, TextBlock success, TextBlock error, int delay)
@@ -589,8 +589,8 @@ namespace HumanDetection
         {
             try
             {
-                int fullRotation = 10000;
-                int step =2000;
+                int fullRotation = 6000;
+                int step = 1000;
 
                 List<(int time, double score)> scanResults = new();
 
@@ -1479,16 +1479,17 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                     });
                 }
 
-                 //palletAngleDeg = tallestPallet?.Score * 100 ?? 0;
-                if (averageScore != null)
-                {
-                   
-                    palletAngleDeg = averageScore;
-                }
+                 palletAngleDeg = tallestPallet?.Score * 100 ?? 0;
+                double boxAvg = averageScore;
+
+                double finalScore;
+
+                if (palletAngleDeg > 0 && boxAvg > 0)
+                    finalScore = (palletAngleDeg + boxAvg) / 2;
+                else if (palletAngleDeg > 0)
+                    finalScore = palletAngleDeg;
                 else
-                {
-                    palletAngleDeg = 0; // or keep previous value
-                }
+                    finalScore = boxAvg;
 
 
                 using (var ms = new MemoryStream())
