@@ -41,7 +41,12 @@
 		<Content Include="Assets\ocr_api.py">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</Content>
-	
+		<Content Include="Assets\pallet_api.py">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Assets\best.pt">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
 		
 		<Content Include="Assets\Weights\YoloBox.onnx">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>

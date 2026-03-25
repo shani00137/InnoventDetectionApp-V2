@@ -1,22 +1,52 @@
-﻿using SQLite;
-using System.Configuration;
-using System.Data;
-using System.Windows;
+﻿using System;
+using System.IO;
+using System.Text;
 
 namespace HumanDetection
 {
-    /// <summary>
-    /// Interaction logic for App.xaml
-    /// </summary>
-    public partial class App : Application
+    public static class Logger
     {
-        protected override void OnStartup(StartupEventArgs e)
-        {
-            base.OnStartup(e);
+        private static readonly string logFilePath =
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app_log.txt");
 
-            // 🔹 Initialize SQLite database (runs once)
-            Database.Initialize();
+        public static void Log(string message)
+        {
+            try
+            {
+                var logMessage = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} - {message}{Environment.NewLine}";
+                File.AppendAllText(logFilePath, logMessage, Encoding.UTF8);
+            }
+            catch
+            {
+                // Avoid crash if logging fails
+            }
+        }
+
+        public static void LogException(Exception ex)
+        {
+            try
+            {
+                var sb = new StringBuilder();
+
+                sb.AppendLine("===== EXCEPTION =====");
+                sb.AppendLine($"Time: {DateTime.Now}");
+                sb.AppendLine($"Message: {ex.Message}");
+                sb.AppendLine($"StackTrace: {ex.StackTrace}");
+
+                if (ex.InnerException != null)
+                {
+                    sb.AppendLine("---- INNER EXCEPTION ----");
+                    sb.AppendLine(ex.InnerException.Message);
+                    sb.AppendLine(ex.InnerException.StackTrace);
+                }
+
+                sb.AppendLine("========================");
+
+                File.AppendAllText(logFilePath, sb.ToString(), Encoding.UTF8);
+            }
+            catch
+            {
+            }
         }
     }
-
 }

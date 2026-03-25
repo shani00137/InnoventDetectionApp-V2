@@ -72,6 +72,7 @@ using static System.Windows.Forms.Design.AxImporter;
 using Color = SixLabors.ImageSharp.Color;
 using FlipMode = OpenCvSharp.FlipMode;
 using Font = SixLabors.Fonts.Font;
+using Image = SixLabors.ImageSharp.Image;
 using Point = SixLabors.ImageSharp.PointF;
 using ResizeMode = SixLabors.ImageSharp.Processing.ResizeMode;
 using Size = SixLabors.ImageSharp.Size;
@@ -154,6 +155,11 @@ namespace HumanDetection
                 _settings = SettingsRepository.GetSettings();
                 if (_settings != null)
                     _ac = new AccessController($"{_settings.MoxIP}");
+                RotatorPowerValueText.Text = _settings.RoutatorTimer.ToString();
+                RotatorSlider.Value =(double) _settings.RoutatorTimer;
+
+                PowerValueText.Text = _settings.ConfidenceLevel.ToString();
+                ConfidenceThresholdSlider.Value= double.Parse( _settings.ConfidenceLevel);
 
                 ResultDialoag.Visibility = Visibility.Visible;
 
@@ -189,14 +195,7 @@ namespace HumanDetection
                 ProgressTxt.Text = "AI Model loading failed!";
                 //return; // stop further checks
             }
-            await Task.Delay(500);
-            bool weightOk = await RunDeviceCheck(WeightLoading, WeightCheck, WeightError, StartScaleAsync);
-
-            if (!weightOk)
-            {
-                ProgressTxt.Text = "Weight scale not detected!";
-                //return; // stop startup if critical
-            }
+         
 
             bool gpioOk = await RunDeviceCheck(GpioLoading, GpioCheck, GpioError, CheckGpioAsync);
 
@@ -207,7 +206,7 @@ namespace HumanDetection
             }
             else
             {
-                await TurnOnRotatorAsync();
+                //await TurnOnRotatorAsync();
             }
 
             bool cameraOk = await RunDeviceCheck(CameraLoading, CameraCheck, CameraError, CheckCameraAsync);
@@ -229,13 +228,18 @@ namespace HumanDetection
                 return;
             }
 
+            await Task.Delay(500);
+            bool weightOk = await RunDeviceCheck(WeightLoading, WeightCheck, WeightError, StartScaleAsync);
 
+            if (!weightOk)
+            {
+                ProgressTxt.Text = "Weight scale not detected!";
+                //return; // stop startup if critical
+            }
 
 
             LoadingOverlay.Visibility = Visibility.Collapsed;
-            //await Task.Delay(1000);
-            //_messageQueue.Enqueue("Process start manuly");
-            //await StartPalletDetectionProcAsync();
+     
         }
 
         private async Task RunCheck(ProgressBar loader, TextBlock success, TextBlock error, int delay)
@@ -357,47 +361,17 @@ namespace HumanDetection
             try
             {
                 KillProcessesUsingPort(5000);
+                //KillProcessesUsingPort(5001);
 
-                var psi = new ProcessStartInfo
-                {
-                    FileName = pythonExe,
-                    Arguments = "ocr_api.py",
-                    WorkingDirectory = System.IO.Path.Combine(
-                        AppDomain.CurrentDomain.BaseDirectory,
-                        "Assets"
-                    ),
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                };
+                // Start BOTH APIs
+                var ocrProcess = StartPythonApi("ocr_api.py");
+                //var palletProcess = StartPythonApi("pallet_api.py");
 
-                var flaskProcess = new Process
-                {
-                    StartInfo = psi,
-                    EnableRaisingEvents = true
-                };
+                // Wait for both APIs
+                bool ocrAlive = await WaitForApiAsync("http://127.0.0.1:5000/ocr");
+                //bool palletAlive = await WaitForApiAsync("http://127.0.0.1:5001/predict");
 
-                flaskProcess.OutputDataReceived += (s, e) =>
-                {
-                    if (!string.IsNullOrWhiteSpace(e.Data))
-                        Debug.WriteLine("PY: " + e.Data);
-                };
-
-                flaskProcess.ErrorDataReceived += (s, e) =>
-                {
-                    if (!string.IsNullOrWhiteSpace(e.Data))
-                        Debug.WriteLine("PY ERR: " + e.Data);
-                };
-
-                flaskProcess.Start();
-                flaskProcess.BeginOutputReadLine();
-                flaskProcess.BeginErrorReadLine();
-
-                // VERY IMPORTANT → Wait until API actually responds
-                bool alive = await WaitForFlaskApiAsync();
-
-                return alive;
+                return ocrAlive;
             }
             catch (Exception ex)
             {
@@ -405,21 +379,25 @@ namespace HumanDetection
                 return false;
             }
         }
-        private async Task<bool> WaitForFlaskApiAsync()
+        private async Task<bool> WaitForApiAsync(string url)
         {
             using var http = new HttpClient();
 
-            for (int i = 0; i < 30; i++) // wait max ~10 sec
+            for (int i = 0; i < 30; i++)
             {
                 try
                 {
-                    var resp = await http.GetAsync("http://127.0.0.1:5000/ocr");
-                    if (resp.StatusCode == HttpStatusCode.MethodNotAllowed)
+                    var resp = await http.GetAsync(url);
+
+                    // OCR returns 405 → OK
+                    if (resp.StatusCode == HttpStatusCode.MethodNotAllowed )
+                    {
                         return true;
+                    }
                 }
                 catch
                 {
-                    // ignore while starting
+                    // still starting
                 }
 
                 await Task.Delay(1000);
@@ -427,7 +405,46 @@ namespace HumanDetection
 
             return false;
         }
+        private Process StartPythonApi(string scriptName)
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = pythonExe,
+                Arguments = scriptName,
+                WorkingDirectory = System.IO.Path.Combine(
+                    AppDomain.CurrentDomain.BaseDirectory,
+                    "Assets"
+                ),
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
 
+            var process = new Process
+            {
+                StartInfo = psi,
+                EnableRaisingEvents = true
+            };
+
+            process.OutputDataReceived += (s, e) =>
+            {
+                if (!string.IsNullOrWhiteSpace(e.Data))
+                    Debug.WriteLine($"[{scriptName}] " + e.Data);
+            };
+
+            process.ErrorDataReceived += (s, e) =>
+            {
+                if (!string.IsNullOrWhiteSpace(e.Data))
+                    Debug.WriteLine($"[{scriptName} ERR] " + e.Data);
+            };
+
+            process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+
+            return process;
+        }
         public static void KillProcessesUsingPort(int port)
         {
             try
@@ -589,69 +606,119 @@ namespace HumanDetection
         {
             try
             {
-                int fullRotation = 6000;
-                int step = 1000;
 
-                List<(int time, double score)> scanResults = new();
+                //int fullRotation = 8000;
+                //int step = 1000;
 
-                _messageQueue.Enqueue("Scanning pallet alignment");
+                //List<(int time, double score)> scanResults = new();
 
-                await Dispatcher.InvokeAsync(() =>
-                {
-                    LoadingCard.Visibility = Visibility.Visible;
-                });
+                //_messageQueue.Enqueue("Scanning pallet alignment");
 
-                int elapsed = 0;
+                //await Dispatcher.InvokeAsync(() =>
+                //{
+                //    LoadingCard.Visibility = Visibility.Visible;
+                //});
 
-                while (elapsed <= fullRotation)
-                {
-                    var image = await CaptureSingleFrameFromCameraAsync(cameraInfo);
-                    Image<Rgba32> convertedImage = BitmapImageToImageSharp(image);
+                //int elapsed = 0;
 
-                    ImagePredictionResult result =
-                        await RunBoxCountingModelAsync(convertedImage, PalletSide.Front);
+                //while (elapsed <= fullRotation)
+                //{
+                //    var image = await CaptureSingleFrameFromCameraAsync(cameraInfo);
+                //    Image<Rgba32> convertedImage = BitmapImageToImageSharp(image);
 
-                    double score = result.PalletAngleDeg;
 
-                    scanResults.Add((elapsed, score));
 
-                    Dispatcher.Invoke(() =>
-                    {
-                        ScoreTxt.Text = $"{score:0.0}%";
-                    });
+                //    var resizedImage = convertedImage.CloneAs<Rgba32>();
+                //    int modelWidth = 640;
+                //    int modelHeight = 640;
 
-                    await TurnOnRotatorAsync();
-                    await Task.Delay(5000);
-                    await StartRoutatorWithDuration(step);
-                    await OffRotatorAsync();
+                //    resizedImage.Mutate(x =>
+                //        x.Resize(new ResizeOptions
+                //        {
+                //            Size = new Size(modelWidth, modelHeight),
+                //            Mode = ResizeMode.Pad,
+                //            PadColor = Color.Black
+                //        }));
 
-                    elapsed += step;
+                //    // ----------------------------------------------------
+                //    // 2. Confidence threshold
+                //    // ----------------------------------------------------
+                //    double confidenceThreshold = 0.0;
 
-                    await Task.Delay(100);
-                }
+                //    if (_settings != null &&
+                //        !string.IsNullOrWhiteSpace(_settings.ConfidenceLevel) &&
+                //        double.TryParse(_settings.ConfidenceLevel, out var dbValue))
+                //    {
+                //        confidenceThreshold = Math.Clamp(dbValue / 100.0, 0.0, 1.0);
+                //    }
+
+                //    // ----------------------------------------------------
+                //    // 3. Run model prediction
+                //    // ----------------------------------------------------
+                //    var rawPredictions = _scorerBoxCountingModel
+                //        .Predict(resizedImage)
+                //        .Where(p => p.Score >= confidenceThreshold)
+                //        .ToList();
+
+                //    double score = 0;
+                //    if (rawPredictions.Any())
+                //    {
+                //        double boxAvg = rawPredictions.Average(p => p.Score);
+                //        score = boxAvg;
+                //    }
+
+                //    scanResults.Add((elapsed, score));
+
+                //    Dispatcher.Invoke(() =>
+                //    {
+
+                //        ScoreTxt.Text = $"{score * 100:0}%";
+                //    });
+                //    if (score >= 0.80)
+                //    {
+                //        break;
+                //    }
+
+                //    await TurnOnRotatorAsync();
+                //    await Task.Delay(5000);
+                //    await StartRoutatorWithDuration(step);
+                //    await OffRotatorAsync();
+
+                //    elapsed += step;
+                //    var bitmap = ImageSharpToBitmapImage(resizedImage);
+
+                //    Dispatcher.Invoke(() =>
+                //    {
+                //        PaletImage.Source = bitmap;
+
+                //        ScoreTxt.Text = $"{score * 100:0}%";
+                //    });
+                //    await Task.Delay(100);
+                //}
 
                 // Find best alignment
-                var best = scanResults.OrderByDescending(x => x.score).First();
+                //var best = scanResults.OrderByDescending(x => x.score).First();
 
-                int reverseDuration = fullRotation - best.time;
+                //int reverseDuration = fullRotation - best.time;
 
-                _messageQueue.Enqueue($"Best score {best.score:0}% at {best.time} ms");
-                await TurnOnRotatorAsync();
+                //_messageQueue.Enqueue($"Best score {best.score:0}% at {best.time} ms");
+                //await TurnOnRotatorAsync();
+                //await Task.Delay(5000);
+                //// Reverse to best position
+                ////await StartRotatorReverseForDurationAsync(reverseDuration);
+                //await OffRotatorAsync();
+                //await Dispatcher.InvokeAsync(() =>
+                //{
+                //    LoadingCard.Visibility = Visibility.Collapsed;
+                //});
                 await Task.Delay(5000);
-                // Reverse to best position
-                await StartRotatorReverseForDurationAsync(reverseDuration);
-                await OffRotatorAsync();
-                await Dispatcher.InvokeAsync(() =>
-                {
-                    LoadingCard.Visibility = Visibility.Collapsed;
-                });
                 await Dispatcher.InvokeAsync(async () =>
                 {
                     ShowPalletFromLeft();
-                    //await Task.Delay(100);
-                    //await PalletDetectedSoundStart();
-                    //await Task.Delay(100);
-                    //await CaptureAndDisplayAllCamerasAsync();
+                    await Task.Delay(100);
+                    await PalletDetectedSoundStart();
+                    await Task.Delay(100);
+                    await CaptureAndDisplayAllCamerasAsync();
                 });
             }
             catch (Exception ex)
@@ -664,8 +731,23 @@ namespace HumanDetection
                 Console.WriteLine("[Camera] Process stopped.");
             }
         }
+        private BitmapImage ImageSharpToBitmapImage(Image<Rgba32> image)
+        {
+            using (var ms = new MemoryStream())
+            {
+                image.SaveAsBmp(ms); // or SaveAsPng
+                ms.Seek(0, SeekOrigin.Begin);
 
-        //Catpure Image form all Camers
+                var bitmap = new BitmapImage();
+                bitmap.BeginInit();
+                bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                bitmap.StreamSource = ms;
+                bitmap.EndInit();
+                bitmap.Freeze(); // 🔥 important for cross-thread
+
+                return bitmap;
+            }
+        }
         private async Task CaptureAndDisplayAllCamerasAsync()
         {
             try
@@ -1052,9 +1134,11 @@ namespace HumanDetection
                                 // rotate pallet for next side
                                 if (side != CameraPosition.Left)
                                 {
+
+                                    int duration = _settings.RoutatorTimer!=null?(int)_settings.RoutatorTimer:0;
                                     await TurnOnRotatorAsync();
-                                    await Task.Delay(5000);
-                                    await StartRoutatorWithDuration(5200);
+                                    await Task.Delay(2000);
+                                    await StartRoutatorWithDuration(duration);
                                     await OffRotatorAsync();
                                 }
                             }
@@ -1067,9 +1151,10 @@ namespace HumanDetection
                 }
             });
             //reset position of pallet
+            int duration = _settings.RoutatorTimer != null ? (int)_settings.RoutatorTimer : 0;
             await TurnOnRotatorAsync();
-            await Task.Delay(5000);
-            await StartRoutatorWithDuration(5200);
+            await Task.Delay(2000);
+            await StartRoutatorWithDuration(duration);
             return capturedImages;
         }
         public async Task<BitmapImage?> CaptureSingleFrameFromCameraAsync(ICameraInfo cameraInfo)
@@ -2124,6 +2209,30 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
 
             indicator.Source = new BitmapImage(new Uri(imageUri));
         }
+        private void ConfidenceThresholder_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (PowerValueText != null)
+                PowerValueText.Text = ((int)e.NewValue).ToString();
+            Task.Delay(100);
+            var settings = _settings;
+            settings.ConfidenceLevel = e.NewValue.ToString();
+            SettingsRepository.UpdateConfidenceThresHoldSettings(settings);
+            Task.Delay(100);
+            _settings = SettingsRepository.GetSettings();
+        }
+        private void Rotator_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (RotatorPowerValueText != null)
+                RotatorPowerValueText.Text = ((int)e.NewValue).ToString();
+            Task.Delay(100);
+            var settings=_settings;
+            settings.RoutatorTimer = ((int)e.NewValue);
+            SettingsRepository.UpdateRotatorSettings(settings);
+            Task.Delay(100);
+            _settings =SettingsRepository.GetSettings();
+         
+        }
+        
 
         #endregion
 
@@ -2166,17 +2275,17 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
         }
         public async Task StartRotatorReverseForDurationAsync(int sec)
         {
-            await _ac.StartRotatorReverseForDurationAsync(sec);
+            //await _ac.StartRotatorReverseForDurationAsync(sec);
 
         }
         public async Task TurnOnRotatorAsync()
         {
-            await _ac.TurnOnRotatorAsync();
+            await _ac.StartRotatorAsync();
 
         }
         public async Task RebootDeviceAsync()
         {
-            await _ac.RebootDeviceAsync();
+            //await _ac.RebootDeviceAsync();
         }
         public async Task StartBuzzlerWithDuration(int duration, int repeat)
         {

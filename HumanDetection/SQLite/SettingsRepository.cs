@@ -18,40 +18,45 @@ namespace SQLite
                     Mode = SqliteOpenMode.ReadWriteCreate
                 }.ToString();
 
-            // READ (Get first row – only one settings record)
-            public static AppSettings GetSettings()
-            {
-                using var con = GetConnection();
-                con.Open();
+        // READ (Get first row – only one settings record)
+        public static AppSettings GetSettings()
+        {
+            using var con = GetConnection();
+            con.Open();
 
-                var cmd = con.CreateCommand();
-                cmd.CommandText = @"SELECT Id,ComPort, MoxIP,RoutatorTimer,ConfidenceLevel,DatabaseURL,BackOfficeURL FROM Settings LIMIT 1";
+            var cmd = con.CreateCommand();
+            cmd.CommandText = @"SELECT Id, ComPort, MoxIP, RoutatorTimer, ConfidenceLevel, DatabaseURL, BackOfficeURL 
+                        FROM Settings 
+                        LIMIT 1";
 
-                using var reader = cmd.ExecuteReader();
-                if (!reader.Read()) return null;
-                var data= new AppSettings
-                {
-                    Id = reader.GetInt32(0),
-                    ComPort = reader.GetString(1),
-                    MoxIP = reader.GetString(2),
-                    RoutatorTimer = reader.GetString(3).ToString() != null ? 0 : reader.GetInt32(3),
-                    ConfidenceLevel=reader.GetInt32(4).ToString(),
-                    DatabaseURL = reader.GetString(4),
-                    BackOfficeURL = reader.GetString(5),
-                   
-                };
+            using var reader = cmd.ExecuteReader();
+
+            if (!reader.Read())
+                return null;
 
             return new AppSettings
             {
                 Id = reader.GetInt32(0),
                 ComPort = reader.GetString(1),
                 MoxIP = reader.GetString(2),
-                RoutatorTimer = reader.GetString(3).ToString() != null ? 0 : reader.GetInt32(3),
-                ConfidenceLevel = reader.GetInt32(4).ToString(),
-                DatabaseURL = reader.GetString(4),
-                BackOfficeURL = reader.GetString(5),
-            };
 
+                // ✅ Best handling
+                RoutatorTimer = reader.IsDBNull(3)
+                    ? 0
+                    : Convert.ToInt32(reader.GetValue(3)),
+
+                ConfidenceLevel = reader.IsDBNull(4)
+                    ? "0"
+                    : reader.GetInt32(4).ToString(),
+
+                DatabaseURL = reader.IsDBNull(5)
+                    ? string.Empty
+                    : reader.GetString(5),
+
+                BackOfficeURL = reader.IsDBNull(6)
+                    ? string.Empty
+                    : reader.GetString(6)
+            };
         }
 
         // CREATE
@@ -104,6 +109,40 @@ namespace SQLite
 
             cmd.ExecuteNonQuery();
             }
+        public static void UpdateConfidenceThresHoldSettings(AppSettings s)
+        {
+            using var con = GetConnection();
+            con.Open();
+
+            var cmd = con.CreateCommand();
+            cmd.CommandText = @"
+                UPDATE Settings SET                   
+                    ConfidenceLevel=@Confidence              
+                WHERE Id=@Id";
+
+            cmd.Parameters.AddWithValue("@Id", s.Id);
+            cmd.Parameters.AddWithValue("@Confidence", s.ConfidenceLevel);
+ 
+
+
+            cmd.ExecuteNonQuery();
+        }
+        public static void UpdateRotatorSettings(AppSettings s)
+        {
+            using var con = GetConnection();
+            con.Open();
+
+            var cmd = con.CreateCommand();
+            cmd.CommandText = @"
+        UPDATE Settings SET                   
+            RoutatorTimer=@Timer             
+        WHERE Id=@Id";
+
+            cmd.Parameters.AddWithValue("@Id", s.Id);
+            cmd.Parameters.AddWithValue("@Timer", s.RoutatorTimer);
+
+            cmd.ExecuteNonQuery();
+        }
 
         public static List<RuleModel> GetAll()
         {

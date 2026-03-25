@@ -63,4 +63,18 @@ namespace Model
 
         public string Dates { get; set; }
     }
+    public class PalletApiResponse
+    {
+        public int total_pallets { get; set; }
+        public string result_image { get; set; }
+        public List<Pallet> pallets { get; set; }
+    }
+
+    public class Pallet
+    {
+        public double center_x { get; set; }
+        public double image_center_x { get; set; }
+        public double confidence { get; set; }
+        public string instruction { get; set; }
+    }
 }

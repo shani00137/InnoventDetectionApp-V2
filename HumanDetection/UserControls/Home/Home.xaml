@@ -264,7 +264,7 @@
                                     </Grid.ColumnDefinitions>
 
                                     <!-- Entry -->
-                                    <Border Grid.Column="0" Margin="5" CornerRadius="10" BorderBrush="White" BorderThickness="1" Background="#333">
+                                        <Border Grid.Column="0" Margin="5" CornerRadius="10" BorderBrush="SlateBlue" BorderThickness="2" Background="#333">
                                         <StackPanel Height="65" HorizontalAlignment="Left" VerticalAlignment="Center" Background="Transparent" Margin="10,0">
                                             <TextBlock Text="Entry" FontSize="14" Foreground="White" HorizontalAlignment="Left"/>
                                             <TextBlock x:Name="EntryTimeTxt" Text="00:00:00" FontSize="24" Foreground="White" HorizontalAlignment="Left"/>
@@ -272,7 +272,7 @@
                                     </Border>
 
                                     <!-- Exit -->
-                                    <Border Grid.Column="1" Margin="5" CornerRadius="10" BorderBrush="White" BorderThickness="1" Background="#333">
+                                        <Border Grid.Column="1" Margin="5" CornerRadius="10" BorderBrush="SlateBlue" BorderThickness="2" Background="#333">
                                         <StackPanel Height="65" HorizontalAlignment="Left" VerticalAlignment="Center" Background="Transparent" Margin="10,0">
                                             <TextBlock Text="Exit" FontSize="14" Foreground="White" HorizontalAlignment="Left"/>
                                             <TextBlock x:Name="ExitTimeTxt" Text="00:00:00" FontSize="24" Foreground="White" HorizontalAlignment="Left"/>
@@ -280,7 +280,7 @@
                                     </Border>
 
                                     <!-- Height -->
-                                    <Border Grid.Column="2" Margin="5" CornerRadius="10" BorderBrush="White" BorderThickness="1"  x:Name="HeightBox" Background="#333">
+                                        <Border Grid.Column="2" Margin="5" CornerRadius="10" BorderBrush="SlateBlue" BorderThickness="2"  x:Name="HeightBox" Background="#333">
                                         <StackPanel Height="65" HorizontalAlignment="Left" VerticalAlignment="Center" Background="Transparent" Margin="10,0">
                                             <TextBlock Text="Height" FontSize="14" Foreground="White" HorizontalAlignment="Left"/>
                                             <TextBlock x:Name="PalletHeightTxt" Text="0" FontSize="24" Foreground="White" HorizontalAlignment="Left"/>
@@ -288,7 +288,7 @@
                                     </Border>
 
                                     <!-- Box Count -->
-                                    <Border Grid.Column="3" Margin="5" CornerRadius="10" BorderBrush="White" BorderThickness="1" Background="#333">
+                                        <Border Grid.Column="3" Margin="5" CornerRadius="10" BorderBrush="SlateBlue" BorderThickness="2" Background="#333">
                                         <StackPanel Height="65" HorizontalAlignment="Left" VerticalAlignment="Center" Background="Transparent" Margin="10,0">
                                             <TextBlock Text="Box Count" FontSize="14" Foreground="White" HorizontalAlignment="Left"/>
                                             <TextBlock x:Name="NoBoxTxt" Text="0" FontSize="24" Foreground="White" HorizontalAlignment="Left"/>
@@ -296,7 +296,7 @@
                                     </Border>
 
                                     <!-- Score -->
-                                    <Border Grid.Column="4" Margin="5" CornerRadius="10" BorderBrush="White" BorderThickness="1" Background="#333">
+                                        <Border Grid.Column="4" Margin="5" CornerRadius="10" BorderBrush="SlateBlue" BorderThickness="2" Background="#333">
                                         <StackPanel Height="65" HorizontalAlignment="Left" VerticalAlignment="Center" Background="Transparent" Margin="10,0">
                                             <TextBlock Text="Score" FontSize="14" Foreground="White" HorizontalAlignment="Left"/>
                                             <TextBlock x:Name="ScoreTxt" Text="0" FontSize="24" Foreground="White" HorizontalAlignment="Left"/>
@@ -304,7 +304,7 @@
                                     </Border>
 
                                     <!-- Weight -->
-                                    <Border Grid.Column="5" Margin="5" CornerRadius="10" BorderBrush="White" BorderThickness="1" Background="#333">
+                                        <Border Grid.Column="5" Margin="5" CornerRadius="10" BorderBrush="SlateBlue" BorderThickness="2" Background="#333">
                                         <StackPanel Height="65" HorizontalAlignment="Left" VerticalAlignment="Center" Background="Transparent" Margin="10,0">
                                             <TextBlock Text="Weight" FontSize="14" Foreground="White" HorizontalAlignment="Left"/>
                                             <TextBlock x:Name="WeightText"
@@ -594,73 +594,118 @@ Effect="{DynamicResource DropShadow}">
                                     </ScrollViewer>
 
                                 </Grid>
+                                <StackPanel Grid.Row="2">
+                                    <StackPanel Margin="0,5,0,2" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" >
+                                        <TextBlock Text="Box Counting Confidence:" FontSize="14" 
+                  
+                 Foreground="White" 
+                 FontWeight="Medium" 
+                 Margin="10,0,5,0" />
+                                        <TextBlock x:Name="PowerValueText" Text="0" FontSize="14" 
+                  
+                 Foreground="White" 
+                 FontWeight="Medium" 
+                 Margin="10,0,5,0" />
+                                    </StackPanel>
+                                    <StackPanel Margin="10,0,10,10">
+                                        <Slider x:Name="ConfidenceThresholdSlider" 
+                 Minimum="0" Maximum="100" 
+                 Value="0" 
+                 ValueChanged="ConfidenceThresholder_ValueChanged"
+                 Foreground="SlateBlue" 
+                 Margin="0">
+                                        </Slider>
+                                    </StackPanel>
 
-                                <Grid Grid.Row="2">
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
+                                    <StackPanel Margin="0,5,0,2" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" >
+                                        <TextBlock Text="Rotator Time:" FontSize="14" 
+ 
+Foreground="White" 
+FontWeight="Medium" 
+Margin="10,0,5,0" />
+                                        <TextBlock x:Name="RotatorPowerValueText" Text="0" FontSize="14" 
+ 
+Foreground="White" 
+FontWeight="Medium" 
+Margin="10,0,5,0" />
+                                    </StackPanel>
+                                    <StackPanel Margin="10,0,10,10">
+                                        <Slider x:Name="RotatorSlider" 
+Minimum="0" Maximum="20000" 
+Value="0" 
+ValueChanged="Rotator_ValueChanged"
+Foreground="SlateBlue" 
+Margin="0">
+                                        </Slider>
+                                    </StackPanel>
+                                    <Grid >
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
 
-                                    <!-- First row of buttons -->
-                                    <Grid Grid.Row="0" Margin="0,0,0,10">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
+                                        <!-- First row of buttons -->
+                                        <Grid Grid.Row="0" Margin="0,0,0,5">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
 
-                                        <Button
-           Background="Gray"
-           Foreground="White"
-           Content="Restart Process" Click="Restart_Click"
-           FontSize="14" Height="50"
-           Padding="10,5"
-           HorizontalAlignment="Stretch"
-           Margin="10,0,10,0"
-           BorderThickness="0"
-           Grid.Column="0" />
+                                            <Button
+Background="Gray"
+Foreground="White"
+Content="Restart Process" Click="Restart_Click"
+FontSize="12" Height="30"
+Padding="10,5"
+HorizontalAlignment="Stretch"
+Margin="10,0,10,0"
+BorderThickness="0"
+Grid.Column="0" />
 
-                                        <Button
-           Background="Gray" Click="StopProc_Click"
-           Foreground="White" Height="50" 
-           Content="Stop"
-           FontSize="14"
-           Padding="10,5"
-           HorizontalAlignment="Stretch"
-           Margin="10,0,10,0"
-           BorderThickness="0"
-           Grid.Column="1" />
+                                            <Button
+Background="Gray" Click="StopProc_Click"
+Foreground="White" Height="30" 
+Content="Stop"
+FontSize="12"
+Padding="10,5"
+HorizontalAlignment="Stretch"
+Margin="10,0,10,0"
+BorderThickness="0"
+Grid.Column="1" />
+                                        </Grid>
+
+                                        <!-- Second row of buttons -->
+                                        <Grid Grid.Row="1" Margin="0,0,0,5">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <Button
+                            Background="Gray"
+                            Foreground="White"
+                            Content="Submit"
+                            FontSize="12" Height="30"
+                            Padding="10,5"
+                            HorizontalAlignment="Stretch"
+                            Margin="10,0,10,0"
+                            BorderThickness="0"
+                            Grid.Column="0" />
+
+                                            <Button
+                            Background="Gray"
+                            Foreground="White" Height="30"
+                            Content="Results" Click="ShowResult_Click"
+                            FontSize="12"
+                            Padding="10,5"
+                            HorizontalAlignment="Stretch"
+                            Margin="10,0,10,0"
+                            BorderThickness="0"
+                            Grid.Column="1" />
+                                        </Grid>
                                     </Grid>
-
-                                    <!-- Second row of buttons -->
-                                    <Grid Grid.Row="1" Margin="0,0,0,10">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-
-                                        <Button
-                                       Background="Gray"
-                                       Foreground="White"
-                                       Content="Submit"
-                                       FontSize="14" Height="50"
-                                       Padding="10,5"
-                                       HorizontalAlignment="Stretch"
-                                       Margin="10,0,10,0"
-                                       BorderThickness="0"
-                                       Grid.Column="0" />
-
-                                        <Button
-                                       Background="Gray"
-                                       Foreground="White" Height="50"
-                                       Content="Results" Click="ShowResult_Click"
-                                       FontSize="14"
-                                       Padding="10,5"
-                                       HorizontalAlignment="Stretch"
-                                       Margin="10,0,10,0"
-                                       BorderThickness="0"
-                                       Grid.Column="1" />
-                                    </Grid>
-                                </Grid>
+                                </StackPanel>
+                               
 
 
                             </Grid>
