@@ -168,7 +168,8 @@ namespace ACGPUIO
         public async Task StartRotatorForDurationAsync(int Seconds)
         {
             // DO1 (rotator) ON
-
+            await SendDOCommand(1, 1);
+            await Task.Delay(5000);
             await SendDOCommand(3, 1);
 
             await Task.Delay(Seconds);

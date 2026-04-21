@@ -573,10 +573,10 @@ Effect="{DynamicResource DropShadow}">
                                                 <DataTemplate>
                                                     <Border Margin="10"
                                                        CornerRadius="5"
-                                                       BorderBrush="#00E108"
+                                                       BorderBrush="SlateBlue"
                                                        BorderThickness="1"
-                                                       Width="239"
-                                                       Height="160"
+                                                       Width="200"
+                                                       Height="150"
                                                        Background="#111"
                                                        SnapsToDevicePixels="True"
                                                        Effect="{DynamicResource MaterialDesignShadowElevation3}"

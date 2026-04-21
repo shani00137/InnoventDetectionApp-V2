@@ -120,7 +120,6 @@ namespace HumanDetection
         //public string pythonExe = @" C:\Users\USER\AppData\Local\Programs\Python\Python310\python.exe";
         private readonly SnackbarMessageQueue _messageQueue = new SnackbarMessageQueue(TimeSpan.FromSeconds(3));
 
-
         public Home()
         {
             InitializeComponent();
@@ -167,10 +166,6 @@ namespace HumanDetection
 
                 // Show loading indicator
                 await PrepareAllDevicesAndModels();
-
-
-
-
                 snackbarMesssage.MessageQueue = _messageQueue; // Assign queue
 
             }
@@ -239,7 +234,8 @@ namespace HumanDetection
 
 
             LoadingOverlay.Visibility = Visibility.Collapsed;
-     
+           //await StartPalletDetectionProcAsync();
+            //WeightText.Text = "1249 KG";
         }
 
         private async Task RunCheck(ProgressBar loader, TextBlock success, TextBlock error, int delay)
@@ -607,110 +603,94 @@ namespace HumanDetection
             try
             {
 
-                //int fullRotation = 8000;
-                //int step = 1000;
 
-                //List<(int time, double score)> scanResults = new();
+                int fullRotation = 80000;
+                int step = 2000;
 
-                //_messageQueue.Enqueue("Scanning pallet alignment");
+                List<(int time, double score)> scanResults = new();
 
-                //await Dispatcher.InvokeAsync(() =>
-                //{
-                //    LoadingCard.Visibility = Visibility.Visible;
-                //});
+                _messageQueue.Enqueue("Scanning pallet alignment");
 
-                //int elapsed = 0;
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    LoadingCard.Visibility = Visibility.Visible;
+                });
 
-                //while (elapsed <= fullRotation)
-                //{
-                //    var image = await CaptureSingleFrameFromCameraAsync(cameraInfo);
-                //    Image<Rgba32> convertedImage = BitmapImageToImageSharp(image);
+                int elapsed = 0;
+
+                while (elapsed <= fullRotation)
+                {
+                    var image = await CaptureSingleFrameFromCameraAsync(cameraInfo);
+                    Image<Rgba32> convertedImage = BitmapImageToImageSharp(image);
 
 
 
-                //    var resizedImage = convertedImage.CloneAs<Rgba32>();
-                //    int modelWidth = 640;
-                //    int modelHeight = 640;
+                    var resizedImage = convertedImage.CloneAs<Rgba32>();
+                    int modelWidth = 640;
+                    int modelHeight = 640;
 
-                //    resizedImage.Mutate(x =>
-                //        x.Resize(new ResizeOptions
-                //        {
-                //            Size = new Size(modelWidth, modelHeight),
-                //            Mode = ResizeMode.Pad,
-                //            PadColor = Color.Black
-                //        }));
+                    resizedImage.Mutate(x =>
+                        x.Resize(new ResizeOptions
+                        {
+                            Size = new Size(modelWidth, modelHeight),
+                            Mode = ResizeMode.Pad,
+                            PadColor = Color.Black
+                        }));
 
-                //    // ----------------------------------------------------
-                //    // 2. Confidence threshold
-                //    // ----------------------------------------------------
-                //    double confidenceThreshold = 0.0;
+                    // ----------------------------------------------------
+                    // 2. Confidence threshold
+                    // ----------------------------------------------------
+                    double confidenceThreshold = 0.0;
 
-                //    if (_settings != null &&
-                //        !string.IsNullOrWhiteSpace(_settings.ConfidenceLevel) &&
-                //        double.TryParse(_settings.ConfidenceLevel, out var dbValue))
-                //    {
-                //        confidenceThreshold = Math.Clamp(dbValue / 100.0, 0.0, 1.0);
-                //    }
+                    if (_settings != null &&
+                        !string.IsNullOrWhiteSpace(_settings.ConfidenceLevel) &&
+                        double.TryParse(_settings.ConfidenceLevel, out var dbValue))
+                    {
+                        confidenceThreshold = Math.Clamp(dbValue / 100.0, 0.0, 1.0);
+                    }
 
-                //    // ----------------------------------------------------
-                //    // 3. Run model prediction
-                //    // ----------------------------------------------------
-                //    var rawPredictions = _scorerBoxCountingModel
-                //        .Predict(resizedImage)
-                //        .Where(p => p.Score >= confidenceThreshold)
-                //        .ToList();
+                    // ----------------------------------------------------
+                    // 3. Run model prediction
+                    // ----------------------------------------------------
+                    var rawPredictions = _scorerBoxCountingModel
+                        .Predict(resizedImage)
+                        .Where(p => p.Score >= confidenceThreshold)
+                        .ToList();
 
-                //    double score = 0;
-                //    if (rawPredictions.Any())
-                //    {
-                //        double boxAvg = rawPredictions.Average(p => p.Score);
-                //        score = boxAvg;
-                //    }
+                    double score = 0;
+                    if (rawPredictions.Any())
+                    {
+                        double boxAvg = rawPredictions.Average(p => p.Score);
+                        score = boxAvg;
+                    }
 
-                //    scanResults.Add((elapsed, score));
+                    scanResults.Add((elapsed, score));
 
-                //    Dispatcher.Invoke(() =>
-                //    {
+                    Dispatcher.Invoke(() =>
+                    {
 
-                //        ScoreTxt.Text = $"{score * 100:0}%";
-                //    });
-                //    if (score >= 0.80)
-                //    {
-                //        break;
-                //    }
+                        ScoreTxt.Text = $"{score * 100:0}%";
+                    });
+                    if (score >= 0.90)
+                    {
+                        break;
+                    }
 
-                //    await TurnOnRotatorAsync();
-                //    await Task.Delay(5000);
-                //    await StartRoutatorWithDuration(step);
-                //    await OffRotatorAsync();
 
-                //    elapsed += step;
-                //    var bitmap = ImageSharpToBitmapImage(resizedImage);
+                    await StartRoutatorWithDuration(step);
 
-                //    Dispatcher.Invoke(() =>
-                //    {
-                //        PaletImage.Source = bitmap;
+                    elapsed += step;
+                    var bitmap = ImageSharpToBitmapImage(resizedImage);
 
-                //        ScoreTxt.Text = $"{score * 100:0}%";
-                //    });
-                //    await Task.Delay(100);
-                //}
+                    Dispatcher.Invoke(() =>
+                    {
+                        PaletImage.Source = bitmap;
 
-                // Find best alignment
-                //var best = scanResults.OrderByDescending(x => x.score).First();
+                        ScoreTxt.Text = $"{score * 100:0}%";
+                    });
+                    await Task.Delay(100);
+                }
 
-                //int reverseDuration = fullRotation - best.time;
-
-                //_messageQueue.Enqueue($"Best score {best.score:0}% at {best.time} ms");
-                //await TurnOnRotatorAsync();
-                //await Task.Delay(5000);
-                //// Reverse to best position
-                ////await StartRotatorReverseForDurationAsync(reverseDuration);
-                //await OffRotatorAsync();
-                //await Dispatcher.InvokeAsync(() =>
-                //{
-                //    LoadingCard.Visibility = Visibility.Collapsed;
-                //});
                 await Task.Delay(5000);
                 await Dispatcher.InvokeAsync(async () =>
                 {
@@ -720,6 +700,10 @@ namespace HumanDetection
                     await Task.Delay(100);
                     await CaptureAndDisplayAllCamerasAsync();
                 });
+
+
+
+
             }
             catch (Exception ex)
             {
@@ -1135,11 +1119,14 @@ namespace HumanDetection
                                 if (side != CameraPosition.Left)
                                 {
 
+                                    _messageQueue.Enqueue($"Image From: {side}");
+
                                     int duration = _settings.RoutatorTimer!=null?(int)_settings.RoutatorTimer:0;
-                                    await TurnOnRotatorAsync();
-                                    await Task.Delay(2000);
-                                    await StartRoutatorWithDuration(duration);
-                                    await OffRotatorAsync();
+                                   
+                                  
+                                    await StartRoutatorWithDuration(5200);
+                                    await Task.Delay(1000);
+                                   
                                 }
                             }
                         }
@@ -1151,10 +1138,10 @@ namespace HumanDetection
                 }
             });
             //reset position of pallet
-            int duration = _settings.RoutatorTimer != null ? (int)_settings.RoutatorTimer : 0;
-            await TurnOnRotatorAsync();
-            await Task.Delay(2000);
-            await StartRoutatorWithDuration(duration);
+            //int duration = _settings.RoutatorTimer != null ? (int)_settings.RoutatorTimer : 0;
+            //await TurnOnRotatorAsync();
+            //await Task.Delay(2000);
+            await StartRoutatorWithDuration(5200);
             return capturedImages;
         }
         public async Task<BitmapImage?> CaptureSingleFrameFromCameraAsync(ICameraInfo cameraInfo)
@@ -1407,31 +1394,11 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                 .Where(p => !p.Label.Name.Equals("pallet", StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
-
-
-            //if (tallestPallet != null)
-            //    predictions.Add(tallestPallet);
-
-            // ----------------------------------------------------
-            // 5. Count boxes & pallet height
-            // ----------------------------------------------------
             int boxCount = rawPredictions.Count(p =>
                 p.Label.Name.Equals("box", StringComparison.OrdinalIgnoreCase));
 
             double palletHeightMeters = 0.0;
-            //if (tallestPallet != null && tallestPallet.Score>0.70)
-            //{
-            //    double heightPixels = tallestPallet.Rectangle.Height; // already pixels
-
-            //    double mmPerPixel = 2.50; // your calibration at reference distance
-
-            //    double heightMm = heightPixels * mmPerPixel;
-            //    palletHeightMeters = heightMm / 1000.0;
-            //}
-
-            // ----------------------------------------------------
-            // 6. Average confidence (box + pallet)
-            // ----------------------------------------------------
+            
             double averageScore = 0.0;
             var boxPredictions = predictions
                 .Where(p => p.Label.Name.Equals("box", StringComparison.OrdinalIgnoreCase))
@@ -1605,46 +1572,6 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
 
         }
 
-        private double CalculatePalletAngle(Image<Rgba32> palletImage)
-        {
-            using var ms = new MemoryStream();
-            palletImage.SaveAsBmp(ms);
-            byte[] imageBytes = ms.ToArray();
-
-            Mat mat = Cv2.ImDecode(imageBytes, ImreadModes.Grayscale);
-
-            Cv2.GaussianBlur(mat, mat, new OpenCvSharp.Size(5, 5), 0);
-
-            Mat edges = new();
-            Cv2.Canny(mat, edges, 50, 150);
-
-            var lines = Cv2.HoughLinesP(
-                edges,
-                1,
-                Math.PI / 180,
-                100,
-                minLineLength: mat.Width * 0.5,
-                maxLineGap: 10
-            );
-
-            if (lines == null || lines.Length == 0)
-                return 0;
-
-            List<double> angles = new();
-
-            foreach (var line in lines)
-            {
-                double angle = Math.Atan2(
-                    line.P2.Y - line.P1.Y,
-                    line.P2.X - line.P1.X
-                ) * 180.0 / Math.PI;
-
-                if (Math.Abs(angle) < 45)
-                    angles.Add(angle);
-            }
-
-            return angles.Count > 0 ? angles.Median() : 0;
-        }
 
 
         private bool RunHumanDetectionModel(Image<Rgba32> image)
@@ -2327,7 +2254,7 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                 {
                     Dispatcher.Invoke(() =>
                     {
-                        WeightText.Text = "ERR";
+                        WeightText.Text = "ERROR";
                     });
 
                     Console.WriteLine("Scale error: " + ex.Message);
