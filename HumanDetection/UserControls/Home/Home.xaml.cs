@@ -671,7 +671,7 @@ namespace HumanDetection
 
                         ScoreTxt.Text = $"{score * 100:0}%";
                     });
-                    if (score >= 0.90)
+                    if (score >= 0.88)
                     {
                         break;
                     }
