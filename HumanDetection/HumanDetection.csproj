@@ -78,6 +78,12 @@
 		<Content Include="Resources\Audio\warning.wav">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</Content>
+		<Content Include="Resources\Images\check.png">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Resources\Images\multiply.png">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
 		<Content Include="Resources\Images\temperature.png">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</Content>
@@ -228,6 +234,18 @@
 	  <Reference Include="Basler.Pylon">
 	    <HintPath>Assets\Basler.Pylon.dll</HintPath>
 	  </Reference>
+	</ItemGroup>
+
+
+
+	<ItemGroup>
+	  <None Remove="Resources\Images\multiply.png" />
+	</ItemGroup>
+
+
+
+	<ItemGroup>
+	  <None Remove="Resources\Images\check.png" />
 	</ItemGroup>
 
 

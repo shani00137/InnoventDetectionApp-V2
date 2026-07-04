@@ -19,7 +19,8 @@ namespace Utilites.CameraSettings
             return serial switch
             {
                 "25261336" => CameraPosition.Front, // Front camera
-                "25261337" => CameraPosition.Top,   // Top camera
+                "25261337" => CameraPosition.Top,
+                "25523223" => CameraPosition.Right,// Top camera
                 _ => CameraPosition.Unknown
             };
         }

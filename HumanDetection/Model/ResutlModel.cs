@@ -24,6 +24,7 @@ namespace Model
         public string? BarcodeList { get; set; }
         public List<OcrGridItem>? GridItems { get; set; }
         public int? LableCount { get; set; }
+        public int? DateCount { get; set; }
 
 
     }

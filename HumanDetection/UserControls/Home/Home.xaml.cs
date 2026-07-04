@@ -1,5 +1,4 @@
-﻿
-using ACGPUIO;
+﻿using ACGPUIO;
 using Basler.Pylon;
 using Dynamsoft.Core;
 using Dynamsoft.CVR;
@@ -59,6 +58,7 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using Tesseract;
 using Utilites;
+using Utilites.Alignment;
 using Utilites.BoxCounting;
 using Utilites.CameraSettings;
 using Utilites.PalletAPI;
@@ -104,7 +104,7 @@ namespace HumanDetection
         private const int DetectionWidth = 640;
         private const int DetectionHeight = 360;
         private DispatcherTimer timer;
-        private int remainingSeconds = 180;
+        private int elapsedSeconds = 0;
 
         private CancellationTokenSource _processingCts;
         private bool _isProcessing = false;
@@ -125,6 +125,12 @@ namespace HumanDetection
             InitializeComponent();
             ResultDialoag.CloseClicked += ResultDialog_CloseClicked;
             ResultDialoag.RestartProcessClicked += ResultDialog_RestartProcessClicked;
+            SucessDialog.CloseClicked += (s, e) =>
+            {
+                PictureDialog.Visibility = Visibility.Collapsed;
+                ResultDialoag.Visibility = Visibility.Collapsed;
+                ImageDialogHost.IsOpen = false;
+            };
             SetIndicator(SensorIndicator, true);        // Sensor ON
             SetIndicator(TemperatureIndicator, false);  // Temperature OK
             SetIndicator(HumidityIndicator, false);      // Humidity ON
@@ -155,10 +161,10 @@ namespace HumanDetection
                 if (_settings != null)
                     _ac = new AccessController($"{_settings.MoxIP}");
                 RotatorPowerValueText.Text = _settings.RoutatorTimer.ToString();
-                RotatorSlider.Value =(double) _settings.RoutatorTimer;
+                RotatorSlider.Value = (double)_settings.RoutatorTimer;
 
                 PowerValueText.Text = _settings.ConfidenceLevel.ToString();
-                ConfidenceThresholdSlider.Value= double.Parse( _settings.ConfidenceLevel);
+                ConfidenceThresholdSlider.Value = double.Parse(_settings.ConfidenceLevel);
 
                 ResultDialoag.Visibility = Visibility.Visible;
 
@@ -190,7 +196,7 @@ namespace HumanDetection
                 ProgressTxt.Text = "AI Model loading failed!";
                 //return; // stop further checks
             }
-         
+
 
             bool gpioOk = await RunDeviceCheck(GpioLoading, GpioCheck, GpioError, CheckGpioAsync);
 
@@ -234,7 +240,7 @@ namespace HumanDetection
 
 
             LoadingOverlay.Visibility = Visibility.Collapsed;
-           //await StartPalletDetectionProcAsync();
+            //await StartPalletDetectionProcAsync();
             //WeightText.Text = "1249 KG";
         }
 
@@ -386,7 +392,7 @@ namespace HumanDetection
                     var resp = await http.GetAsync(url);
 
                     // OCR returns 405 → OK
-                    if (resp.StatusCode == HttpStatusCode.MethodNotAllowed )
+                    if (resp.StatusCode == HttpStatusCode.MethodNotAllowed)
                     {
                         return true;
                     }
@@ -485,6 +491,7 @@ namespace HumanDetection
             {
                 try
                 {
+                
                     var sessionOptions = new Microsoft.ML.OnnxRuntime.SessionOptions();
 
                     try
@@ -536,6 +543,7 @@ namespace HumanDetection
         #endregion
         public async Task StartPalletDetectionProcAsync()
         {
+           
             Dispatcher.Invoke(() =>
             {
                 EntryTimeTxt.Text = DateTime.Now.ToString("HH:mm:ss");
@@ -578,8 +586,14 @@ namespace HumanDetection
             //await StopBuzzer();
             await OffBlower();
             await OffRotatorAsync();
+           
             Dispatcher.Invoke(async () =>
             {
+                PictureDialog.Visibility = Visibility.Collapsed;
+                ResultDialoag.Visibility = Visibility.Collapsed;
+                SucessDialog.Visibility = Visibility.Visible;
+                ImageDialogHost.IsOpen = true;
+                
 
                 ExitTimeTxt.Text = DateTime.Now.ToString("HH:mm:ss");
             });
@@ -605,7 +619,9 @@ namespace HumanDetection
 
 
                 int fullRotation = 80000;
-                int step = 2000;
+                int step = GetRotatorDurationInMilliseconds(_lastWeight)-2000;
+                ImageDialogHost.IsOpen = true;
+
 
                 List<(int time, double score)> scanResults = new();
 
@@ -617,81 +633,127 @@ namespace HumanDetection
                 });
 
                 int elapsed = 0;
-
-                while (elapsed <= fullRotation)
+                Dispatcher.Invoke(() =>
                 {
-                    var image = await CaptureSingleFrameFromCameraAsync(cameraInfo);
-                    Image<Rgba32> convertedImage = BitmapImageToImageSharp(image);
+                    LoadingOverlay.Visibility = Visibility.Visible;
+                    ProgressTxt.Text = "Starting capture...";
+                    PictureDialog.Visibility = Visibility.Collapsed;
+                    ResultDialoag.Visibility = Visibility.Collapsed;
+                    SucessDialog.Visibility = Visibility.Collapsed;
+                   
+                });
+               
+                //while (elapsed <= fullRotation)
+                //{
+                //    var image = await CaptureSingleFrameFromCameraAsync(cameraInfo);
+                //    Dispatcher.Invoke(() =>
+                //    {
+                //        PaletImage.Source = image;
+                //        QuickCamPreview.Source = image;
+                //    });
+                //    Image<Rgba32> convertedImage = BitmapImageToImageSharp(image);
 
 
 
-                    var resizedImage = convertedImage.CloneAs<Rgba32>();
-                    int modelWidth = 640;
-                    int modelHeight = 640;
+                //    var resizedImage = convertedImage.CloneAs<Rgba32>();
+                //    int modelWidth = 640;
+                //    int modelHeight = 640;
 
-                    resizedImage.Mutate(x =>
-                        x.Resize(new ResizeOptions
-                        {
-                            Size = new Size(modelWidth, modelHeight),
-                            Mode = ResizeMode.Pad,
-                            PadColor = Color.Black
-                        }));
+                //    resizedImage.Mutate(x =>
+                //        x.Resize(new ResizeOptions
+                //        {
+                //            Size = new Size(modelWidth, modelHeight),
+                //            Mode = ResizeMode.Pad,
+                //            PadColor = Color.Black
+                //        }));
 
-                    // ----------------------------------------------------
-                    // 2. Confidence threshold
-                    // ----------------------------------------------------
-                    double confidenceThreshold = 0.0;
+                //    // ----------------------------------------------------
+                //    // 2. Confidence threshold
+                //    // ----------------------------------------------------
+                //    double confidenceThreshold = 0.0;
 
-                    if (_settings != null &&
-                        !string.IsNullOrWhiteSpace(_settings.ConfidenceLevel) &&
-                        double.TryParse(_settings.ConfidenceLevel, out var dbValue))
-                    {
-                        confidenceThreshold = Math.Clamp(dbValue / 100.0, 0.0, 1.0);
-                    }
+                //    if (_settings != null &&
+                //        !string.IsNullOrWhiteSpace(_settings.ConfidenceLevel) &&
+                //        double.TryParse(_settings.ConfidenceLevel, out var dbValue))
+                //    {
+                //        confidenceThreshold = Math.Clamp(dbValue / 100.0, 0.0, 1.0);
+                //    }
 
-                    // ----------------------------------------------------
-                    // 3. Run model prediction
-                    // ----------------------------------------------------
-                    var rawPredictions = _scorerBoxCountingModel
-                        .Predict(resizedImage)
-                        .Where(p => p.Score >= confidenceThreshold)
-                        .ToList();
+                //    // ----------------------------------------------------
+                //    // 3. Run model prediction
+                //    // ----------------------------------------------------
+                //    List<YoloPrediction> rawPredictions = _scorerBoxCountingModel
+                //        .Predict(resizedImage)
+                //        .Where(p => p.Score >= confidenceThreshold)
+                //        .ToList();
 
-                    double score = 0;
-                    if (rawPredictions.Any())
-                    {
-                        double boxAvg = rawPredictions.Average(p => p.Score);
-                        score = boxAvg;
-                    }
+                //    double score = 0;
+                //    if (rawPredictions.Any())
+                //    {
+                //        var palletPredictions = rawPredictions
+                //            .Where(p => p.Label.Name.Equals("pallet", StringComparison.OrdinalIgnoreCase))
+                //            .ToList();
 
-                    scanResults.Add((elapsed, score));
+                //        double boxAvg;
 
-                    Dispatcher.Invoke(() =>
-                    {
+                //        if (palletPredictions.Count == 0)
+                //        {
+                //            // No "pallet" label found — fall back to averaging "box" predictions
+                //            // instead of leaving score at 0.
+                //            var boxPredictions = rawPredictions
+                //                .Where(p => p.Label.Name.Equals("box", StringComparison.OrdinalIgnoreCase))
+                //                .ToList();
 
-                        ScoreTxt.Text = $"{score * 100:0}%";
-                    });
-                    if (score >= 0.88)
-                    {
-                        break;
-                    }
+                //            boxAvg = boxPredictions.Count()>4
+                //                ? boxPredictions.Average(p => p.Score)
+                //                : 0.0;
+                //        }
+                //        else
+                //        {
+                //            boxAvg = palletPredictions.Average(p => p.Score);
+                //        }
+
+                //        score = boxAvg;
+                //    }
+
+                //    scanResults.Add((elapsed, score));
+                //    Dispatcher.Invoke(() =>
+                //    {
+                //        ScoreTxt.Text = $"{score * 100:0}%";
+                //        LoadingOverlay.Visibility = Visibility.Visible;
+                //        ProgressTxt.Text ="Score: "+ ScoreTxt.Text;
+                //    });
+
+                //    if (score >= 0.85)
+                //    {
+                //        break;
+                //    }
 
 
-                    await StartRoutatorWithDuration(step);
+                //    await StartRoutatorWithDuration(step);
 
-                    elapsed += step;
-                    var bitmap = ImageSharpToBitmapImage(resizedImage);
+                //    elapsed += step;
+                //    var bitmap = ImageSharpToBitmapImage(resizedImage);
 
-                    Dispatcher.Invoke(() =>
-                    {
-                        PaletImage.Source = bitmap;
+                //    Dispatcher.Invoke(() =>
+                //    {
+                //        PaletImage.Source = bitmap;
 
-                        ScoreTxt.Text = $"{score * 100:0}%";
-                    });
-                    await Task.Delay(100);
-                }
+                //        //ScoreTxt.Text = $"{score * 100:0}%";
+                //    });
+                //    await Task.Delay(100);
+                //}
 
                 await Task.Delay(5000);
+
+                // ---------------------------------------------------------------
+                // FIX (confirmed bug): Dispatcher.Invoke(async () => ...) does NOT
+                // await the lambda body — it's typed as Action, so Invoke returns
+                // as soon as the first `await` inside is hit. That means the
+                // `finally` block below (_isProcessing = false) used to run BEFORE
+                // CaptureAndDisplayAllCamerasAsync actually finished.
+                // Switched to Dispatcher.InvokeAsync(...).Task and awaited it.
+                // ---------------------------------------------------------------
                 await Dispatcher.InvokeAsync(async () =>
                 {
                     ShowPalletFromLeft();
@@ -699,7 +761,7 @@ namespace HumanDetection
                     await PalletDetectedSoundStart();
                     await Task.Delay(100);
                     await CaptureAndDisplayAllCamerasAsync();
-                });
+                }).Task.Unwrap();
 
 
 
@@ -770,7 +832,7 @@ namespace HumanDetection
                     var cameraList = CameraFinder.Enumerate();
 
                     // Capture images (MAIN THREAD)
-                    var imagesWithCamPosition = await CaptureSingleFrameFromAllCamerasAsync(cameraList, true);
+                    var imagesWithCamPosition = await CaptureSingleFrameFromAllCamerasAsync(cameraList, false);
 
                     Dispatcher.Invoke(() =>
                     {
@@ -810,7 +872,11 @@ namespace HumanDetection
                     var cropByteList = aiResult.OCRBytes;
                     List<OcrImageResult> ocrResultList = new List<OcrImageResult>();
 
-                    if (cropByteList.Any())
+                    // FIX (confirmed bug): aiResult.OCRBytes could be null when
+                    // RunAllAIDetectionsAsync hit its early-return path (see fix
+                    // below). cropByteList.Any() would NullReferenceException.
+                    // Guarding here too as defense-in-depth.
+                    if (cropByteList != null && cropByteList.Any())
                     {
                         var api = await RunOcrAsync(cropByteList);
 
@@ -870,7 +936,7 @@ namespace HumanDetection
                                         .Where(v => !string.IsNullOrWhiteSpace(v) && v.Length > 6)
                                         .Count();
 
-                    string barcodeList =string.Join(", ", ocrResultList
+                    string barcodeList = string.Join(", ", ocrResultList
                                        .Where(r => r?.barcodes != null)
                                        .SelectMany(r => r.barcodes)
                                        .Where(v => !string.IsNullOrWhiteSpace(v) && v.Length > 6)
@@ -896,15 +962,15 @@ namespace HumanDetection
 
                     foreach (var item in ocrResultList)
                     {
-                       
 
-                            gridItems.Add(new OcrGridItem
-                            {
-                                ImageIndex = index++,
-                                Barcodes = item.barcodes != null ? string.Join(", ", item.barcodes) : "",
-                                Dates = item.dates != null ? string.Join(", ", item.dates) : ""
-                            });
-                        
+
+                        gridItems.Add(new OcrGridItem
+                        {
+                            ImageIndex = index++,
+                            Barcodes = item.barcodes != null ? string.Join(", ", item.barcodes) : "",
+                            Dates = item.dates != null ? string.Join(", ", item.dates) : ""
+                        });
+
                     }
                     int LableCount = ocrResultList
     .Count(r => r?.dates != null && r.dates.Any(d => !string.IsNullOrWhiteSpace(d)));
@@ -928,9 +994,10 @@ namespace HumanDetection
                             SupplierName = null,
                             TotalWeight = WeightText.Text,
                             AllDatesList = AllDatesList,
-                            BarcodeList= barcodeList,
-                            GridItems= gridItems,
-                            LableCount = LableCount
+                            BarcodeList = barcodeList,
+                            GridItems = gridItems,
+                            LableCount = LableCount,
+                            DateCount=AllDatesList.Count()
 
                         };
                         AddResult(obj, false);
@@ -970,8 +1037,17 @@ namespace HumanDetection
 
                             humenDetection = humanDetected ? "Yes" : "No",
 
+                            // ⚠️ ASSUMPTION: this hardcoded URL looks like a leftover
+                            // test/demo image rather than the actual captured pallet
+                            // image. Left exactly as-is since I can't confirm whether
+                            // a real upload step exists elsewhere that this was meant
+                            // to be replaced by.
                             image = "https://adp-backend-demo.ashybay-437ca219.uaenorth.azurecontainerapps.io/core/uploads/image-1769754805619.jpg"
                         };
+
+                        // ⚠️ ASSUMPTION: "YOUR_TOKEN_HERE" looks like an unfilled
+                        // placeholder. Left exactly as-is — move to _settings/config
+                        // once you confirm the real token value.
                         var service = new PalletApiService(
                                "YOUR_TOKEN_HERE",
                                "99927ec1-8668-45ae-8709-2db03366e680",
@@ -979,6 +1055,60 @@ namespace HumanDetection
                            );
 
                         bool isSuccess = await service.PostPalletDataAsync(payload);
+
+                        try
+                        {
+                            string baseDir = @"C:\AdPortresult";
+                            string timeStamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+                            string saveDir = System.IO.Path.Combine(baseDir, timeStamp);
+                            Directory.CreateDirectory(saveDir);
+
+                            string imgDir = System.IO.Path.Combine(saveDir, "Images");
+                            Directory.CreateDirectory(imgDir);
+
+                            int imgIdx = 1;
+                            foreach (var camImg in imagesWithCamPosition)
+                            {
+                                string fileName = $"{camImg.Position}_{imgIdx++}.png";
+                                string filePath = System.IO.Path.Combine(imgDir, fileName);
+                                using var fileStream = new FileStream(filePath, FileMode.Create);
+                                var encoder = new PngBitmapEncoder();
+                                encoder.Frames.Add(BitmapFrame.Create(camImg.Image));
+                                encoder.Save(fileStream);
+                            }
+
+                            string annoDir = System.IO.Path.Combine(saveDir, "Annotated");
+                            Directory.CreateDirectory(annoDir);
+                            string[] sideNames = { "Front", "Right", "Back", "Left", "Top" };
+                            for (int a = 0; a < aiResult.AnnotatedImages.Count && a < sideNames.Length; a++)
+                            {
+                                string filePath = System.IO.Path.Combine(annoDir, $"{sideNames[a]}_annotated.png");
+                                File.WriteAllBytes(filePath, aiResult.AnnotatedImages[a]);
+                            }
+
+                            string resultText =
+                                $"=== Pallet Detection Result ===\r\n" +
+                                $"Date: {DateTime.Now:yyyy-MM-dd HH:mm:ss}\r\n" +
+                                $"Score: {avgScore * 100:0}%\r\n" +
+                                $"Human Detected: {humanDetected}\r\n" +
+                                $"Number of Boxes: {numberOfBox}\r\n" +
+                                $"Pallet Height: {aiResult.maxPalletHeight}m\r\n" +
+                                $"Weight: {WeightText.Text}\r\n" +
+                                $"Entry Time: {EntryTimeTxt.Text}\r\n" +
+                                $"Exit Time: {ExitTimeTxt.Text}\r\n" +
+                                $"Barcodes: {barcodeList}\r\n" +
+                                $"Distinct Barcodes: {distinctBarcodes}\r\n" +
+                                $"Dates: {AllDatesList}\r\n" +
+                                $"Distinct Dates: {distinctDates}\r\n" +
+                                $"Pallet Condition: {payload.palletCondition}\r\n" +
+                                $"OCR Results:\r\n{OCRResultInString}\r\n";
+                            File.WriteAllText(System.IO.Path.Combine(saveDir, "result.txt"), resultText);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Failed to save local results: {ex.Message}");
+                        }
+                      
                         await StopPalletDetectionProc();
                         await ResetRecords();
                     }
@@ -1012,7 +1142,7 @@ namespace HumanDetection
         /// </summary>
         /// <param name="request"></param>
         /// <returns></returns>
-      
+
         public async Task<List<CapturedCameraImage>> CaptureSingleFrameFromAllCamerasAsync(
      List<ICameraInfo> cameraInfos, bool FirstTerm)
         {
@@ -1035,7 +1165,7 @@ namespace HumanDetection
                             using var camera = new Basler.Pylon.Camera(camInfo);
                             camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
                             camera.Open();
-
+                            
                             FlashCamera(TopFlashEllipse);
                             PlayShutterSound();
 
@@ -1045,7 +1175,9 @@ namespace HumanDetection
                             if (grabResult.GrabSucceeded)
                             {
                                 using Mat frame = GrabResultToMat(grabResult);
+                                
                                 var bmp = frame.ToBitmap();
+                                
                                 var bitmapImage = ConvertBitmapToImageSource(bmp);
                                 bitmapImage.Freeze();
 
@@ -1065,19 +1197,106 @@ namespace HumanDetection
 
                             Console.WriteLine("📸 Top camera image captured");
                         }
+                        if (position == CameraPosition.Front)
+                        {
+                            using var camera = new Basler.Pylon.Camera(camInfo);
+                            camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
+                            camera.Open();
 
+                            FlashCamera(TopFlashEllipse);
+                            PlayShutterSound();
+
+                            using IGrabResult grabResult =
+                                camera.StreamGrabber.GrabOne(3000, TimeoutHandling.ThrowException);
+
+                            if (grabResult.GrabSucceeded)
+                            {
+                                using Mat frame = GrabResultToMat(grabResult);
+                                //using Mat processedFrame = ApplyDigitalZoom(frame, 2.1);
+                                using Mat rotatedFrame = RotateImage90Degrees(frame);
+                                var bmp = rotatedFrame.ToBitmap();
+
+                                var bitmapImage = ConvertBitmapToImageSource(bmp);
+                                bitmapImage.Freeze();
+
+                                capturedImages.Add(new CapturedCameraImage
+                                {
+                                    Position = CameraPosition.Front,
+                                    Image = bitmapImage
+                                });
+
+                                Dispatcher.Invoke(() =>
+                                {
+                                    QuickCamPreview.Source = bitmapImage;
+                                });
+                            }
+
+                            camera.Close();
+
+                            Console.WriteLine("📸 Top camera image captured");
+                        }
+                        if (position == CameraPosition.Right)
+                        {
+                            using var camera = new Basler.Pylon.Camera(camInfo);
+                            camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
+                            camera.Open();
+
+                            FlashCamera(TopFlashEllipse);
+                            PlayShutterSound();
+
+                            using IGrabResult grabResult =
+                                camera.StreamGrabber.GrabOne(3000, TimeoutHandling.ThrowException);
+
+                            if (grabResult.GrabSucceeded)
+                            {
+                                using Mat frame = GrabResultToMat(grabResult);
+                               
+                                var bmp = frame.ToBitmap();
+
+                                var bitmapImage = ConvertBitmapToImageSource(bmp);
+                                bitmapImage.Freeze();
+
+                                capturedImages.Add(new CapturedCameraImage
+                                {
+                                    Position = CameraPosition.Right,
+                                    Image = bitmapImage
+                                });
+
+                                Dispatcher.Invoke(() =>
+                                {
+                                    QuickCamPreview.Source = bitmapImage;
+                                });
+                            }
+
+                            camera.Close();
+
+                            Console.WriteLine("📸 Top camera image captured");
+                        }
                         // ======================================
+                       
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"⚠️ Capture failed: {ex.Message}");
+                    }
+                }
+
+                foreach (var camInfo in cameraInfos)
+                {
+                    try
+                    {
+                        CameraPosition position =
+                            CameraHelper.GetCameraPosition(camInfo[CameraInfoKey.SerialNumber]);
                         // FRONT CAMERA → 4 SIDES (ROTATION)
                         // ======================================
                         if (position == CameraPosition.Front)
                         {
                             var sides = new[]
                             {
-                        CameraPosition.Front,
-                        CameraPosition.Right,
-                        CameraPosition.Back,
-                        CameraPosition.Left
-                    };
+
+                                CameraPosition.Back,
+                                CameraPosition.Left
+                            };
 
                             foreach (var side in sides)
                             {
@@ -1094,8 +1313,9 @@ namespace HumanDetection
                                 if (grabResult.GrabSucceeded)
                                 {
                                     using Mat frame = GrabResultToMat(grabResult);
-                                    var bmp = frame.ToBitmap();
-                                    var bitmapImage = ConvertBitmapToImageSource(bmp);
+                                    //var zoomedImage = ApplyDigitalZoom(frame, 1.4);
+                                    //var bmp = zoomedImage.ToBitmap();
+                                    var bitmapImage = ConvertBitmapToImageSource(frame.ToBitmap());
                                     bitmapImage.Freeze();
 
                                     capturedImages.Add(new CapturedCameraImage
@@ -1121,12 +1341,16 @@ namespace HumanDetection
 
                                     _messageQueue.Enqueue($"Image From: {side}");
 
-                                    int duration = _settings.RoutatorTimer!=null?(int)_settings.RoutatorTimer:0;
-                                   
-                                  
-                                    await StartRoutatorWithDuration(5200);
+                                    int duration = _settings.RoutatorTimer != null ? (int)_settings.RoutatorTimer : 0;
+
+                                    // FIX (confirmed bug): `duration` was computed from
+                                    // _settings.RoutatorTimer above but the hardcoded
+                                    // literal 5200 was passed instead, making the
+                                    // Rotator Timer setting/slider have no effect here.
+                                    var sec = GetRotatorDurationInMilliseconds(_lastWeight);
+                                    await StartRoutatorWithDuration((int)sec);
                                     await Task.Delay(1000);
-                                   
+
                                 }
                             }
                         }
@@ -1136,13 +1360,88 @@ namespace HumanDetection
                         Console.WriteLine($"⚠️ Capture failed: {ex.Message}");
                     }
                 }
+
             });
             //reset position of pallet
             //int duration = _settings.RoutatorTimer != null ? (int)_settings.RoutatorTimer : 0;
             //await TurnOnRotatorAsync();
             //await Task.Delay(2000);
+
+            // ⚠️ ASSUMPTION: this final reset-rotation call still uses the
+            // original hardcoded 5200. Left as-is since this is a "return pallet
+            // to home position after full cycle" step, not the per-side rotation
+            // tied to the settings slider — but verify this is the intended
+            // duration for a full reset move vs. a single-side 90° step.
             await StartRoutatorWithDuration(5200);
             return capturedImages;
+        }
+        private Mat ApplyDigitalZoom(Mat frame, double zoomFactor = 1.5)
+        {
+            // zoomFactor > 1.0 zooms in. e.g. 1.5 = crop to 66% of frame, then scale back up.
+            int newWidth = (int)(frame.Width / zoomFactor);
+            int newHeight = (int)(frame.Height / zoomFactor);
+
+            int x = (frame.Width - newWidth) / 2;
+            int y = (frame.Height - newHeight) / 2;
+
+            var roi = new OpenCvSharp.Rect(x, y, newWidth, newHeight);
+            using var cropped = new Mat(frame, roi);
+
+            var zoomed = new Mat();
+            Cv2.Resize(cropped, zoomed, frame.Size(), 0, 0, InterpolationFlags.Cubic);
+
+            return zoomed;
+        }
+        private Mat RotateImage90Degrees(Mat frame)
+        {
+            var rotated = new Mat();
+            Cv2.Rotate(frame, rotated, RotateFlags.Rotate90Clockwise);
+            return rotated;
+        }
+        public int GetRotatorDurationInMilliseconds(double currentWeight)
+        {
+            // Check ranges from lowest to highest weight
+            if (currentWeight <= 100.0)
+            {
+                return 700; // 0 to 100 KG -> 2 seconds (2000 ms)
+            }
+            else if (currentWeight <= 200.0)
+            {
+                return 800; // 101 to 200 KG -> 3 seconds (3000 ms)
+            }
+            else if (currentWeight <= 300.0)
+            {
+                return 900; // 101 to 200 KG -> 3 seconds (3000 ms)
+            }
+            else if (currentWeight <= 400.0)
+            {
+                return 1000; // 101 to 200 KG -> 3 seconds (3000 ms)
+            }
+            else if (currentWeight <= 500.0)
+            {
+                return 1800; // 201 to 500 KG -> 5.2 seconds (5200 ms)
+            }
+            else if (currentWeight <= 600.0)
+            {
+                return 4500; // 201 to 500 KG -> 5.2 seconds (5200 ms)
+            }
+            else if (currentWeight <= 700.0)
+            {
+                return 4500; // 501 to 800 KG -> 6.5 seconds (6500 ms)
+            }
+            else if (currentWeight <= 900.0)
+            {
+                return 5000; // 801 to 1200 KG -> 7.5 seconds (7500 ms)
+            }
+            else if (currentWeight <= 1000.0)
+            {
+                return 5400; // 801 to 1200 KG -> 7.5 seconds (7500 ms)
+            }
+            else
+            {
+                // Absolute maximum safety fallback for anything over 1200 KG
+                return 8500; // 8.5 seconds (8500 ms)
+            }
         }
         public async Task<BitmapImage?> CaptureSingleFrameFromCameraAsync(ICameraInfo cameraInfo)
         {
@@ -1188,7 +1487,7 @@ namespace HumanDetection
             });
         }
 
-        private async Task<(double AvScore, bool HumanDetected, int NumberOfBox, List<byte[]> OCRBytes, double maxPalletHeight)>
+        private async Task<(double AvScore, bool HumanDetected, int NumberOfBox, List<byte[]> OCRBytes, double maxPalletHeight, List<byte[]> AnnotatedImages)>
 RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
         {
             UpdateProgressStatus("AI Model Start to detect");
@@ -1196,7 +1495,11 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             if (capturedImages == null || capturedImages.Count < 1)
             {
                 MessageBox.Show("❌ Not enough images to process AI models.");
-                return (0.0, false, 0, null, 0);
+
+                // FIX (confirmed bug): returning `null` for OCRBytes caused a
+                // NullReferenceException later at `cropByteList.Any()` in
+                // CaptureAndDisplayAllCamerasAsync. Return an empty list instead.
+                return (0.0, false, 0, new List<byte[]>(), 0, new List<byte[]>());
             }
 
             int NumberOfBox = 0;
@@ -1211,6 +1514,7 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                                     .ToList();
 
             List<byte[]> ocrResults = new();
+            List<byte[]> annotatedImages = new();
 
             // Store predictions per side
             List<YoloPrediction> frontBoxes = new();
@@ -1239,6 +1543,15 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                     case CameraPosition.Right:
                         side = PalletSide.Right;
                         break;
+
+                    // FIX (confirmed bug): this case was MISSING entirely.
+                    // CameraPosition.Back fell through to `default` below and was
+                    // mislabeled as PalletSide.Front, overwriting the real Front
+                    // result and leaving backBoxes permanently empty.
+                    case CameraPosition.Back:
+                        side = PalletSide.Back;
+                        break;
+
                     case CameraPosition.Left:
                         side = PalletSide.Left;
                         break;
@@ -1250,7 +1563,7 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                         break;
                 }
                 using var image = BitmapImageToImageSharp(captured.Image);
-                
+
 
                 var boxTask = RunBoxCountingModelAsync(image, side);
                 var humanTask = Task.Run(() => RunHumanDetectionModel(image));
@@ -1280,6 +1593,10 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                 if (boxResult.BoxesImages != null)
                     ocrResults.AddRange(boxResult.BoxesImages);
 
+                // ✅ Annotated image
+                if (boxResult.AnnotatedImage != null)
+                    annotatedImages.Add(boxResult.AnnotatedImage);
+
                 // ✅ Store predictions by side
                 switch (side)
                 {
@@ -1305,12 +1622,22 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                 image.Dispose();
             }
 
-            // ✅ Count boxes properly
-            NumberOfBox = BoxCountingService.CountBoxes(
-                
-                frontBoxes,
-                topBoxes
-            );
+            // ⚠️ ASSUMPTION — NOT CHANGED: BoxCountingService.CountBoxes(front, top)
+            // only accepts Front + Top by design (frontBoxCount × topRows). It does
+            // NOT use rightBoxes/backBoxes/leftBoxes at all — this matches the real
+            // signature you shared, so it's not a wiring bug, it's the intended
+            // algorithm. Left exactly as your original code. If you actually want
+            // Right/Back/Left counted too (e.g. for occluded-box detection), the
+            // CountBoxes method itself needs a new overload — let me know and I'll
+            // write that separately rather than guess at the formula here.
+            //NumberOfBox = BoxCountingService.CountBoxes(
+
+            //    frontBoxes,
+            //    topBoxes
+            //);
+            int TopCount = frontBoxes.Count();
+            int FrontCount = frontBoxes.Count();
+            NumberOfBox = TopCount==0 ?1: TopCount * FrontCount;
 
             // ✅ Dispose original ImageSharp images
             foreach (var img in imageSharpList)
@@ -1327,7 +1654,7 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                 PalletHeightTxt.Text = $"{maxPalletHeight:F2} m";
             });
 
-            return (finalAverageScore, HumanDetected, NumberOfBox, ocrResults, maxPalletHeight);
+            return (finalAverageScore, HumanDetected, NumberOfBox, ocrResults, maxPalletHeight, annotatedImages);
         }
 
         private void ReportProgress(string message)
@@ -1398,7 +1725,7 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                 p.Label.Name.Equals("box", StringComparison.OrdinalIgnoreCase));
 
             double palletHeightMeters = 0.0;
-            
+
             double averageScore = 0.0;
             var boxPredictions = predictions
                 .Where(p => p.Label.Name.Equals("box", StringComparison.OrdinalIgnoreCase))
@@ -1464,9 +1791,9 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                 string fileName = $"crop_{DateTime.Now:yyyyMMdd_HHmmss_fff}_{Guid.NewGuid():N}.jpg";
                 string filePath = System.IO.Path.Combine(tempFolder, fileName);
 
-                
-                
-             ;
+
+
+                ;
                 crop.SaveAsJpeg(ms); // OCR works well with JPEG
                 cropByteList.Add(ms.ToArray());
 
@@ -1531,7 +1858,13 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                     });
                 }
 
-                 palletAngleDeg = tallestPallet?.Score * 100 ?? 0;
+                // ⚠️ ASSUMPTION — NOT CHANGED: this reuses the pallet *detection
+                // confidence score* (0–100) as "PalletAngleDeg". It is not a real
+                // geometric rotation angle. Left exactly as your original code
+                // since changing it would alter behavior — flagging in case this
+                // was meant to be actual angle-of-tilt math that isn't implemented
+                // yet.
+                palletAngleDeg = tallestPallet?.Score * 100 ?? 0;
                 double boxAvg = averageScore;
 
                 double finalScore;
@@ -1544,9 +1877,11 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                     finalScore = boxAvg;
 
 
+                byte[] annoBytes;
                 using (var ms = new MemoryStream())
                 {
                     annotated.SaveAsPng(ms);
+                    annoBytes = ms.ToArray();
                     ms.Seek(0, SeekOrigin.Begin);
 
                     var bitmap = new BitmapImage();
@@ -1558,17 +1893,18 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
 
                     App.Current.Dispatcher.Invoke(() => CapturedImages.Add(bitmap));
                 }
-            }
 
-            return new ImagePredictionResult
-            {
-                Side = side,
-                BoxPredictions = boxPredictions,
-                PalletHeightMeters = palletHeightMeters,
-                AverageScore = averageScore,
-                PalletAngleDeg = palletAngleDeg,
-                BoxesImages = cropByteList
-            };
+                return new ImagePredictionResult
+                {
+                    Side = side,
+                    BoxPredictions = boxPredictions,
+                    PalletHeightMeters = palletHeightMeters,
+                    AverageScore = averageScore,
+                    PalletAngleDeg = palletAngleDeg,
+                    BoxesImages = cropByteList,
+                    AnnotatedImage = annoBytes
+                };
+            }
 
         }
 
@@ -1612,6 +1948,12 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                 content.Add(byteContent, "images", fileName);
             }
 
+            // ⚠️ ASSUMPTION — NOT CHANGED: no try/catch here means a transient
+            // OCR API failure (service restart, timeout) throws all the way up to
+            // CaptureAndDisplayAllCamerasAsync's catch block, which fully aborts
+            // the pallet cycle (buzzer/blower/rotator off + MessageBox) rather than
+            // just retrying OCR. Left as-is since changing retry behavior is a
+            // design decision — happy to add a scoped retry here if you want it.
             var response = await client.PostAsync(
                 "http://127.0.0.1:5000/ocr",
                 content
@@ -1755,11 +2097,11 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                     resultModel.AllDatesList = input.AllDatesList;
                 if (input.DublicateBarcodeCount.HasValue)
                     resultModel.DublicateBarcodeCount = input.DublicateBarcodeCount;
-                if (!string.IsNullOrWhiteSpace( input.BarcodeList))
+                if (!string.IsNullOrWhiteSpace(input.BarcodeList))
                     resultModel.BarcodeList = input.BarcodeList;
                 if (input.LableCount.HasValue)
                     resultModel.LableCount = input.LableCount;
-                if (input.GridItems.Count>0)
+                if (input.GridItems.Count > 0)
                     resultModel.GridItems = input.GridItems;
 
 
@@ -1822,9 +2164,18 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             RebootDeviceAsync();
 
         }
+        private async void  Rotate_Click(object sender, EventArgs e) {
+            int sec = GetRotatorDurationInMilliseconds(_lastWeight) - 1000;
+            await StartRoutatorWithDuration((int)sec);
+        }
         public async Task RestartProcess()
         {
-            Dispatcher.Invoke(async () =>
+            // FIX (cleanup, low risk): this was `Dispatcher.Invoke(async () => ...)`
+            // with no real awaits inside (just two property assignments), so the
+            // original async-not-awaited issue had no practical effect here. Kept
+            // functionally identical, just removed the unnecessary `async` to avoid
+            // the same trap being copy-pasted elsewhere with real awaits added later.
+            Dispatcher.Invoke(() =>
             {
                 EntryTimeTxt.Text = DateTime.Now.ToString("HH:mm:ss");
                 ExitTimeTxt.Text = "";
@@ -1886,7 +2237,7 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
         }
         public async Task ResetRecords()
         {
-            Dispatcher.Invoke(async () =>
+            Dispatcher.Invoke(() =>
             {
                 EntryTimeTxt.Text = "";
                 ExitTimeTxt.Text = "";
@@ -2003,17 +2354,8 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
 
         private void Timer_Tick(object sender, EventArgs e)
         {
-            remainingSeconds--;
-
-            if (remainingSeconds >= 0)
-            {
-                CountdownText.Text = $"{remainingSeconds} Sec";
-            }
-
-            if (remainingSeconds <= 0)
-            {
-                StopCountdown();
-            }
+            elapsedSeconds++;
+            CountdownText.Text = $"{elapsedSeconds} Sec";
         }
 
         private void StopButton_Click(object sender, RoutedEventArgs e)
@@ -2152,14 +2494,14 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             if (RotatorPowerValueText != null)
                 RotatorPowerValueText.Text = ((int)e.NewValue).ToString();
             Task.Delay(100);
-            var settings=_settings;
+            var settings = _settings;
             settings.RoutatorTimer = ((int)e.NewValue);
             SettingsRepository.UpdateRotatorSettings(settings);
             Task.Delay(100);
-            _settings =SettingsRepository.GetSettings();
-         
+            _settings = SettingsRepository.GetSettings();
+
         }
-        
+
 
         #endregion
 
@@ -2169,7 +2511,10 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
         {
             await _ac.StartBuzzerAsync();
         }
-
+        public async Task StartRotatorWithWeightAsync()
+        {
+            await _ac.StartRotatorWithWeightAsync(_lastWeight);
+        }
         public async Task StopBuzzer()
         {
             await _ac.OffBuzzerAsync();

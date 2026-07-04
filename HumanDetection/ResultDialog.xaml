@@ -7,7 +7,7 @@
              xmlns:local="clr-namespace:HumanDetection" xmlns:materialIcons="clr-namespace:Material.Icons.WPF;assembly=Material.Icons.WPF" 
              
              mc:Ignorable="d" 
-             d:DesignHeight="450" d:DesignWidth="700">
+             d:DesignHeight="450" d:DesignWidth="900">
     <Border CornerRadius="3" Background="Black" BorderThickness="1" BorderBrush="Indigo">
         <Grid Background="Black" Margin="5,5,5,5" >
             <Grid.RowDefinitions>
@@ -47,6 +47,7 @@
                                                         <ColumnDefinition Width="*" />
                                                         <ColumnDefinition Width="*" />
                                                         <ColumnDefinition Width="*" />
+                                                      
                                                     </Grid.ColumnDefinitions>
 
                                                     <!-- Human Detection -->
@@ -63,7 +64,7 @@
                             Foreground="#FF6A00"
                             DockPanel.Dock="Left"/>
                                                             <StackPanel Margin="12,0,0,0">
-                                                                <TextBlock Foreground="White" Text="Human Detection"
+                                                                <TextBlock Foreground="White"  Text="Human Detection"
                FontWeight="SemiBold"/>
                                                                 <TextBlock Text="{Binding HumanDetect}"
                FontWeight="Bold"
@@ -138,6 +139,7 @@
                                                             </StackPanel>
                                                         </DockPanel>
                                                     </materialDesign:Card>
+                                                  
                                                 </Grid>
 
                                                 <!-- ROW 2 : PENDING PROPERTIES -->
@@ -238,7 +240,36 @@
                                                         </DockPanel>
                                                     </materialDesign:Card>
                                                 </Grid>
+                                                <Grid Margin="0">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="*" />
 
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <materialDesign:Card Grid.Column="0"
+Margin="8"
+Padding="16"
+UniformCornerRadius="6"
+BorderBrush="SlateBlue"
+BorderThickness="2">
+                                                        <DockPanel>
+                                                            <materialIcons:MaterialIcon Kind="CalendarClock"
+               Width="36"
+               Height="36"
+               Foreground="#2ECC71"
+               DockPanel.Dock="Left"/>
+                                                            <StackPanel Margin="12,0,0,0">
+                                                                <TextBlock  Foreground="White" Text="Dates"
+  FontWeight="SemiBold"/>
+                                                                <TextBlock  Foreground="White" Text="{Binding DateCount}"
+  FontWeight="Bold"/>
+                                                            </StackPanel>
+                                                        </DockPanel>
+                                                    </materialDesign:Card>
+                                                </Grid>
                                             </StackPanel>
                                             <StackPanel>
                                                 <ItemsControl ItemsSource="{Binding GridItems}" Margin="5">

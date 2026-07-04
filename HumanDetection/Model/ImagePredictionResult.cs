@@ -26,5 +26,6 @@ namespace Model
 
         public double PalletAngleDeg { get; set; }
         public List<byte[]> BoxesImages { get; set; }
+        public byte[] AnnotatedImage { get; set; }
     }
 }

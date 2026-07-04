@@ -1,6 +1,5 @@
 ﻿using System;
-using System.Net.Http;
-using System.Text.RegularExpressions;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -8,15 +7,13 @@ namespace ACGPUIO
 {
     public class AccessController : IDisposable
     {
-        private readonly HttpClient _http;
-        private string _token = "";
         private readonly string _moxaIP;
+        private const int ModbusPort = 502;
 
-        // Prevents concurrent token refresh / DO command races
+        // Prevents concurrent DO command collisions on the Modbus socket
         private readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
 
-        // Tracks the background "auto-off" task started by StartRotatorAsync,
-        // so a second call doesn't fight with the first one.
+        // Tracks the background "auto-off" task started by StartRotatorAsync
         private CancellationTokenSource _rotatorAutoOffCts;
 
         // Optional logging hook — wire this to your logger (Console, Serilog, etc.)
@@ -25,99 +22,68 @@ namespace ACGPUIO
         public AccessController(string moxaIP = "192.168.1.135")
         {
             _moxaIP = moxaIP;
-            _http = new HttpClient
-            {
-                Timeout = TimeSpan.FromSeconds(5) // avoid indefinite hangs on network issues
-            };
         }
 
-        // -------------------------
-        //  Refresh token from 05_21.htm
-        // -------------------------
-        public async Task<bool> RefreshToken()
-        {
-            try
-            {
-                // This page returns the HTML form that contains "token" hidden input
-                string url = $"http://{_moxaIP}/05_21.htm?CHANNEL_NO=0";
-
-                string html = await _http.GetStringAsync(url);
-
-                var tokenRegex = new Regex("name=\"token\"\\s+value=\"([^\"]+)\"");
-                var match = tokenRegex.Match(html);
-
-                if (match.Success)
-                {
-                    _token = match.Groups[1].Value;
-                    Log($"[AccessController] New token acquired: {_token}");
-                    return true;
-                }
-
-                Log("[AccessController] Token not found in response.");
-                return false;
-            }
-            catch (Exception ex)
-            {
-                Log($"[AccessController] RefreshToken error: {ex.Message}");
-                return false;
-            }
-        }
-
-        // -------------------------
-        //        CORE DO
-        // -------------------------
+        // -----------------------------------------------------------------
+        // CORE MODBUS/TCP IMPLEMENTATION
+        // -----------------------------------------------------------------
         public async Task<bool> SendDOCommand(int channel, int status)
         {
-            // Serialize access so two simultaneous calls don't clobber _token
-            // or fire overlapping requests against the same Moxa session.
             await _lock.WaitAsync();
             try
             {
-                // 1) If we don't have token yet, get it first
-                if (string.IsNullOrEmpty(_token))
+                using (var client = new TcpClient())
                 {
-                    bool gotToken = await RefreshToken();
-                    if (!gotToken)
+                    // Set short timeouts to avoid freezing during network drops
+                    client.SendTimeout = 3000;
+                    client.ReceiveTimeout = 3000;
+
+                    await client.ConnectAsync(_moxaIP, ModbusPort);
+
+                    using (var stream = client.GetStream())
                     {
-                        Log($"[AccessController] SendDOCommand({channel},{status}) aborted: no token.");
+                        // Build standard Modbus/TCP Application Protocol frame (FC05: Write Single Coil)
+                        byte[] frame = new byte[12];
+
+                        // Transaction Identifier (Arbitrary, using 0x0001)
+                        frame[0] = 0x00; frame[1] = 0x01;
+                        // Protocol Identifier (Always 0x0000 for Modbus)
+                        frame[2] = 0x00; frame[3] = 0x00;
+                        // Length (Number of remaining bytes in the frame: 6 bytes)
+                        frame[4] = 0x00; frame[5] = 0x06;
+                        // Unit Identifier (Moxa default is usually 1)
+                        frame[6] = 0x01;
+                        // Function Code (0x05 = Write Single Coil)
+                        frame[7] = 0x05;
+                        // Coil Address (Moxa DO channels map directly: Channel 0 = 0x0000, Channel 1 = 0x0001, etc.)
+                        frame[8] = (byte)((channel >> 8) & 0xFF);
+                        frame[9] = (byte)(channel & 0xFF);
+                        // Output Value (0xFF00 turns Coil ON, 0x0000 turns Coil OFF)
+                        frame[10] = (byte)(status == 1 ? 0xFF : 0x00);
+                        frame[11] = 0x00;
+
+                        // Send the command frame
+                        await stream.WriteAsync(frame, 0, frame.Length);
+
+                        // Read response frame (Modbus/TCP response echo back is 12 bytes long)
+                        byte[] response = new byte[12];
+                        int bytesRead = await stream.ReadAsync(response, 0, response.Length);
+
+                        if (bytesRead >= 12 && response[7] == 0x05)
+                        {
+                            Log($"[AccessController] Modbus success: DO{channel} set to {(status == 1 ? "ON" : "OFF")}");
+                            return true;
+                        }
+
+                        Log($"[AccessController] Modbus invalid response payload received for DO{channel}.");
                         return false;
                     }
                 }
-
-                try
-                {
-                    string url = BuildDoUrl(channel, status, _token);
-                    string resp = await _http.GetStringAsync(url);
-
-                    // 2) If response looks like token/login page again, token might be expired.
-                    //    Try refreshing token once and retry.
-                    if (IsTokenExpiredResponse(resp))
-                    {
-                        Log($"[AccessController] Token expired, refreshing for channel {channel}.");
-
-                        bool gotToken = await RefreshToken();
-                        if (!gotToken)
-                            return false;
-
-                        // retry once with new token
-                        url = BuildDoUrl(channel, status, _token);
-                        resp = await _http.GetStringAsync(url);
-
-                        if (IsTokenExpiredResponse(resp))
-                        {
-                            Log($"[AccessController] SendDOCommand({channel},{status}) failed after token retry.");
-                            return false;
-                        }
-                    }
-
-                    // You can also parse resp here to verify success if MOXA returns OK text.
-                    return true;
-                }
-                catch (Exception ex)
-                {
-                    Log($"[AccessController] SendDOCommand({channel},{status}) error: {ex.Message}");
-                    return false;
-                }
+            }
+            catch (Exception ex)
+            {
+                Log($"[AccessController] SendDOCommand({channel},{status}) Modbus Exception: {ex.Message}");
+                return false;
             }
             finally
             {
@@ -125,70 +91,52 @@ namespace ACGPUIO
             }
         }
 
-        private string BuildDoUrl(int channel, int status, string token)
-        {
-            return $"http://{_moxaIP}/set_521.htm" +
-                   $"?CHANNEL_NO={channel}" +
-                   $"&DO_MODE_C=0" +
-                   $"&DO_STATUS_ENABLE={status}" +
-                   $"&PWM_LO_C=1&PWM_HI_C=1&PWM_CNT_C=0&PWM_START_C=&DO_VALUE_P=0&PWM_START_P=" +
-                   $"&DO_VALUE_S=0&PWM_START_S=&ALIAS_CHANNEL=DO&LOGIC_0=OFF&LOGIC_1=ON" +
-                   $"&token={token}";
-        }
-
-        // Simple heuristic: if the response contains the token input again,
-        // it usually means we were redirected to the form / session expired.
-        private bool IsTokenExpiredResponse(string html)
-        {
-            if (string.IsNullOrEmpty(html))
-                return false;
-
-            return html.Contains("name=\"token\"") || html.Contains("LOGIN", StringComparison.OrdinalIgnoreCase);
-        }
+        // Deprecated web mechanics safely kept as structural stubs to preserve interface signature
+        [Obsolete("Web tokens are no longer used. Modbus handles authentication natively via IP connection.")]
+        public TimeSpan TokenLifetime { get; set; } = TimeSpan.FromMinutes(20);
+        public int TokenRefreshMaxAttempts { get; set; } = 3;
+        public TimeSpan TokenRefreshRetryDelay { get; set; } = TimeSpan.FromMilliseconds(500);
+        public async Task<bool> RefreshToken() => await Task.FromResult(true);
 
         // -------------------------
-        //     BUZZER (DO0)
+        //      BUZZER (DO0)
         // -------------------------
         public async Task StartBuzzerAsync()
         {
-            // DO0 (buzzer) ON
             bool ok = await SendDOCommand(0, 1);
             if (!ok) Log("[AccessController] StartBuzzerAsync failed.");
         }
 
         public async Task OffBuzzerAsync()
         {
-            // DO0 (buzzer) OFF
             bool ok = await SendDOCommand(0, 0);
             if (!ok) Log("[AccessController] OffBuzzerAsync failed.");
         }
 
         // -------------------------
-        //     BLOWER (DO2)
+        //      BLOWER (DO2)
         // -------------------------
         public async Task StartBlowerAsync()
         {
-            // DO2 (blower) ON
             bool ok = await SendDOCommand(2, 1);
             if (!ok) Log("[AccessController] StartBlowerAsync failed.");
         }
 
         public async Task OffBlowerAsync()
         {
-            // DO2 (blower) OFF
             bool ok = await SendDOCommand(2, 0);
             if (!ok) Log("[AccessController] OffBlowerAsync failed.");
         }
 
+        // -------------------------
+        //      ROTATOR CONTROL
+        // -------------------------
         public async Task StartRotatorAsync()
         {
-            // Cancel any previous pending auto-off so it doesn't turn the
-            // rotator off underneath a fresh start.
             _rotatorAutoOffCts?.Cancel();
             _rotatorAutoOffCts = new CancellationTokenSource();
             var token = _rotatorAutoOffCts.Token;
 
-            // DO1 (rotator) ON
             bool ok1 = await SendDOCommand(1, 1);
             if (!ok1) Log("[AccessController] StartRotatorAsync: channel 1 ON failed.");
 
@@ -201,13 +149,12 @@ namespace ACGPUIO
             {
                 try
                 {
-                    await Task.Delay(4000, token); // Wait 4 seconds
-                    await SendDOCommand(1, 0); // Turn off
-                    await SendDOCommand(3, 0); // Turn off
+                    await Task.Delay(4000, token);
+                    await SendDOCommand(1, 0);
+                    await SendDOCommand(3, 0);
                 }
                 catch (TaskCanceledException)
                 {
-                    // Superseded by a newer StartRotatorAsync/TurnOnRotatorAsync/OffRotatorAsync call.
                     Log("[AccessController] StartRotatorAsync auto-off cancelled (superseded).");
                 }
             }, token);
@@ -215,10 +162,8 @@ namespace ACGPUIO
 
         public async Task TurnOnRotatorAsync()
         {
-            // Cancel any pending auto-off from a previous StartRotatorAsync call
             _rotatorAutoOffCts?.Cancel();
 
-            // DO1 (rotator) ON
             bool ok = await SendDOCommand(1, 1);
             if (!ok) Log("[AccessController] TurnOnRotatorAsync failed.");
         }
@@ -229,7 +174,6 @@ namespace ACGPUIO
             _rotatorAutoOffCts = new CancellationTokenSource();
             var token = _rotatorAutoOffCts.Token;
 
-            // DO1 (rotator) ON
             bool ok1 = await SendDOCommand(1, 1);
             if (!ok1) Log("[AccessController] StartRotatorForDurationAsync: channel 1 ON failed.");
 
@@ -238,20 +182,14 @@ namespace ACGPUIO
             bool ok3 = await SendDOCommand(3, 1);
             if (!ok3) Log("[AccessController] StartRotatorForDurationAsync: channel 3 ON failed.");
 
-            // NOTE: kept the original parameter meaning intact (no behavior change
-            // to avoid surprising callers), but flagging this clearly:
-            // "Seconds" is passed straight into Task.Delay(int milliseconds).
-            // If you intend this to be seconds, call it as:
-            //     StartRotatorForDurationAsync(seconds * 1000)
-            // or change the line below to Task.Delay(Seconds * 1000, token).
             await Task.Delay(Seconds, token);
 
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    await SendDOCommand(1, 0); // Turn off
-                    await SendDOCommand(3, 0); // Turn off
+                    await SendDOCommand(1, 0);
+                    await SendDOCommand(3, 0);
                 }
                 catch (Exception ex)
                 {
@@ -262,23 +200,64 @@ namespace ACGPUIO
 
         public async Task OffRotatorAsync()
         {
-            // Cancel any pending auto-off task so it doesn't re-fire later
             _rotatorAutoOffCts?.Cancel();
 
-            // DO1 (rotator) OFF
             bool ok1 = await SendDOCommand(1, 0);
             bool ok3 = await SendDOCommand(3, 0);
 
             if (!ok1 || !ok3)
                 Log("[AccessController] OffRotatorAsync: one or more channels failed to turn off.");
         }
+        public async Task StartRotatorWithWeightAsync(double currentWeight)
+        {
+            // 1. Cancel any previous auto-off timer
+            _rotatorAutoOffCts?.Cancel();
+            _rotatorAutoOffCts = new CancellationTokenSource();
+            var token = _rotatorAutoOffCts.Token;
 
+            // 2. Decide speed step based on weight threshold (e.g., 500 kg)
+            double heavyThreshold = 500.0;
+            if (currentWeight >= heavyThreshold)
+            {
+                Log($"[AccessController] Heavy pallet detected ({currentWeight}kg). Setting VFD to SLOW preset.");
+                // Turn on the VFD's multi-step speed input
+                await SendDOCommand(3, 1);
+            }
+            else
+            {
+                Log($"[AccessController] Light pallet detected ({currentWeight}kg). Keeping VFD at FAST preset.");
+                // Ensure the multi-step speed input is off
+                await SendDOCommand(3, 0);
+            }
+
+            // 3. Start the motor (DO1)
+            bool motorStarted = await SendDOCommand(1, 1);
+            if (!motorStarted) Log("[AccessController] Failed to send START command to VFD.");
+
+            // 4. Background task to automatically stop the motor after exactly 5200 ms
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    // Wait for your exact runtime logic
+                    await Task.Delay(5200, token);
+
+                    // Turn off the motor and clear the speed preset relay
+                    await SendDOCommand(1, 0); // Stop motor
+                    await SendDOCommand(3, 0); // Clear speed modifier
+                    Log("[AccessController] Rotator cycle finished. Motor Stopped.");
+                }
+                catch (TaskCanceledException)
+                {
+                    Log("[AccessController] Rotator cycle was interrupted/cancelled.");
+                }
+            }, token);
+        }
         public void Dispose()
         {
             _rotatorAutoOffCts?.Cancel();
             _rotatorAutoOffCts?.Dispose();
             _lock?.Dispose();
-            _http?.Dispose();
         }
     }
 }
