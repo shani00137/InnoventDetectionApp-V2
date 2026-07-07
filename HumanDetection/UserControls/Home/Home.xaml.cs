@@ -122,6 +122,7 @@ namespace HumanDetection
         public event EventHandler<DIChangedEventArgs> DIChanged;
         private bool _IsForkleffound = false;
         private List<CapturedCameraImage> _lastCapturedCameraImages = new();
+        private readonly int CamDelay = 500;
         public Home()
         {
             InitializeComponent();
@@ -498,7 +499,7 @@ namespace HumanDetection
             {
                 try
                 {
-                
+
                     var sessionOptions = new Microsoft.ML.OnnxRuntime.SessionOptions();
 
                     try
@@ -550,7 +551,7 @@ namespace HumanDetection
         #endregion
         public async Task StartPalletDetectionProcAsync()
         {
-           
+
             Dispatcher.Invoke(() =>
             {
                 EntryTimeTxt.Text = DateTime.Now.ToString("HH:mm:ss");
@@ -593,14 +594,14 @@ namespace HumanDetection
             //await StopBuzzer();
             await OffBlower();
             await OffRotatorAsync();
-           
+
             Dispatcher.Invoke(async () =>
             {
                 PictureDialog.Visibility = Visibility.Collapsed;
                 ResultDialoag.Visibility = Visibility.Collapsed;
                 SucessDialog.Visibility = Visibility.Visible;
                 ImageDialogHost.IsOpen = true;
-                
+
 
                 ExitTimeTxt.Text = DateTime.Now.ToString("HH:mm:ss");
             });
@@ -648,9 +649,9 @@ namespace HumanDetection
                     ResultDialoag.Visibility = Visibility.Collapsed;
                     SucessDialog.Visibility = Visibility.Collapsed;
 
-                   
+
                 });
-               
+
                 //while (elapsed <= fullRotation)
                 //{
                 //    var image = await CaptureSingleFrameFromCameraAsync(cameraInfo);
@@ -752,7 +753,7 @@ namespace HumanDetection
                 //    await Task.Delay(100);
                 //}
 
-                
+
 
                 // ---------------------------------------------------------------
                 // FIX (confirmed bug): Dispatcher.Invoke(async () => ...) does NOT
@@ -770,7 +771,7 @@ namespace HumanDetection
                     await Task.Delay(100);
                     await CaptureAndDisplayAllCamerasAsync();
                 }).Task.Unwrap();
-               
+
 
 
 
@@ -816,7 +817,7 @@ namespace HumanDetection
                     LoadingOverlay.Visibility = Visibility.Visible;
                     ProgressTxt.Text = "Starting capture...";
                 });
-                StartCountdown();
+
                 while (!detectionPassed)
                 {
                     attempTaken++;
@@ -858,9 +859,9 @@ namespace HumanDetection
                         RunAllAIDetectionsAsync(imagesWithCamPosition)
                     );
 
-                   
+
                     await Task.WhenAll(aiTask);
-                   
+                    StartCountdown();
                     var aiResult = aiTask.Result;
                     double avgScore = aiResult.AvScore;
                     bool humanDetected = aiResult.HumanDetected;
@@ -868,7 +869,7 @@ namespace HumanDetection
                     ScoreTxt.Text = $"{avgScore * 100:0}%";
 
                     LoadingCard.Visibility = Visibility.Visible;
-                  
+
                     var cropByteList = aiResult.OCRBytes;
                     List<OcrImageResult> ocrResultList = new List<OcrImageResult>();
 
@@ -891,14 +892,14 @@ namespace HumanDetection
                         }
                     }
                     //get result from backside image
-                    //var BackSideCamPosition = await CaptureSingleFrameFromAllCamerasAsync(cameraList, true);
-                   // var aiTaskBack = Task.Run(() =>
-                   //    RunAllAIDetectionsAsync(BackSideCamPosition)
-                   //);
+                    var BackSideCamPosition = await CaptureSingleFrameFromAllCamerasAsync(cameraList, true);
+                    var aiTaskBack = Task.Run(() =>
+                       RunAllAIDetectionsAsync(BackSideCamPosition)
+                   );
 
-                  
-                   // await Task.WhenAll(aiTaskBack);
-                    
+
+                    await Task.WhenAll(aiTaskBack);
+
                     _messageQueue.Enqueue("Please wait Calculate result..");
                     var cropByteListBack = aiTask.Result.OCRBytes;
                     if (cropByteListBack != null && cropByteListBack.Any())
@@ -1041,7 +1042,7 @@ namespace HumanDetection
                             BarcodeList = barcodeList,
                             GridItems = gridItems,
                             LableCount = LableCount,
-                            DateCount=AllDatesList.Count()
+                            DateCount = AllDatesList.Count()
 
                         };
                         AddResult(obj, false);
@@ -1100,7 +1101,7 @@ namespace HumanDetection
 
                         //bool isSuccess = await service.PostPalletDataAsync(payload);
                         await StopPalletDetectionProc();
-                       
+
                         try
                         {
                             string baseDir = @"C:\AdPortresult";
@@ -1153,8 +1154,8 @@ namespace HumanDetection
                         {
                             Console.WriteLine($"Failed to save local results: {ex.Message}");
                         }
-                      
-                        
+
+
                         await ResetRecords();
                     }
                     else
@@ -1188,215 +1189,200 @@ namespace HumanDetection
         /// <param name="request"></param>
         /// <returns></returns>
 
-        public async Task<List<CapturedCameraImage>> CaptureSingleFrameFromAllCamerasAsync(
-     List<ICameraInfo> cameraInfos, bool FirstTerm)
+        public async Task<List<CapturedCameraImage>> CaptureSingleFrameFromAllCamerasAsync(List<ICameraInfo> cameraInfos, bool FirstTerm)
         {
             var capturedImages = new List<CapturedCameraImage>();
+            // Thread-safe collection to gather results from parallel tasks safely
+            var concurrentCapturedImages = new System.Collections.Concurrent.ConcurrentBag<CapturedCameraImage>();
 
-            await Task.Run(async () =>
+            if (FirstTerm == false)
             {
-                if (FirstTerm == false)
+                // Run all camera captures completely in parallel
+                var captureTasks = cameraInfos.Select(async camInfo =>
                 {
-                    foreach (var camInfo in cameraInfos)
+                    try
                     {
-                        try
+                        CameraPosition position = CameraHelper.GetCameraPosition(camInfo[CameraInfoKey.SerialNumber]);
+
+                        // ===============================
+                        // TOP CAMERA → ONLY 1 IMAGE
+                        // ===============================
+                        if (position == CameraPosition.Top)
                         {
-                            CameraPosition position =
-                                CameraHelper.GetCameraPosition(camInfo[CameraInfoKey.SerialNumber]);
+                            using var camera = new Basler.Pylon.Camera(camInfo);
+                            camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
+                            camera.Open();
 
-                            // ===============================
-                            // TOP CAMERA → ONLY 1 IMAGE
-                            // ===============================
-                            if (position == CameraPosition.Top)
+                            FlashCamera(TopFlashEllipse);
+                            PlayShutterSound();
+
+                            using IGrabResult grabResult = camera.StreamGrabber.GrabOne(CamDelay, TimeoutHandling.ThrowException);
+
+                            if (grabResult.GrabSucceeded)
                             {
-                                using var camera = new Basler.Pylon.Camera(camInfo);
-                                camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
-                                camera.Open();
+                                using Mat frame = GrabResultToMat(grabResult);
+                                var bmp = frame.ToBitmap();
+                                var bitmapImage = ConvertBitmapToImageSource(bmp);
+                                bitmapImage.Freeze();
 
-                                FlashCamera(TopFlashEllipse);
-                                PlayShutterSound();
-
-                                using IGrabResult grabResult =
-                                    camera.StreamGrabber.GrabOne(1000, TimeoutHandling.ThrowException);
-
-                                if (grabResult.GrabSucceeded)
+                                concurrentCapturedImages.Add(new CapturedCameraImage
                                 {
-                                    using Mat frame = GrabResultToMat(grabResult);
+                                    Position = CameraPosition.Top,
+                                    Image = bitmapImage
+                                });
 
-                                    var bmp = frame.ToBitmap();
-
-                                    var bitmapImage = ConvertBitmapToImageSource(bmp);
-                                    bitmapImage.Freeze();
-
-                                    capturedImages.Add(new CapturedCameraImage
-                                    {
-                                        Position = CameraPosition.Top,
-                                        Image = bitmapImage
-                                    });
-
-                                    Dispatcher.Invoke(() =>
-                                    {
-                                        QuickCamPreview.Source = bitmapImage;
-                                    });
-                                }
-
-                                camera.Close();
-
-                                Console.WriteLine("📸 Top camera image captured");
-                            }
-                            if (position == CameraPosition.Front)
-                            {
-                                using var camera = new Basler.Pylon.Camera(camInfo);
-                                camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
-                                camera.Open();
-
-                                FlashCamera(TopFlashEllipse);
-                                PlayShutterSound();
-
-                                using IGrabResult grabResult =
-                                    camera.StreamGrabber.GrabOne(1000, TimeoutHandling.ThrowException);
-
-                                if (grabResult.GrabSucceeded)
+                                Dispatcher.Invoke(() =>
                                 {
-                                    using Mat frame = GrabResultToMat(grabResult);
-                                    //using Mat processedFrame = ApplyDigitalZoom(frame, 2.1);
-                                    using Mat rotatedFrame = RotateImage90Degrees(frame);
-                                    var bmp = rotatedFrame.ToBitmap();
-
-                                    var bitmapImage = ConvertBitmapToImageSource(bmp);
-                                    bitmapImage.Freeze();
-
-                                    capturedImages.Add(new CapturedCameraImage
-                                    {
-                                        Position = CameraPosition.Front,
-                                        Image = bitmapImage
-                                    });
-
-                                    Dispatcher.Invoke(() =>
-                                    {
-                                        QuickCamPreview.Source = bitmapImage;
-                                    });
-                                }
-
-                                camera.Close();
-
-                                Console.WriteLine("📸 Top camera image captured");
+                                    QuickCamPreview.Source = bitmapImage;
+                                });
                             }
-                            if (position == CameraPosition.Right)
-                            {
-                                using var camera = new Basler.Pylon.Camera(camInfo);
-                                camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
-                                camera.Open();
 
-                                FlashCamera(TopFlashEllipse);
-                                PlayShutterSound();
-
-                                using IGrabResult grabResult =
-                                    camera.StreamGrabber.GrabOne(1000, TimeoutHandling.ThrowException);
-
-                                if (grabResult.GrabSucceeded)
-                                {
-                                    using Mat frame = GrabResultToMat(grabResult);
-                                    using Mat rotatedFrame = RotateImage90Degrees(frame);
-
-                                    var bmp = rotatedFrame.ToBitmap();
-
-                                    var bitmapImage = ConvertBitmapToImageSource(bmp);
-                                    bitmapImage.Freeze();
-
-                                    capturedImages.Add(new CapturedCameraImage
-                                    {
-                                        Position = CameraPosition.Right,
-                                        Image = bitmapImage
-                                    });
-
-                                    Dispatcher.Invoke(() =>
-                                    {
-                                        QuickCamPreview.Source = bitmapImage;
-                                    });
-                                }
-
-                                camera.Close();
-
-                                Console.WriteLine("📸 Top camera image captured");
-                            }
-                            if (position == CameraPosition.Left)
-                            {
-                                using var camera = new Basler.Pylon.Camera(camInfo);
-                                camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
-                                camera.Open();
-
-                                FlashCamera(TopFlashEllipse);
-                                PlayShutterSound();
-
-                                using IGrabResult grabResult =
-                                    camera.StreamGrabber.GrabOne(1000, TimeoutHandling.ThrowException);
-
-                                if (grabResult.GrabSucceeded)
-                                {
-                                    using Mat frame = GrabResultToMat(grabResult);
-                                    using Mat rotatedFrame = RotateImage90Degrees(frame);
-
-                                    var bmp = rotatedFrame.ToBitmap();
-
-                                    var bitmapImage = ConvertBitmapToImageSource(bmp);
-                                    bitmapImage.Freeze();
-
-                                    capturedImages.Add(new CapturedCameraImage
-                                    {
-                                        Position = CameraPosition.Left,
-                                        Image = bitmapImage
-                                    });
-
-                                    Dispatcher.Invoke(() =>
-                                    {
-                                        QuickCamPreview.Source = bitmapImage;
-                                    });
-                                }
-
-                                camera.Close();
-
-                                Console.WriteLine("📸 Top camera image captured");
-                            }
-                            // ======================================
-
-
-
+                            camera.Close();
+                            Console.WriteLine("📸 Top camera image captured");
                         }
-                        catch (Exception ex)
+                        if (position == CameraPosition.Front)
                         {
-                            Console.WriteLine($"⚠️ Capture failed: {ex.Message}");
+                            using var camera = new Basler.Pylon.Camera(camInfo);
+                            camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
+                            camera.Open();
+
+                            FlashCamera(TopFlashEllipse);
+                            PlayShutterSound();
+
+                            using IGrabResult grabResult = camera.StreamGrabber.GrabOne(CamDelay, TimeoutHandling.ThrowException);
+
+                            if (grabResult.GrabSucceeded)
+                            {
+                                using Mat frame = GrabResultToMat(grabResult);
+                                using Mat rotatedFrame = RotateImage90Degrees(frame);
+                                var bmp = rotatedFrame.ToBitmap();
+                                var bitmapImage = ConvertBitmapToImageSource(bmp);
+                                bitmapImage.Freeze();
+
+                                concurrentCapturedImages.Add(new CapturedCameraImage
+                                {
+                                    Position = CameraPosition.Front,
+                                    Image = bitmapImage
+                                });
+
+                                Dispatcher.Invoke(() =>
+                                {
+                                    QuickCamPreview.Source = bitmapImage;
+                                });
+                            }
+
+                            camera.Close();
+                            Console.WriteLine("📸 Top camera image captured");
                         }
+                        if (position == CameraPosition.Right)
+                        {
+                            using var camera = new Basler.Pylon.Camera(camInfo);
+                            camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
+                            camera.Open();
+
+                            FlashCamera(TopFlashEllipse);
+                            PlayShutterSound();
+
+                            using IGrabResult grabResult = camera.StreamGrabber.GrabOne(CamDelay, TimeoutHandling.ThrowException);
+
+                            if (grabResult.GrabSucceeded)
+                            {
+                                using Mat frame = GrabResultToMat(grabResult);
+                                using Mat rotatedFrame = RotateImage90Degrees(frame);
+                                var bmp = rotatedFrame.ToBitmap();
+                                var bitmapImage = ConvertBitmapToImageSource(bmp);
+                                bitmapImage.Freeze();
+
+                                concurrentCapturedImages.Add(new CapturedCameraImage
+                                {
+                                    Position = CameraPosition.Right,
+                                    Image = bitmapImage
+                                });
+
+                                Dispatcher.Invoke(() =>
+                                {
+                                    QuickCamPreview.Source = bitmapImage;
+                                });
+                            }
+
+                            camera.Close();
+                            Console.WriteLine("📸 Top camera image captured");
+                        }
+                        if (position == CameraPosition.Left)
+                        {
+                            using var camera = new Basler.Pylon.Camera(camInfo);
+                            camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
+                            camera.Open();
+
+                            FlashCamera(TopFlashEllipse);
+                            PlayShutterSound();
+
+                            using IGrabResult grabResult = camera.StreamGrabber.GrabOne(CamDelay, TimeoutHandling.ThrowException);
+
+                            if (grabResult.GrabSucceeded)
+                            {
+                                using Mat frame = GrabResultToMat(grabResult);
+                                using Mat rotatedFrame = RotateImage90Degrees(frame);
+                                var bmp = rotatedFrame.ToBitmap();
+                                var bitmapImage = ConvertBitmapToImageSource(bmp);
+                                bitmapImage.Freeze();
+
+                                concurrentCapturedImages.Add(new CapturedCameraImage
+                                {
+                                    Position = CameraPosition.Left,
+                                    Image = bitmapImage
+                                });
+
+                                Dispatcher.Invoke(() =>
+                                {
+                                    QuickCamPreview.Source = bitmapImage;
+                                });
+                            }
+
+                            camera.Close();
+                            Console.WriteLine("📸 Top camera image captured");
+                        }
+                        // ======================================
                     }
-
-                    _messageQueue.Enqueue("Wait for Forkleft go away");
-                    ReportProgress("Wait for Forkleft go away");
-                    while (_IsForkleffound)
+                    catch (Exception ex)
                     {
-                        await StartBuzzer();
-                        await Task.Delay(200);
-                        await StopBuzzer();
+                        Console.WriteLine($"⚠️ Capture failed: {ex.Message}");
                     }
-                    ReportProgress("Forkleft go away");
-                    //await TurnOnRotatorAsync();
-                    //await Task.Delay(5000);
-                    int sect = GetRotatorDurationInMilliseconds(_lastWeight);
-                    await StartRoutatorWithDuration(sect);
+                });
 
-                    //take image from backside
-                    foreach (var camInfo in cameraInfos)
+                // Wait until all parallel threads finish capturing their frames
+                await Task.WhenAll(captureTasks);
+            }
+            else
+            {
+                // Wait until forklift leaves before starting rotation
+                _messageQueue.Enqueue("Wait for Forkleft go away");
+                ReportProgress("Wait for Forkleft go away");
+                while (_IsForkleffound)
+                {
+                    await StartBuzzer();
+                    await Task.Delay(200);
+                    await StopBuzzer();
+                }
+                ReportProgress("Forkleft go away");
+
+                int sect = GetRotatorDurationInMilliseconds(_lastWeight);
+                await StartRoutatorWithDuration(sect);
+
+                // Run the secondary camera loop routines in parallel
+                var captureTasksElse = cameraInfos.Select(async camInfo =>
+                {
+                    try
                     {
-
-                        CameraPosition position =
-                            CameraHelper.GetCameraPosition(camInfo[CameraInfoKey.SerialNumber]);
+                        CameraPosition position = CameraHelper.GetCameraPosition(camInfo[CameraInfoKey.SerialNumber]);
                         // FRONT CAMERA → 4 SIDES (ROTATION)
                         // ======================================
                         if (position == CameraPosition.Front)
                         {
                             var sides = new[]
                             {
-                                    CameraPosition.Left
-                                };
+                        CameraPosition.Left
+                    };
 
                             foreach (var side in sides)
                             {
@@ -1407,20 +1393,17 @@ namespace HumanDetection
                                 FlashCamera(FrontFlashEllipse);
                                 PlayShutterSound();
 
-                                using IGrabResult grabResult =
-                                    camera.StreamGrabber.GrabOne(1000, TimeoutHandling.ThrowException);
+                                using IGrabResult grabResult = camera.StreamGrabber.GrabOne(CamDelay, TimeoutHandling.ThrowException);
 
                                 if (grabResult.GrabSucceeded)
                                 {
                                     using Mat frame = GrabResultToMat(grabResult);
                                     using Mat rotatedFrame = RotateImage90Degrees(frame);
 
-                                    //var zoomedImage = ApplyDigitalZoom(frame, 1.4);
-                                    //var bmp = zoomedImage.ToBitmap();
                                     var bitmapImage = ConvertBitmapToImageSource(rotatedFrame.ToBitmap());
                                     bitmapImage.Freeze();
 
-                                    capturedImages.Add(new CapturedCameraImage
+                                    concurrentCapturedImages.Add(new CapturedCameraImage
                                     {
                                         Position = side,
                                         Image = bitmapImage
@@ -1440,29 +1423,28 @@ namespace HumanDetection
                                 // rotate pallet for next side
                                 if (side != CameraPosition.Left)
                                 {
-
                                     _messageQueue.Enqueue($"Image From: {side}");
 
                                     int duration = _settings.RoutatorTimer != null ? (int)_settings.RoutatorTimer : 0;
 
-                                    // FIX (confirmed bug): `duration` was computed from
-                                    // _settings.RoutatorTimer above but the hardcoded
-                                    // literal 5200 was passed instead, making the
-                                    // Rotator Timer setting/slider have no effect here.
                                     var sec = GetRotatorDurationInMilliseconds(_lastWeight);
                                     await StartRoutatorWithDuration((int)sec);
-                                    await Task.Delay(1000);
-
+                                   
                                 }
                             }
                         }
-
-
-
                     }
-                }
-            });
-           
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"⚠️ Capture failed: {ex.Message}");
+                    }
+                });
+
+                await Task.WhenAll(captureTasksElse);
+            }
+
+            // Convert the thread-safe concurrent bag results back to standard list layout
+            capturedImages.AddRange(concurrentCapturedImages);
             return capturedImages;
         }
         private Mat ApplyDigitalZoom(Mat frame, double zoomFactor = 1.5)
@@ -1482,7 +1464,7 @@ namespace HumanDetection
 
             return zoomed;
         }
-        
+
         private Mat RotateImage90Degrees(Mat frame)
         {
             var rotated = new Mat();
@@ -1491,47 +1473,51 @@ namespace HumanDetection
         }
         public int GetRotatorDurationInMilliseconds(double currentWeight)
         {
+            double statisTime = 5.4;
+            // Ensure weight is not negative
+            if (currentWeight < 0) currentWeight = 0;
+            return (int)(Math.Round(currentWeight * statisTime));
             // Check ranges from lowest to highest weight
             if (currentWeight <= 100.0)
             {
-                return 700; // 0 to 100 KG -> 2 seconds (2000 ms)
+                return (int)(Math.Round(currentWeight * statisTime)); // 0 to 100 KG -> 2 seconds (2000 ms)
             }
             else if (currentWeight <= 200.0)
             {
-                return 5000; // 101 to 200 KG -> 3 seconds (3000 ms)
+                return (int)(Math.Round(currentWeight * statisTime)); // 101 to 200 KG -> 3 seconds (3000 ms)
             }
             else if (currentWeight <= 300.0)
             {
-                return 900; // 101 to 200 KG -> 3 seconds (3000 ms)
+                return (int)(Math.Round(currentWeight * statisTime)); // 101 to 200 KG -> 3 seconds (3000 ms)
             }
             else if (currentWeight <= 400.0)
             {
-                return 1000; // 101 to 200 KG -> 3 seconds (3000 ms)
+                return (int)(Math.Round(currentWeight * statisTime)); // 101 to 200 KG -> 3 seconds (3000 ms)
             }
             else if (currentWeight <= 500.0)
             {
-                return 1800; // 201 to 500 KG -> 5.2 seconds (5200 ms)
+                return (int)(Math.Round(currentWeight * statisTime));// 201 to 500 KG -> 5.2 seconds (5200 ms)
             }
             else if (currentWeight <= 600.0)
             {
-                return 4500; // 201 to 500 KG -> 5.2 seconds (5200 ms)
+                return (int)(Math.Round(currentWeight * statisTime)); // 201 to 500 KG -> 5.2 seconds (5200 ms)
             }
             else if (currentWeight <= 700.0)
             {
-                return 4500; // 501 to 800 KG -> 6.5 seconds (6500 ms)
+                return (int)(Math.Round(currentWeight * statisTime)); // 501 to 800 KG -> 6.5 seconds (6500 ms)
             }
             else if (currentWeight <= 900.0)
             {
-                return 5200; // 801 to 1200 KG -> 7.5 seconds (7500 ms)
+                return (int)(Math.Round(currentWeight * statisTime)); // 801 to 1200 KG -> 7.5 seconds (7500 ms)
             }
             else if (currentWeight <= 1000.0)
             {
-                return 5200; // 801 to 1200 KG -> 7.5 seconds (7500 ms)
+                return (int)(Math.Round(currentWeight * statisTime)); // 801 to 1200 KG -> 7.5 seconds (7500 ms)
             }
             else
             {
                 // Absolute maximum safety fallback for anything over 1200 KG
-                return 5200; // 8.5 seconds (8500 ms)
+                return (int)(Math.Round(currentWeight * statisTime)); // 8.5 seconds (8500 ms)
             }
         }
         public async Task<BitmapImage?> CaptureSingleFrameFromCameraAsync(ICameraInfo cameraInfo)
@@ -1658,9 +1644,15 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
 
                 var boxTask = RunBoxCountingModelAsync(image, side);
                 var humanTask = Task.Run(() => RunHumanDetectionModel(image));
-
-                await Task.WhenAll(boxTask, humanTask);
-
+                //if (PalletSide.Top == side)
+                //{
+                //    await Task.WhenAll(boxTask, humanTask);
+                //}
+                //else
+                //{
+                //    await Task.WhenAll(boxTask);
+                //}
+                await Task.WhenAll(boxTask);
                 var boxResult = boxTask.Result;
                 var humanResult = humanTask.Result;
 
@@ -1827,7 +1819,7 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                 // Read calibration from settings if available, otherwise use default
                 double metersPerPixel = 0.002626; // ← REPLACE with your calibrated value
 
-               
+
 
                 // The pallet bounding box height in the 640×640 model image
                 float palletPixelHeight = tallestPallet.Rectangle.Height;
@@ -1854,11 +1846,11 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                 // almost certainly a detection error, not a real pallet.
                 palletHeightMeters = Math.Clamp(palletHeightMeters, 0.0, 3.0);
 
-               
+
             }
             else
             {
-                
+
             }
 
             // ----------------------------------------------------
@@ -1912,22 +1904,22 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
 
                 if (newWidth <= 0 || newHeight <= 0) continue;
 
-                var cropRect = new SixLabors.ImageSharp.Rectangle(newX, newY, newWidth, newHeight);
-                using var crop = originalImage.Clone(ctx => ctx.Crop(cropRect));
-                using var ms = new MemoryStream();
+                //var cropRect = new SixLabors.ImageSharp.Rectangle(newX, newY, newWidth, newHeight);
+                //using var crop = originalImage.Clone(ctx => ctx.Crop(cropRect));
+                //using var ms = new MemoryStream();
 
-                string tempFolder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "BoxCrops");
-                Directory.CreateDirectory(tempFolder);
+                //string tempFolder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "BoxCrops");
+                //Directory.CreateDirectory(tempFolder);
 
-                string fileName = $"crop_{DateTime.Now:yyyyMMdd_HHmmss_fff}_{Guid.NewGuid():N}.jpg";
-                string filePath = System.IO.Path.Combine(tempFolder, fileName);
+                //string fileName = $"crop_{DateTime.Now:yyyyMMdd_HHmmss_fff}_{Guid.NewGuid():N}.jpg";
+                //string filePath = System.IO.Path.Combine(tempFolder, fileName);
 
-                crop.SaveAsJpeg(ms);
-                cropByteList.Add(ms.ToArray());
+                //crop.SaveAsJpeg(ms);
+                //cropByteList.Add(ms.ToArray());
 
-                ms.Position = 0;
-                using var fs = new FileStream(filePath, FileMode.Create, FileAccess.Write);
-                ms.CopyTo(fs);
+                //ms.Position = 0;
+                //using var fs = new FileStream(filePath, FileMode.Create, FileAccess.Write);
+                //ms.CopyTo(fs);
             }
 
             // ----------------------------------------------------
@@ -2275,8 +2267,9 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             RebootDeviceAsync();
 
         }
-        private async void  Rotate_Click(object sender, EventArgs e) {
-            int sec = GetRotatorDurationInMilliseconds(_lastWeight) - 1000;
+        private async void Rotate_Click(object sender, EventArgs e)
+        {
+            int sec = GetRotatorDurationInMilliseconds(_lastWeight);
             await StartRoutatorWithDuration((int)sec);
         }
         public async Task RestartProcess()
@@ -2354,16 +2347,16 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                 ExitTimeTxt.Text = "";
 
             });
-            DateExireBox.Background = System.Windows.Media.Brushes.Transparent;
-            SKUDetectBox.Background = System.Windows.Media.Brushes.Transparent;
-            HumanDetectBox.Background = System.Windows.Media.Brushes.Transparent;
-            HeightBox.Background = System.Windows.Media.Brushes.Transparent;
-            NoBoxTxt.Text = "0";
-            PalletHeightTxt.Text = "0";
-            HumanDetectedTxt.Text = "";
-            BarcodeSKUText.Text = "";
-            DateExpireTxt.Text = "";
-            ScoreTxt.Text = "0";
+            //DateExireBox.Background = System.Windows.Media.Brushes.Transparent;
+            //SKUDetectBox.Background = System.Windows.Media.Brushes.Transparent;
+            //HumanDetectBox.Background = System.Windows.Media.Brushes.Transparent;
+            //HeightBox.Background = System.Windows.Media.Brushes.Transparent;
+            //NoBoxTxt.Text = "0";
+            //PalletHeightTxt.Text = "0";
+            //HumanDetectedTxt.Text = "";
+            //BarcodeSKUText.Text = "";
+            //DateExpireTxt.Text = "";
+            //ScoreTxt.Text = "0";
             await StopBuzzer();
             //ResultDataList.Clear();
             //CapturedImages.Clear();
@@ -2800,7 +2793,7 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                 {
                     _stableWeightStartTime = null;
 
-                    if (_isPalletDetectionRunning )
+                    if (_isPalletDetectionRunning)
                     {
                         _isPalletDetectionRunning = false;
                         await StopPalletDetectionProc();
@@ -2820,7 +2813,7 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
 
                     // Check if weight stable for 5 seconds
                     if (!_isPalletDetectionRunning &&
-                        (DateTime.Now - _stableWeightStartTime.Value).TotalSeconds >= 7)
+                        (DateTime.Now - _stableWeightStartTime.Value).TotalSeconds >= 1)
                     {
                         if (_IsForkleffound == false)
                         {
