@@ -37,7 +37,7 @@ namespace HumanDetection
             _seconds++;
             int minutes = _seconds / 60;
             int secs = _seconds % 60;
-            TimerText.Text = $"{minutes:D2}:{secs:D2}";
+            //TimerText.Text = $"{minutes:D2}:{secs:D2}";
         }
 
         public void StopTimer()
@@ -48,7 +48,7 @@ namespace HumanDetection
         public void ResetTimer()
         {
             _seconds = 0;
-            TimerText.Text = "00:00";
+            //TimerText.Text = "00:00";
         }
     }
 }

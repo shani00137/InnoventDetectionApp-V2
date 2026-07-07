@@ -119,7 +119,9 @@ namespace HumanDetection
         public string pythonExe = @"C:\Users\Owner\AppData\Local\Programs\Python\Python310\python.exe";
         //public string pythonExe = @" C:\Users\USER\AppData\Local\Programs\Python\Python310\python.exe";
         private readonly SnackbarMessageQueue _messageQueue = new SnackbarMessageQueue(TimeSpan.FromSeconds(3));
-
+        public event EventHandler<DIChangedEventArgs> DIChanged;
+        private bool _IsForkleffound = false;
+        private List<CapturedCameraImage> _lastCapturedCameraImages = new();
         public Home()
         {
             InitializeComponent();
@@ -173,6 +175,11 @@ namespace HumanDetection
                 // Show loading indicator
                 await PrepareAllDevicesAndModels();
                 snackbarMesssage.MessageQueue = _messageQueue; // Assign queue
+                                                               // Subscribe to the sensor event
+                _ac.DIChanged += OnSensorChanged;
+
+                // Start polling DI channel 0 (your sensor port)
+                await _ac.StartDIPollingAsync(channel: 0);
 
             }
             catch (Exception ex)
@@ -616,30 +623,31 @@ namespace HumanDetection
         {
             try
             {
+                ResetCountdown();
+
+                //int fullRotation = 80000;
+                //int step = GetRotatorDurationInMilliseconds(_lastWeight)-2000;
 
 
-                int fullRotation = 80000;
-                int step = GetRotatorDurationInMilliseconds(_lastWeight)-2000;
-                ImageDialogHost.IsOpen = true;
+
+                //List<(int time, double score)> scanResults = new();
+
+                //_messageQueue.Enqueue("Scanning pallet alignment");
 
 
-                List<(int time, double score)> scanResults = new();
-
-                _messageQueue.Enqueue("Scanning pallet alignment");
-
-                await Dispatcher.InvokeAsync(() =>
-                {
-                    LoadingCard.Visibility = Visibility.Visible;
-                });
 
                 int elapsed = 0;
                 Dispatcher.Invoke(() =>
                 {
+
+                    LoadingCard.Visibility = Visibility.Visible;
+                    ImageDialogHost.IsOpen = true;
                     LoadingOverlay.Visibility = Visibility.Visible;
                     ProgressTxt.Text = "Starting capture...";
                     PictureDialog.Visibility = Visibility.Collapsed;
                     ResultDialoag.Visibility = Visibility.Collapsed;
                     SucessDialog.Visibility = Visibility.Collapsed;
+
                    
                 });
                
@@ -744,7 +752,7 @@ namespace HumanDetection
                 //    await Task.Delay(100);
                 //}
 
-                await Task.Delay(5000);
+                
 
                 // ---------------------------------------------------------------
                 // FIX (confirmed bug): Dispatcher.Invoke(async () => ...) does NOT
@@ -762,6 +770,7 @@ namespace HumanDetection
                     await Task.Delay(100);
                     await CaptureAndDisplayAllCamerasAsync();
                 }).Task.Unwrap();
+               
 
 
 
@@ -833,6 +842,7 @@ namespace HumanDetection
 
                     // Capture images (MAIN THREAD)
                     var imagesWithCamPosition = await CaptureSingleFrameFromAllCamerasAsync(cameraList, false);
+                    _lastCapturedCameraImages = imagesWithCamPosition;
 
                     Dispatcher.Invoke(() =>
                     {
@@ -848,27 +858,17 @@ namespace HumanDetection
                         RunAllAIDetectionsAsync(imagesWithCamPosition)
                     );
 
-                    StartCountdown();
+                   
                     await Task.WhenAll(aiTask);
+                    StartCountdown();
                     var aiResult = aiTask.Result;
                     double avgScore = aiResult.AvScore;
                     bool humanDetected = aiResult.HumanDetected;
                     int numberOfBox = aiResult.NumberOfBox;
                     ScoreTxt.Text = $"{avgScore * 100:0}%";
-                    LoadingOverlay.Visibility = Visibility.Collapsed;
-
-                    _messageQueue.Enqueue("Please wait Calculate result..");
-
 
                     LoadingCard.Visibility = Visibility.Visible;
-                    if (humanDetected == true)
-                    {
-                        HumanDetectBox.Background = System.Windows.Media.Brushes.Red;
-
-                        await StartBuzzlerWithDuration(6000, 1);
-                        await PlayAlertForSystem();
-                        HumanDetectedTxt.Text = "Yes";
-                    }
+                  
                     var cropByteList = aiResult.OCRBytes;
                     List<OcrImageResult> ocrResultList = new List<OcrImageResult>();
 
@@ -890,8 +890,40 @@ namespace HumanDetection
                             ocrResultList.AddRange(valid);
                         }
                     }
+                    //get result from backside image
+                    var BackSideCamPosition = await CaptureSingleFrameFromAllCamerasAsync(cameraList, true);
+                    var aiTaskBack = Task.Run(() =>
+                       RunAllAIDetectionsAsync(BackSideCamPosition)
+                   );
+
+                  
+                    await Task.WhenAll(aiTaskBack);
+                    
+                    _messageQueue.Enqueue("Please wait Calculate result..");
+                    var cropByteListBack = aiTask.Result.OCRBytes;
+                    if (cropByteListBack != null && cropByteListBack.Any())
+                    {
+                        var api = await RunOcrAsync(cropByteListBack);
+
+                        if (api?.results != null)
+                        {
+                            var valid = api.results
+                                .Where(x => !string.IsNullOrWhiteSpace(x.Key))          // skip empty filename
+                                .Where(x => string.IsNullOrWhiteSpace(x.Value?.error))  // skip error images
+                                .Select(x => x.Value);
+
+                            ocrResultList.AddRange(valid);
+                        }
+                    }
+                    LoadingOverlay.Visibility = Visibility.Collapsed;
                     LoadingCard.Visibility = Visibility.Collapsed;
                     StopCountdown();
+                    // ✅ Update UI safely
+                    Dispatcher.Invoke(() =>
+                    {
+                        NoBoxTxt.Text = aiResult.NumberOfBox.ToString();
+                        PalletHeightTxt.Text = $"{aiResult.maxPalletHeight:F2} m";
+                    });
 
                     if (aiResult.maxPalletHeight > 1.7)
                     {
@@ -901,8 +933,20 @@ namespace HumanDetection
 
 
                     }
+                    for (int i = 0; i < 3; i++)
+                    {
+                        await StartBuzzer();
+                        await Task.Delay(200);
+                        await StopBuzzer();
+                    }
+                    if (humanDetected == true)
+                    {
+                        HumanDetectBox.Background = System.Windows.Media.Brushes.Red;
 
-
+                        await StartBuzzlerWithDuration(6000, 1);
+                        await PlayAlertForSystem();
+                        HumanDetectedTxt.Text = "Yes";
+                    }
                     int distinctBarcodes = ocrResultList
                                     .Where(r => r?.barcodes != null)
                                     .SelectMany(r => r.barcodes)
@@ -1048,14 +1092,15 @@ namespace HumanDetection
                         // ⚠️ ASSUMPTION: "YOUR_TOKEN_HERE" looks like an unfilled
                         // placeholder. Left exactly as-is — move to _settings/config
                         // once you confirm the real token value.
-                        var service = new PalletApiService(
-                               "YOUR_TOKEN_HERE",
-                               "99927ec1-8668-45ae-8709-2db03366e680",
-                               "https://adp-backend-demo.ashybay-437ca219.uaenorth.azurecontainerapps.io/core/thing-type/66b9a073b241574cd76f0616/adpPallet"
-                           );
+                        //var service = new PalletApiService(
+                        //       "YOUR_TOKEN_HERE",
+                        //       "99927ec1-8668-45ae-8709-2db03366e680",
+                        //       "https://adp-backend-demo.ashybay-437ca219.uaenorth.azurecontainerapps.io/core/thing-type/66b9a073b241574cd76f0616/adpPallet"
+                        //   );
 
-                        bool isSuccess = await service.PostPalletDataAsync(payload);
-
+                        //bool isSuccess = await service.PostPalletDataAsync(payload);
+                        await StopPalletDetectionProc();
+                       
                         try
                         {
                             string baseDir = @"C:\AdPortresult";
@@ -1109,7 +1154,7 @@ namespace HumanDetection
                             Console.WriteLine($"Failed to save local results: {ex.Message}");
                         }
                       
-                        await StopPalletDetectionProc();
+                        
                         await ResetRecords();
                     }
                     else
@@ -1150,161 +1195,25 @@ namespace HumanDetection
 
             await Task.Run(async () =>
             {
-                foreach (var camInfo in cameraInfos)
+                if (FirstTerm == false)
                 {
-                    try
+                    foreach (var camInfo in cameraInfos)
                     {
-                        CameraPosition position =
-                            CameraHelper.GetCameraPosition(camInfo[CameraInfoKey.SerialNumber]);
-
-                        // ===============================
-                        // TOP CAMERA → ONLY 1 IMAGE
-                        // ===============================
-                        if (position == CameraPosition.Top)
+                        try
                         {
-                            using var camera = new Basler.Pylon.Camera(camInfo);
-                            camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
-                            camera.Open();
-                            
-                            FlashCamera(TopFlashEllipse);
-                            PlayShutterSound();
+                            CameraPosition position =
+                                CameraHelper.GetCameraPosition(camInfo[CameraInfoKey.SerialNumber]);
 
-                            using IGrabResult grabResult =
-                                camera.StreamGrabber.GrabOne(3000, TimeoutHandling.ThrowException);
-
-                            if (grabResult.GrabSucceeded)
-                            {
-                                using Mat frame = GrabResultToMat(grabResult);
-                                
-                                var bmp = frame.ToBitmap();
-                                
-                                var bitmapImage = ConvertBitmapToImageSource(bmp);
-                                bitmapImage.Freeze();
-
-                                capturedImages.Add(new CapturedCameraImage
-                                {
-                                    Position = CameraPosition.Top,
-                                    Image = bitmapImage
-                                });
-
-                                Dispatcher.Invoke(() =>
-                                {
-                                    QuickCamPreview.Source = bitmapImage;
-                                });
-                            }
-
-                            camera.Close();
-
-                            Console.WriteLine("📸 Top camera image captured");
-                        }
-                        if (position == CameraPosition.Front)
-                        {
-                            using var camera = new Basler.Pylon.Camera(camInfo);
-                            camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
-                            camera.Open();
-
-                            FlashCamera(TopFlashEllipse);
-                            PlayShutterSound();
-
-                            using IGrabResult grabResult =
-                                camera.StreamGrabber.GrabOne(3000, TimeoutHandling.ThrowException);
-
-                            if (grabResult.GrabSucceeded)
-                            {
-                                using Mat frame = GrabResultToMat(grabResult);
-                                //using Mat processedFrame = ApplyDigitalZoom(frame, 2.1);
-                                using Mat rotatedFrame = RotateImage90Degrees(frame);
-                                var bmp = rotatedFrame.ToBitmap();
-
-                                var bitmapImage = ConvertBitmapToImageSource(bmp);
-                                bitmapImage.Freeze();
-
-                                capturedImages.Add(new CapturedCameraImage
-                                {
-                                    Position = CameraPosition.Front,
-                                    Image = bitmapImage
-                                });
-
-                                Dispatcher.Invoke(() =>
-                                {
-                                    QuickCamPreview.Source = bitmapImage;
-                                });
-                            }
-
-                            camera.Close();
-
-                            Console.WriteLine("📸 Top camera image captured");
-                        }
-                        if (position == CameraPosition.Right)
-                        {
-                            using var camera = new Basler.Pylon.Camera(camInfo);
-                            camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
-                            camera.Open();
-
-                            FlashCamera(TopFlashEllipse);
-                            PlayShutterSound();
-
-                            using IGrabResult grabResult =
-                                camera.StreamGrabber.GrabOne(3000, TimeoutHandling.ThrowException);
-
-                            if (grabResult.GrabSucceeded)
-                            {
-                                using Mat frame = GrabResultToMat(grabResult);
-                               
-                                var bmp = frame.ToBitmap();
-
-                                var bitmapImage = ConvertBitmapToImageSource(bmp);
-                                bitmapImage.Freeze();
-
-                                capturedImages.Add(new CapturedCameraImage
-                                {
-                                    Position = CameraPosition.Right,
-                                    Image = bitmapImage
-                                });
-
-                                Dispatcher.Invoke(() =>
-                                {
-                                    QuickCamPreview.Source = bitmapImage;
-                                });
-                            }
-
-                            camera.Close();
-
-                            Console.WriteLine("📸 Top camera image captured");
-                        }
-                        // ======================================
-                       
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"⚠️ Capture failed: {ex.Message}");
-                    }
-                }
-
-                foreach (var camInfo in cameraInfos)
-                {
-                    try
-                    {
-                        CameraPosition position =
-                            CameraHelper.GetCameraPosition(camInfo[CameraInfoKey.SerialNumber]);
-                        // FRONT CAMERA → 4 SIDES (ROTATION)
-                        // ======================================
-                        if (position == CameraPosition.Front)
-                        {
-                            var sides = new[]
-                            {
-
-                                CameraPosition.Back,
-                                CameraPosition.Left
-                            };
-
-                            foreach (var side in sides)
+                            // ===============================
+                            // TOP CAMERA → ONLY 1 IMAGE
+                            // ===============================
+                            if (position == CameraPosition.Top)
                             {
                                 using var camera = new Basler.Pylon.Camera(camInfo);
                                 camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
                                 camera.Open();
 
-                                FlashCamera(FrontFlashEllipse);
+                                FlashCamera(TopFlashEllipse);
                                 PlayShutterSound();
 
                                 using IGrabResult grabResult =
@@ -1313,51 +1222,247 @@ namespace HumanDetection
                                 if (grabResult.GrabSucceeded)
                                 {
                                     using Mat frame = GrabResultToMat(grabResult);
-                                    //var zoomedImage = ApplyDigitalZoom(frame, 1.4);
-                                    //var bmp = zoomedImage.ToBitmap();
-                                    var bitmapImage = ConvertBitmapToImageSource(frame.ToBitmap());
+
+                                    var bmp = frame.ToBitmap();
+
+                                    var bitmapImage = ConvertBitmapToImageSource(bmp);
                                     bitmapImage.Freeze();
 
                                     capturedImages.Add(new CapturedCameraImage
                                     {
-                                        Position = side,
+                                        Position = CameraPosition.Top,
                                         Image = bitmapImage
                                     });
 
                                     Dispatcher.Invoke(() =>
                                     {
-                                        PaletImage.Source = bitmapImage;
                                         QuickCamPreview.Source = bitmapImage;
                                     });
-
-                                    Console.WriteLine($"📸 Captured {side} side from Front camera");
                                 }
 
                                 camera.Close();
 
-                                // rotate pallet for next side
-                                if (side != CameraPosition.Left)
+                                Console.WriteLine("📸 Top camera image captured");
+                            }
+                            if (position == CameraPosition.Front)
+                            {
+                                using var camera = new Basler.Pylon.Camera(camInfo);
+                                camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
+                                camera.Open();
+
+                                FlashCamera(TopFlashEllipse);
+                                PlayShutterSound();
+
+                                using IGrabResult grabResult =
+                                    camera.StreamGrabber.GrabOne(3000, TimeoutHandling.ThrowException);
+
+                                if (grabResult.GrabSucceeded)
                                 {
+                                    using Mat frame = GrabResultToMat(grabResult);
+                                    //using Mat processedFrame = ApplyDigitalZoom(frame, 2.1);
+                                    using Mat rotatedFrame = RotateImage90Degrees(frame);
+                                    var bmp = rotatedFrame.ToBitmap();
 
-                                    _messageQueue.Enqueue($"Image From: {side}");
+                                    var bitmapImage = ConvertBitmapToImageSource(bmp);
+                                    bitmapImage.Freeze();
 
-                                    int duration = _settings.RoutatorTimer != null ? (int)_settings.RoutatorTimer : 0;
+                                    capturedImages.Add(new CapturedCameraImage
+                                    {
+                                        Position = CameraPosition.Front,
+                                        Image = bitmapImage
+                                    });
 
-                                    // FIX (confirmed bug): `duration` was computed from
-                                    // _settings.RoutatorTimer above but the hardcoded
-                                    // literal 5200 was passed instead, making the
-                                    // Rotator Timer setting/slider have no effect here.
-                                    var sec = GetRotatorDurationInMilliseconds(_lastWeight);
-                                    await StartRoutatorWithDuration((int)sec);
-                                    await Task.Delay(1000);
+                                    Dispatcher.Invoke(() =>
+                                    {
+                                        QuickCamPreview.Source = bitmapImage;
+                                    });
+                                }
 
+                                camera.Close();
+
+                                Console.WriteLine("📸 Top camera image captured");
+                            }
+                            if (position == CameraPosition.Right)
+                            {
+                                using var camera = new Basler.Pylon.Camera(camInfo);
+                                camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
+                                camera.Open();
+
+                                FlashCamera(TopFlashEllipse);
+                                PlayShutterSound();
+
+                                using IGrabResult grabResult =
+                                    camera.StreamGrabber.GrabOne(3000, TimeoutHandling.ThrowException);
+
+                                if (grabResult.GrabSucceeded)
+                                {
+                                    using Mat frame = GrabResultToMat(grabResult);
+                                    using Mat rotatedFrame = RotateImage90Degrees(frame);
+
+                                    var bmp = rotatedFrame.ToBitmap();
+
+                                    var bitmapImage = ConvertBitmapToImageSource(bmp);
+                                    bitmapImage.Freeze();
+
+                                    capturedImages.Add(new CapturedCameraImage
+                                    {
+                                        Position = CameraPosition.Right,
+                                        Image = bitmapImage
+                                    });
+
+                                    Dispatcher.Invoke(() =>
+                                    {
+                                        QuickCamPreview.Source = bitmapImage;
+                                    });
+                                }
+
+                                camera.Close();
+
+                                Console.WriteLine("📸 Top camera image captured");
+                            }
+                            if (position == CameraPosition.Left)
+                            {
+                                using var camera = new Basler.Pylon.Camera(camInfo);
+                                camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
+                                camera.Open();
+
+                                FlashCamera(TopFlashEllipse);
+                                PlayShutterSound();
+
+                                using IGrabResult grabResult =
+                                    camera.StreamGrabber.GrabOne(3000, TimeoutHandling.ThrowException);
+
+                                if (grabResult.GrabSucceeded)
+                                {
+                                    using Mat frame = GrabResultToMat(grabResult);
+                                    using Mat rotatedFrame = RotateImage90Degrees(frame);
+
+                                    var bmp = rotatedFrame.ToBitmap();
+
+                                    var bitmapImage = ConvertBitmapToImageSource(bmp);
+                                    bitmapImage.Freeze();
+
+                                    capturedImages.Add(new CapturedCameraImage
+                                    {
+                                        Position = CameraPosition.Left,
+                                        Image = bitmapImage
+                                    });
+
+                                    Dispatcher.Invoke(() =>
+                                    {
+                                        QuickCamPreview.Source = bitmapImage;
+                                    });
+                                }
+
+                                camera.Close();
+
+                                Console.WriteLine("📸 Top camera image captured");
+                            }
+                            // ======================================
+
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"⚠️ Capture failed: {ex.Message}");
+                        }
+                    }
+                }
+                else
+                {
+
+                    // Wait until forklift leaves before starting rotation
+                    _messageQueue.Enqueue("Wait for Forkleft go away");
+                    ReportProgress("Wait for Forkleft go away");
+                    while (_IsForkleffound)
+                    {
+                        await StartBuzzer();
+                        await Task.Delay(200);
+                        await StopBuzzer();
+                    }
+                    ReportProgress("Forkleft go away");
+                    //await TurnOnRotatorAsync();
+                    //await Task.Delay(5000);
+                    int sect = GetRotatorDurationInMilliseconds(_lastWeight);
+                    await StartRoutatorWithDuration(sect);
+                   
+                    foreach (var camInfo in cameraInfos)
+                    {
+                        try
+                        {
+                            CameraPosition position =
+                                CameraHelper.GetCameraPosition(camInfo[CameraInfoKey.SerialNumber]);
+                            // FRONT CAMERA → 4 SIDES (ROTATION)
+                            // ======================================
+                            if (position == CameraPosition.Front)
+                            {
+                                var sides = new[]
+                                {
+                                    CameraPosition.Left
+                                };
+
+                                foreach (var side in sides)
+                                {
+                                    using var camera = new Basler.Pylon.Camera(camInfo);
+                                    camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
+                                    camera.Open();
+
+                                    FlashCamera(FrontFlashEllipse);
+                                    PlayShutterSound();
+
+                                    using IGrabResult grabResult =
+                                        camera.StreamGrabber.GrabOne(3000, TimeoutHandling.ThrowException);
+
+                                    if (grabResult.GrabSucceeded)
+                                    {
+                                        using Mat frame = GrabResultToMat(grabResult);
+                                        using Mat rotatedFrame = RotateImage90Degrees(frame);
+
+                                        //var zoomedImage = ApplyDigitalZoom(frame, 1.4);
+                                        //var bmp = zoomedImage.ToBitmap();
+                                        var bitmapImage = ConvertBitmapToImageSource(rotatedFrame.ToBitmap());
+                                        bitmapImage.Freeze();
+
+                                        capturedImages.Add(new CapturedCameraImage
+                                        {
+                                            Position = side,
+                                            Image = bitmapImage
+                                        });
+
+                                        Dispatcher.Invoke(() =>
+                                        {
+                                            PaletImage.Source = bitmapImage;
+                                            QuickCamPreview.Source = bitmapImage;
+                                        });
+
+                                        Console.WriteLine($"📸 Captured {side} side from Front camera");
+                                    }
+
+                                    camera.Close();
+
+                                    // rotate pallet for next side
+                                    if (side != CameraPosition.Left)
+                                    {
+
+                                        _messageQueue.Enqueue($"Image From: {side}");
+
+                                        int duration = _settings.RoutatorTimer != null ? (int)_settings.RoutatorTimer : 0;
+
+                                        // FIX (confirmed bug): `duration` was computed from
+                                        // _settings.RoutatorTimer above but the hardcoded
+                                        // literal 5200 was passed instead, making the
+                                        // Rotator Timer setting/slider have no effect here.
+                                        var sec = GetRotatorDurationInMilliseconds(_lastWeight);
+                                        await StartRoutatorWithDuration((int)sec);
+                                        await Task.Delay(1000);
+
+                                    }
                                 }
                             }
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"⚠️ Capture failed: {ex.Message}");
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"⚠️ Capture failed: {ex.Message}");
+                        }
                     }
                 }
 
@@ -1372,7 +1477,9 @@ namespace HumanDetection
             // to home position after full cycle" step, not the per-side rotation
             // tied to the settings slider — but verify this is the intended
             // duration for a full reset move vs. a single-side 90° step.
-            await StartRoutatorWithDuration(5200);
+            
+            //int sect = GetRotatorDurationInMilliseconds(_lastWeight);
+            //await StartRoutatorWithDuration(sect);
             return capturedImages;
         }
         private Mat ApplyDigitalZoom(Mat frame, double zoomFactor = 1.5)
@@ -1392,6 +1499,7 @@ namespace HumanDetection
 
             return zoomed;
         }
+        
         private Mat RotateImage90Degrees(Mat frame)
         {
             var rotated = new Mat();
@@ -1407,7 +1515,7 @@ namespace HumanDetection
             }
             else if (currentWeight <= 200.0)
             {
-                return 800; // 101 to 200 KG -> 3 seconds (3000 ms)
+                return 5000; // 101 to 200 KG -> 3 seconds (3000 ms)
             }
             else if (currentWeight <= 300.0)
             {
@@ -1431,16 +1539,16 @@ namespace HumanDetection
             }
             else if (currentWeight <= 900.0)
             {
-                return 5000; // 801 to 1200 KG -> 7.5 seconds (7500 ms)
+                return 5200; // 801 to 1200 KG -> 7.5 seconds (7500 ms)
             }
             else if (currentWeight <= 1000.0)
             {
-                return 5400; // 801 to 1200 KG -> 7.5 seconds (7500 ms)
+                return 5200; // 801 to 1200 KG -> 7.5 seconds (7500 ms)
             }
             else
             {
                 // Absolute maximum safety fallback for anything over 1200 KG
-                return 8500; // 8.5 seconds (8500 ms)
+                return 5200; // 8.5 seconds (8500 ms)
             }
         }
         public async Task<BitmapImage?> CaptureSingleFrameFromCameraAsync(ICameraInfo cameraInfo)
@@ -1622,23 +1730,6 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                 image.Dispose();
             }
 
-            // ⚠️ ASSUMPTION — NOT CHANGED: BoxCountingService.CountBoxes(front, top)
-            // only accepts Front + Top by design (frontBoxCount × topRows). It does
-            // NOT use rightBoxes/backBoxes/leftBoxes at all — this matches the real
-            // signature you shared, so it's not a wiring bug, it's the intended
-            // algorithm. Left exactly as your original code. If you actually want
-            // Right/Back/Left counted too (e.g. for occluded-box detection), the
-            // CountBoxes method itself needs a new overload — let me know and I'll
-            // write that separately rather than guess at the formula here.
-            //NumberOfBox = BoxCountingService.CountBoxes(
-
-            //    frontBoxes,
-            //    topBoxes
-            //);
-            int TopCount = frontBoxes.Count();
-            int FrontCount = frontBoxes.Count();
-            NumberOfBox = TopCount==0 ?1: TopCount * FrontCount;
-
             // ✅ Dispose original ImageSharp images
             foreach (var img in imageSharpList)
                 img.Dispose();
@@ -1647,12 +1738,9 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             double finalAverageScore =
                 avgScoreCount > 0 ? totalAvgScore / avgScoreCount : 0.0;
 
-            // ✅ Update UI safely
-            Dispatcher.Invoke(() =>
-            {
-                NoBoxTxt.Text = $"{NumberOfBox}";
-                PalletHeightTxt.Text = $"{maxPalletHeight:F2} m";
-            });
+            int topBoxCount = topBoxes.Count();
+            int frontRows = BoxCountingService.CountTopRows(frontBoxes);
+            NumberOfBox = topBoxCount == 0 ? 1 : topBoxCount * frontRows;
 
             return (finalAverageScore, HumanDetected, NumberOfBox, ocrResults, maxPalletHeight, annotatedImages);
         }
@@ -1666,7 +1754,6 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
         }
 
         private async Task<ImagePredictionResult> RunBoxCountingModelAsync(Image<Rgba32> originalImage, PalletSide side)
-
         {
             UpdateProgressStatus("Box Counting AI Model Start");
 
@@ -1716,7 +1803,7 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                 .OrderByDescending(p => p.Rectangle.Height)
                 .FirstOrDefault();
 
-            // Keep all boxes + 1 pallet
+            // Keep all non-pallet predictions (boxes etc.)
             var predictions = rawPredictions
                 .Where(p => !p.Label.Name.Equals("pallet", StringComparison.OrdinalIgnoreCase))
                 .ToList();
@@ -1724,8 +1811,76 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             int boxCount = rawPredictions.Count(p =>
                 p.Label.Name.Equals("box", StringComparison.OrdinalIgnoreCase));
 
+            // ----------------------------------------------------
+            // 5. Calculate pallet height in meters
+            //
+            // HOW THIS WORKS:
+            // The model runs on a 640×640 resized image. The pallet bounding box
+            // height (in pixels at 640px scale) is converted to real-world meters
+            // using a calibration value: how many meters does 1 pixel represent
+            // at your camera's mounting distance/angle.
+            //
+            // CALIBRATION (one-time, do this once per installation):
+            //   1. Place a pallet or object of KNOWN height (e.g. exactly 1.20m)
+            //      in front of the camera in the normal scanning position.
+            //   2. Run the model — note the pallet bounding box height in pixels
+            //      on the 640px-wide image (print it with Log/Console.WriteLine).
+            //   3. metersPerPixel = knownHeightMeters / measuredPixelHeight
+            //      e.g. if a 1.20m pallet measures 420px tall:
+            //           metersPerPixel = 1.20 / 420 = 0.002857
+            //   4. Store that value in _settings.MetersPerPixel (add to your
+            //      AppSettings class and settings UI), or hardcode it below until
+            //      you add the settings field.
+            //
+            // ⚠️ ASSUMPTION: metersPerPixel defaults to 0.003 here (roughly
+            // correct for a ~1.2m pallet filling ~400px of a 640px frame at
+            // typical warehouse camera distances). REPLACE this with your real
+            // calibrated value — the number will be wrong until you do.
+            // ----------------------------------------------------
             double palletHeightMeters = 0.0;
 
+            if (tallestPallet != null)
+            {
+                // Read calibration from settings if available, otherwise use default
+                double metersPerPixel = 0.002626; // ← REPLACE with your calibrated value
+
+               
+
+                // The pallet bounding box height in the 640×640 model image
+                float palletPixelHeight = tallestPallet.Rectangle.Height;
+
+                // Also account for how the image was padded when resized to 640×640:
+                // if the original image was not square, black padding was added, which
+                // compresses the actual content into fewer pixels. We need to reverse
+                // that scaling to get the true pixel height in the content area.
+                float originalAspect = (float)originalImage.Height / originalImage.Width;
+                float contentHeightIn640 = modelWidth * originalAspect; // how many of the 640px rows are real content
+
+                // If content fills less than 640 rows (padding added top/bottom),
+                // the content was scaled down by this factor:
+                float padScaleFactor = contentHeightIn640 < modelHeight
+                    ? contentHeightIn640 / modelHeight
+                    : 1.0f;
+
+                // Effective pixel height in the unpadded content area
+                float effectivePixelHeight = palletPixelHeight / padScaleFactor;
+
+                palletHeightMeters = effectivePixelHeight * metersPerPixel;
+
+                // Sanity clamp — a pallet taller than 3m or shorter than 0.1m is
+                // almost certainly a detection error, not a real pallet.
+                palletHeightMeters = Math.Clamp(palletHeightMeters, 0.0, 3.0);
+
+               
+            }
+            else
+            {
+                
+            }
+
+            // ----------------------------------------------------
+            // 6. Box average score
+            // ----------------------------------------------------
             double averageScore = 0.0;
             var boxPredictions = predictions
                 .Where(p => p.Label.Name.Equals("box", StringComparison.OrdinalIgnoreCase))
@@ -1733,12 +1888,17 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
 
             if (boxPredictions.Any())
             {
-                double boxAvg = boxPredictions.Average(p => p.Score);
-                averageScore = boxAvg;
+                averageScore = boxPredictions.Average(p => p.Score);
+            }
+            else if (palletCandidates.Any())
+            {
+                // Fallback: no "box" labels found — use pallet score instead
+                averageScore = palletCandidates.Average(p => p.Score);
             }
 
             // ----------------------------------------------------
-            // 7. Crop boxes/pallet from original image & convert to byte[]
+            // 7. Crop boxes from ORIGINAL high-res image for OCR
+            //    (coordinates scaled from 640px model space back to original)
             // ----------------------------------------------------
             float scaleX = (float)originalImage.Width / modelWidth;
             float scaleY = (float)originalImage.Height / modelHeight;
@@ -1747,100 +1907,88 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
 
             foreach (var p in predictions)
             {
-                // Scale and round to avoid floating point issues
                 int x = (int)Math.Round(p.Rectangle.X * scaleX);
                 int y = (int)Math.Round(p.Rectangle.Y * scaleY);
                 int width = (int)Math.Round(p.Rectangle.Width * scaleX);
                 int height = (int)Math.Round(p.Rectangle.Height * scaleY);
 
-                // Skip invalid or tiny boxes
                 if (width <= 0 || height <= 0) continue;
 
-                // Make square crop based on the larger dimension
                 int squareSize = Math.Max(width, height);
-
-                // Ensure squareSize does not exceed image bounds
                 squareSize = Math.Min(squareSize, originalImage.Width);
                 squareSize = Math.Min(squareSize, originalImage.Height);
 
-                // Center vertically
-                int newY = y - (squareSize - height) / 2;
                 int newX = x - (squareSize - width) / 2;
+                int newY = y - (squareSize - height) / 2;
 
-                // Clamp coordinates inside image bounds
                 newX = Math.Max(0, Math.Min(newX, originalImage.Width - squareSize));
                 newY = Math.Max(0, Math.Min(newY, originalImage.Height - squareSize));
 
                 int newWidth = Math.Min(squareSize, originalImage.Width - newX);
                 int newHeight = Math.Min(squareSize, originalImage.Height - newY);
 
-                // Skip any invalid crops
                 if (newWidth <= 0 || newHeight <= 0) continue;
 
                 var cropRect = new SixLabors.ImageSharp.Rectangle(newX, newY, newWidth, newHeight);
-
                 using var crop = originalImage.Clone(ctx => ctx.Crop(cropRect));
-
                 using var ms = new MemoryStream();
-                // Create unique temp file name
-                string tempFolder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "BoxCrops");
 
-                // Ensure folder exists
+                string tempFolder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "BoxCrops");
                 Directory.CreateDirectory(tempFolder);
 
                 string fileName = $"crop_{DateTime.Now:yyyyMMdd_HHmmss_fff}_{Guid.NewGuid():N}.jpg";
                 string filePath = System.IO.Path.Combine(tempFolder, fileName);
 
-
-
-                ;
-                crop.SaveAsJpeg(ms); // OCR works well with JPEG
+                crop.SaveAsJpeg(ms);
                 cropByteList.Add(ms.ToArray());
 
                 ms.Position = 0;
-                using (var fs = new FileStream(filePath, FileMode.Create, FileAccess.Write))
-                {
-                    ms.CopyTo(fs);
-                }
+                using var fs = new FileStream(filePath, FileMode.Create, FileAccess.Write);
+                ms.CopyTo(fs);
             }
 
-
-            double palletAngleDeg = 0.0;
-            OcrResult ocrResult = null;
-            string combinedOcrText = "";
-
-
             // ----------------------------------------------------
-            // 9. Draw detection boxes on resized image for UI
+            // 8. Draw detection boxes on resized image for UI
             // ----------------------------------------------------
+            double palletAngleDeg = tallestPallet?.Score * 100 ?? 0;
+
+            double finalScore;
+            if (palletAngleDeg > 0 && averageScore > 0)
+                finalScore = (palletAngleDeg + averageScore) / 2;
+            else if (palletAngleDeg > 0)
+                finalScore = palletAngleDeg;
+            else
+                finalScore = averageScore;
+
+            byte[] annoBytes;
+
             using (var annotated = resizedImage.Clone())
             {
                 var colorBox = new Rgba32(0, 255, 0);
                 var colorPallet = new Rgba32(255, 64, 64);
                 var font = SixLabors.Fonts.SystemFonts.CreateFont("Arial", 14, SixLabors.Fonts.FontStyle.Bold);
 
-                // 1️⃣ Find the largest pallet (by area)
                 var largestPallet = rawPredictions
                     .Where(p => p.Label.Name.Equals("pallet", StringComparison.OrdinalIgnoreCase))
                     .OrderByDescending(p => p.Rectangle.Width * p.Rectangle.Height)
                     .FirstOrDefault();
 
-                // 2️⃣ Draw predictions
                 foreach (var p in rawPredictions)
                 {
                     bool isPallet = p.Label.Name.Equals("pallet", StringComparison.OrdinalIgnoreCase);
-
-                    // ❌ Skip smaller pallets
-                    if (isPallet && p != largestPallet)
-                        continue;
+                    if (isPallet && p != largestPallet) continue;
 
                     var color = isPallet ? colorPallet : colorBox;
 
-                    annotated.Mutate(x =>
+                    annotated.Mutate(ctx =>
                     {
-                        x.Draw(color, 6, p.Rectangle);
+                        ctx.Draw(color, 6, p.Rectangle);
 
-                        var labelText = $"{p.Label.Name} {p.Score:P1}";
+                        // Show height on the pallet box label
+                        string labelText = isPallet
+                            ? $"pallet {p.Score:P1} h={palletHeightMeters:F2}m"
+                            : $"{p.Label.Name} {p.Score:P1}";
+
                         var textLocation = new SixLabors.ImageSharp.PointF(
                             p.Rectangle.X + 5,
                             Math.Max(0, p.Rectangle.Y - 25)
@@ -1853,61 +2001,37 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                             22
                         );
 
-                        x.Fill(Color.FromRgba(0, 0, 0, 180), textBgRect);
-                        x.DrawText(labelText, font, color, textLocation);
+                        ctx.Fill(Color.FromRgba(0, 0, 0, 180), textBgRect);
+                        ctx.DrawText(labelText, font, color, textLocation);
                     });
                 }
 
-                // ⚠️ ASSUMPTION — NOT CHANGED: this reuses the pallet *detection
-                // confidence score* (0–100) as "PalletAngleDeg". It is not a real
-                // geometric rotation angle. Left exactly as your original code
-                // since changing it would alter behavior — flagging in case this
-                // was meant to be actual angle-of-tilt math that isn't implemented
-                // yet.
-                palletAngleDeg = tallestPallet?.Score * 100 ?? 0;
-                double boxAvg = averageScore;
+                using var ms = new MemoryStream();
+                annotated.SaveAsPng(ms);
+                annoBytes = ms.ToArray();
+                ms.Seek(0, SeekOrigin.Begin);
 
-                double finalScore;
+                var bitmap = new BitmapImage();
+                bitmap.BeginInit();
+                bitmap.StreamSource = ms;
+                bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                bitmap.EndInit();
+                bitmap.Freeze();
 
-                if (palletAngleDeg > 0 && boxAvg > 0)
-                    finalScore = (palletAngleDeg + boxAvg) / 2;
-                else if (palletAngleDeg > 0)
-                    finalScore = palletAngleDeg;
-                else
-                    finalScore = boxAvg;
-
-
-                byte[] annoBytes;
-                using (var ms = new MemoryStream())
-                {
-                    annotated.SaveAsPng(ms);
-                    annoBytes = ms.ToArray();
-                    ms.Seek(0, SeekOrigin.Begin);
-
-                    var bitmap = new BitmapImage();
-                    bitmap.BeginInit();
-                    bitmap.StreamSource = ms;
-                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                    bitmap.EndInit();
-                    bitmap.Freeze();
-
-                    App.Current.Dispatcher.Invoke(() => CapturedImages.Add(bitmap));
-                }
-
-                return new ImagePredictionResult
-                {
-                    Side = side,
-                    BoxPredictions = boxPredictions,
-                    PalletHeightMeters = palletHeightMeters,
-                    AverageScore = averageScore,
-                    PalletAngleDeg = palletAngleDeg,
-                    BoxesImages = cropByteList,
-                    AnnotatedImage = annoBytes
-                };
+                App.Current.Dispatcher.Invoke(() => CapturedImages.Add(bitmap));
             }
 
+            return new ImagePredictionResult
+            {
+                Side = side,
+                BoxPredictions = boxPredictions,
+                PalletHeightMeters = palletHeightMeters,
+                AverageScore = averageScore,
+                PalletAngleDeg = palletAngleDeg,
+                BoxesImages = cropByteList,
+                AnnotatedImage = annoBytes
+            };
         }
-
 
 
         private bool RunHumanDetectionModel(Image<Rgba32> image)
@@ -2138,11 +2262,15 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             if (sender is Border border && border.Child is System.Windows.Controls.Image img)
             {
                 DialogImage.Source = img.Source;
-                ImageDialogHost.IsOpen = true; // ✅ show popup
+                var clickedImage = img.Source as BitmapImage;
+                var match = _lastCapturedCameraImages.FirstOrDefault(x =>
+                    ReferenceEquals(x.Image, clickedImage));
+                var positionName = match?.Position.ToString() ?? "Unknown";
+                DialogImagePosition.Text = $"Position: {positionName}";
+                ImageDialogHost.IsOpen = true;
                 PictureDialog.Visibility = Visibility.Visible;
-
+                SucessDialog.Visibility = Visibility.Collapsed;
                 ResultDialoag.Visibility = Visibility.Collapsed;
-
             }
         }
 
@@ -2288,6 +2416,7 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
 
             PictureDialog.Visibility = Visibility.Collapsed;
             ResultDialoag.Visibility = Visibility.Visible;
+            SucessDialog.Visibility = Visibility.Collapsed;
 
             ImageDialogHost.IsOpen = true;
 
@@ -2350,6 +2479,19 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                 timer.Stop();
                 //System.Windows.Application.Current.Shutdown(); // Stops the WPF application
             }
+        }
+        public void ResetCountdown()
+        {
+            if (timer != null)
+            {
+                timer.Stop();
+            }
+
+            elapsedSeconds = 0;
+            Dispatcher.Invoke(() =>
+            {
+                CountdownText.Text = "0 Sec";
+            });
         }
 
         private void Timer_Tick(object sender, EventArgs e)
@@ -2559,6 +2701,46 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
         {
             //await _ac.RebootDeviceAsync();
         }
+        private void OnSensorChanged(object sender, DIChangedEventArgs e)
+        {
+            if (e.Channel == 0 && e.IsActive)
+            {
+                _IsForkleffound = true;
+                _messageQueue.Enqueue("Fork Left Arrived");
+                Dispatcher.Invoke(() =>
+                {
+                    ForkliftImage.Visibility = Visibility.Visible;
+                    ForkliftImage.Opacity = 1;
+                    ForkliftFlashEllipse.Opacity = 1;
+                    if (FindResource("ForkliftDetectedStoryboard") is Storyboard baseStoryboard)
+                    {
+                        Storyboard storyboard = baseStoryboard.Clone();
+                        foreach (var child in storyboard.Children)
+                        {
+                            Storyboard.SetTarget(child, ForkliftImage);
+                        }
+                        storyboard.Begin();
+                    }
+                    if (FindResource("CameraFlashStoryboard") is Storyboard flashBase)
+                    {
+                        Storyboard flashSb = flashBase.Clone();
+                        Storyboard.SetTarget(flashSb.Children[0], ForkliftFlashEllipse);
+                        flashSb.Begin();
+                    }
+                });
+            }
+            else if (e.Channel == 0 && !e.IsActive)
+            {
+                _messageQueue.Enqueue("Fork go away");
+                _IsForkleffound = false;
+                Dispatcher.Invoke(() =>
+                {
+                    ForkliftImage.Opacity = 0;
+                    ForkliftImage.Visibility = Visibility.Collapsed;
+                    ForkliftFlashEllipse.Opacity = 0;
+                });
+            }
+        }
         public async Task StartBuzzlerWithDuration(int duration, int repeat)
         {
             for (int i = 0; i < repeat; i++)
@@ -2635,7 +2817,7 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                 {
                     _stableWeightStartTime = null;
 
-                    if (_isPalletDetectionRunning)
+                    if (_isPalletDetectionRunning )
                     {
                         _isPalletDetectionRunning = false;
                         await StopPalletDetectionProc();
@@ -2655,10 +2837,13 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
 
                     // Check if weight stable for 5 seconds
                     if (!_isPalletDetectionRunning &&
-                        (DateTime.Now - _stableWeightStartTime.Value).TotalSeconds >= 5)
+                        (DateTime.Now - _stableWeightStartTime.Value).TotalSeconds >= 7)
                     {
-                        _isPalletDetectionRunning = true;
-                        await StartPalletDetectionProcAsync();
+                        if (_IsForkleffound == false)
+                        {
+                            _isPalletDetectionRunning = true;
+                            await StartPalletDetectionProcAsync();
+                        }
                     }
                 }
 

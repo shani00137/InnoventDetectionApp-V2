@@ -21,6 +21,7 @@ namespace Utilites.CameraSettings
                 "25261336" => CameraPosition.Front, // Front camera
                 "25261337" => CameraPosition.Top,
                 "25523223" => CameraPosition.Right,// Top camera
+                "25523224" => CameraPosition.Left,// Top camera
                 _ => CameraPosition.Unknown
             };
         }

@@ -17,7 +17,90 @@ app = Flask(__name__)
 # CONFIG
 # -----------------------------
 MAX_SIZE = 1024
-DATE_REGEX = r'\b\d{2}[./-]\d{2}[./-]\d{4}\b'
+DATE_REGEX = r'''(?xi)
+    \b
+    (?:
+        # FORMAT 1: DD.MM.YYYY  DD/MM/YYYY  DD-MM-YYYY  DD MM YYYY
+        (?:0?[1-9]|[12]\d|3[01])
+        [.\-/\s]
+        (?:0?[1-9]|1[0-2])
+        [.\-/\s]
+        (?:19|20)\d{2}
+
+        |
+        # FORMAT 2: YYYY.MM.DD  YYYY/MM/DD  YYYY-MM-DD
+        (?:19|20)\d{2}
+        [.\-/]
+        (?:0?[1-9]|1[0-2])
+        [.\-/]
+        (?:0?[1-9]|[12]\d|3[01])
+
+        |
+        # FORMAT 3: DD.MM.YY  DD/MM/YY  DD-MM-YY
+        (?:0?[1-9]|[12]\d|3[01])
+        [.\-/]
+        (?:0?[1-9]|1[0-2])
+        [.\-/]
+        \d{2}
+
+        |
+        # FORMAT 4: MM/DD/YYYY  MM-DD-YYYY  (US style)
+        (?:0?[1-9]|1[0-2])
+        [/\-]
+        (?:0?[1-9]|[12]\d|3[01])
+        [/\-]
+        (?:19|20)\d{2}
+
+        |
+        # FORMAT 5: DD MMM YYYY  e.g. 15 JAN 2024  15-JAN-2024
+        (?:0?[1-9]|[12]\d|3[01])
+        [\s.\-/]?
+        (?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)
+        [\s.\-/]?
+        (?:19|20)\d{2}
+
+        |
+        # FORMAT 6: MMM DD YYYY  e.g. JAN 15 2024
+        (?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)
+        [\s.\-/]?
+        (?:0?[1-9]|[12]\d|3[01])
+        [\s.\-/]?
+        (?:19|20)\d{2}
+
+        |
+        # FORMAT 7: YYYY MMM DD  e.g. 2024 JAN 15
+        (?:19|20)\d{2}
+        [\s.\-/]?
+        (?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)
+        [\s.\-/]?
+        (?:0?[1-9]|[12]\d|3[01])
+
+        |
+        # FORMAT 8: DDMMYYYY compact (no separator)
+        (?:0[1-9]|[12]\d|3[01])
+        (?:0[1-9]|1[0-2])
+        (?:19|20)\d{2}
+
+        |
+        # FORMAT 9: YYYYMMDD ISO compact (no separator)
+        (?:19|20)\d{2}
+        (?:0[1-9]|1[0-2])
+        (?:0[1-9]|[12]\d|3[01])
+
+        |
+        # FORMAT 10: MM/YY  MM.YY  MM-YY  (expiry shorthand on labels)
+        (?:0?[1-9]|1[0-2])
+        [.\-/]
+        \d{2}
+
+        |
+        # FORMAT 11: MM/YYYY  MM.YYYY  (longer expiry shorthand)
+        (?:0?[1-9]|1[0-2])
+        [.\-/]
+        (?:19|20)\d{2}
+    )
+    \b
+'''
 
 # -----------------------------
 # OCR INIT (GPU AUTO)

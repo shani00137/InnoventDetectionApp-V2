@@ -250,5 +250,19 @@
 
 
 
+	<ItemGroup>
+	  <None Remove="Resources\Images\forklift.png" />
+	</ItemGroup>
+
+
+
+	<ItemGroup>
+	  <Content Include="Resources\Images\forklift.png">
+	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	  </Content>
+	</ItemGroup>
+
+
+
 
 </Project>

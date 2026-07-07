@@ -44,6 +44,30 @@
            To="1"
            Duration="0:0:1"/>
         </Storyboard>
+
+                                        <Storyboard x:Key="ForkliftDetectedStoryboard">
+                                            <DoubleAnimation
+                                           Storyboard.TargetProperty="Opacity"
+                                           From="0"
+                                           To="1"
+                                           Duration="0:0:0.3"
+                                           AutoReverse="True"
+                                           RepeatBehavior="Forever" />
+                                            <DoubleAnimation
+                                           Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                           From="1"
+                                           To="1.3"
+                                           Duration="0:0:0.3"
+                                           AutoReverse="True"
+                                           RepeatBehavior="Forever" />
+                                            <DoubleAnimation
+                                           Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                           From="1"
+                                           To="1.3"
+                                           Duration="0:0:0.3"
+                                           AutoReverse="True"
+                                           RepeatBehavior="Forever" />
+                                        </Storyboard>
     </Page.Resources>
 
     <materialDesign:DialogHost 
@@ -52,26 +76,50 @@
             <Grid>
 
                 <Border x:Name="PictureDialog"
-                       Background="#222"
+                       Background="#1a1a2e"
                        CornerRadius="12"
                        Width="800"
                        Height="600"
-                       Padding="10"
-                       SnapsToDevicePixels="True">
+                       SnapsToDevicePixels="True"
+                       BorderBrush="SlateBlue"
+                       BorderThickness="2">
 
-                    <Grid>
+                    <Grid Margin="0">
                         <Grid.RowDefinitions>
+                            <RowDefinition Height="auto"></RowDefinition>
                             <RowDefinition Height="*"></RowDefinition>
                             <RowDefinition Height="auto"></RowDefinition>
                         </Grid.RowDefinitions>
+
+                        <!-- Header -->
+                        <Border Grid.Row="0" Background="#252540" CornerRadius="12,12,0,0" Padding="16,12">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="DialogImagePosition" Text="Position:" FontSize="18" Foreground="White" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <Button Grid.Column="1" Content="✕" Width="36" Height="36"
+                                        Background="Transparent" Foreground="#aaa" BorderThickness="0"
+                                        FontSize="20" Click="CloseDialog_Click"
+                                        HorizontalAlignment="Right"/>
+                            </Grid>
+                        </Border>
+
                         <!-- Image -->
-                        <Image x:Name="DialogImage" Grid.Row="0"
+                        <Image x:Name="DialogImage" Grid.Row="1"
                               Stretch="Uniform"
                               VerticalAlignment="Center"
                               HorizontalAlignment="Center"
-                              Margin="0"/>
+                              Margin="20"/>
 
-                        <Button Grid.Row="1" Content="Close" Width="100" Height="40" Background="Transparent" Foreground="White" BorderThickness="0" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="10" Click="CloseDialog_Click"/>
+                        <!-- Footer -->
+                        <Border Grid.Row="2" Background="#252540" CornerRadius="0,0,12,12" Padding="12,8">
+                            <Button Content="Close" Width="100" Height="34"
+                                    Background="#3a3a5c" Foreground="White" BorderThickness="1"
+                                    BorderBrush="SlateBlue" 
+                                    HorizontalAlignment="Right" Click="CloseDialog_Click"/>
+                        </Border>
                     </Grid>
                 </Border>
             <local:ResultDialog x:Name="ResultDialoag" Width="800"></local:ResultDialog>
@@ -117,6 +165,7 @@
                                 <Grid VerticalAlignment="Top" Margin="10,2,10,0" Grid.Row="0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
@@ -127,8 +176,35 @@
                                         <TextBlock x:Name="CountdownText" FontSize="20" Foreground="White" Text="0 Sec" Margin="0,10,0,0" HorizontalAlignment="Center"/>
                                     </StackPanel>
 
+                                    <!-- Forklift -->
+                                    <StackPanel Grid.Column="1" Margin="5,0,10,0" Orientation="Vertical" HorizontalAlignment="Left" VerticalAlignment="Bottom">
+                                        <Border BorderBrush="#FFA500" BorderThickness="2" Background="#111"
+                                                CornerRadius="8" Width="118" Height="126" Padding="2,10,2,2">
+                                            <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
+                                                <Grid Width="64" Height="64">
+                                                    <Ellipse x:Name="ForkliftFlashEllipse"
+                                                             Fill="#FFA500" Opacity="0.0"
+                                                             Width="64" Height="64">
+                                                        <Ellipse.Effect>
+                                                            <DropShadowEffect Color="#FFA500" BlurRadius="20" ShadowDepth="0"/>
+                                                        </Ellipse.Effect>
+                                                    </Ellipse>
+                                                    <Image x:Name="ForkliftImage"
+                                                           Source="pack://application:,,,/Resources/Images/forklift.png"
+                                                           Height="64" Width="64" Opacity="0" Visibility="Collapsed"
+                                                           RenderTransformOrigin="0.5,0.5">
+                                                        <Image.RenderTransform>
+                                                            <ScaleTransform ScaleX="1" ScaleY="1"/>
+                                                        </Image.RenderTransform>
+                                                    </Image>
+                                                </Grid>
+                                                <TextBlock FontSize="18" Foreground="White" Text="Forklift" Margin="0,10,0,0" HorizontalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+
                                     <!-- Center Camera Icon -->
-                                    <StackPanel Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <StackPanel Grid.Column="2" HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <Border  x:Name="CamTopLightPulse" BorderBrush="Gray" BorderThickness="2"  Background="#111"
                                                     CornerRadius="8" Width="118" Height="126" Padding="2,10,2,2">
                                                                                                 <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
@@ -150,7 +226,7 @@
                                         </StackPanel>
 
                                     <!-- Right Side: Human Image & Info -->
-                                    <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                                    <StackPanel Grid.Column="3" HorizontalAlignment="Right" VerticalAlignment="Bottom">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto"/>

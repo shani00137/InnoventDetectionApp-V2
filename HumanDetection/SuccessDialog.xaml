@@ -54,7 +54,7 @@
             </StackPanel>
 
             <!-- Timer Display -->
-            <Border Grid.Row="2"
+            <!--<Border Grid.Row="2"
                     CornerRadius="8"
                     Background="#2A2A2A"
                     BorderBrush="#444"
@@ -73,7 +73,7 @@
                                Foreground="White"
                                Margin="10,0,0,0"/>
                 </StackPanel>
-            </Border>
+            </Border>-->
 
             <!-- Status Bar -->
             <Border Grid.Row="3"

@@ -28,7 +28,7 @@ namespace Utilites.BoxCounting
         }
 
         // Detect number of rows in top image
-        private static int CountTopRows(List<YoloPrediction> predictions)
+        public static int CountTopRows(List<YoloPrediction> predictions)
         {
             if (predictions == null || predictions.Count == 0)
                 return 1;
