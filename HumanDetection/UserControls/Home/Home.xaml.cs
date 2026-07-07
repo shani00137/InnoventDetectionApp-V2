@@ -816,7 +816,7 @@ namespace HumanDetection
                     LoadingOverlay.Visibility = Visibility.Visible;
                     ProgressTxt.Text = "Starting capture...";
                 });
-
+                StartCountdown();
                 while (!detectionPassed)
                 {
                     attempTaken++;
@@ -860,7 +860,7 @@ namespace HumanDetection
 
                    
                     await Task.WhenAll(aiTask);
-                    StartCountdown();
+                   
                     var aiResult = aiTask.Result;
                     double avgScore = aiResult.AvScore;
                     bool humanDetected = aiResult.HumanDetected;
@@ -891,13 +891,13 @@ namespace HumanDetection
                         }
                     }
                     //get result from backside image
-                    var BackSideCamPosition = await CaptureSingleFrameFromAllCamerasAsync(cameraList, true);
-                    var aiTaskBack = Task.Run(() =>
-                       RunAllAIDetectionsAsync(BackSideCamPosition)
-                   );
+                    //var BackSideCamPosition = await CaptureSingleFrameFromAllCamerasAsync(cameraList, true);
+                   // var aiTaskBack = Task.Run(() =>
+                   //    RunAllAIDetectionsAsync(BackSideCamPosition)
+                   //);
 
                   
-                    await Task.WhenAll(aiTaskBack);
+                   // await Task.WhenAll(aiTaskBack);
                     
                     _messageQueue.Enqueue("Please wait Calculate result..");
                     var cropByteListBack = aiTask.Result.OCRBytes;
@@ -1217,7 +1217,7 @@ namespace HumanDetection
                                 PlayShutterSound();
 
                                 using IGrabResult grabResult =
-                                    camera.StreamGrabber.GrabOne(3000, TimeoutHandling.ThrowException);
+                                    camera.StreamGrabber.GrabOne(1000, TimeoutHandling.ThrowException);
 
                                 if (grabResult.GrabSucceeded)
                                 {
@@ -1254,7 +1254,7 @@ namespace HumanDetection
                                 PlayShutterSound();
 
                                 using IGrabResult grabResult =
-                                    camera.StreamGrabber.GrabOne(3000, TimeoutHandling.ThrowException);
+                                    camera.StreamGrabber.GrabOne(1000, TimeoutHandling.ThrowException);
 
                                 if (grabResult.GrabSucceeded)
                                 {
@@ -1292,7 +1292,7 @@ namespace HumanDetection
                                 PlayShutterSound();
 
                                 using IGrabResult grabResult =
-                                    camera.StreamGrabber.GrabOne(3000, TimeoutHandling.ThrowException);
+                                    camera.StreamGrabber.GrabOne(1000, TimeoutHandling.ThrowException);
 
                                 if (grabResult.GrabSucceeded)
                                 {
@@ -1330,7 +1330,7 @@ namespace HumanDetection
                                 PlayShutterSound();
 
                                 using IGrabResult grabResult =
-                                    camera.StreamGrabber.GrabOne(3000, TimeoutHandling.ThrowException);
+                                    camera.StreamGrabber.GrabOne(1000, TimeoutHandling.ThrowException);
 
                                 if (grabResult.GrabSucceeded)
                                 {
@@ -1360,17 +1360,15 @@ namespace HumanDetection
                             }
                             // ======================================
 
+
+
                         }
                         catch (Exception ex)
                         {
                             Console.WriteLine($"⚠️ Capture failed: {ex.Message}");
                         }
                     }
-                }
-                else
-                {
 
-                    // Wait until forklift leaves before starting rotation
                     _messageQueue.Enqueue("Wait for Forkleft go away");
                     ReportProgress("Wait for Forkleft go away");
                     while (_IsForkleffound)
@@ -1384,102 +1382,87 @@ namespace HumanDetection
                     //await Task.Delay(5000);
                     int sect = GetRotatorDurationInMilliseconds(_lastWeight);
                     await StartRoutatorWithDuration(sect);
-                   
+
+                    //take image from backside
                     foreach (var camInfo in cameraInfos)
                     {
-                        try
+
+                        CameraPosition position =
+                            CameraHelper.GetCameraPosition(camInfo[CameraInfoKey.SerialNumber]);
+                        // FRONT CAMERA → 4 SIDES (ROTATION)
+                        // ======================================
+                        if (position == CameraPosition.Front)
                         {
-                            CameraPosition position =
-                                CameraHelper.GetCameraPosition(camInfo[CameraInfoKey.SerialNumber]);
-                            // FRONT CAMERA → 4 SIDES (ROTATION)
-                            // ======================================
-                            if (position == CameraPosition.Front)
+                            var sides = new[]
                             {
-                                var sides = new[]
-                                {
                                     CameraPosition.Left
                                 };
 
-                                foreach (var side in sides)
+                            foreach (var side in sides)
+                            {
+                                using var camera = new Basler.Pylon.Camera(camInfo);
+                                camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
+                                camera.Open();
+
+                                FlashCamera(FrontFlashEllipse);
+                                PlayShutterSound();
+
+                                using IGrabResult grabResult =
+                                    camera.StreamGrabber.GrabOne(1000, TimeoutHandling.ThrowException);
+
+                                if (grabResult.GrabSucceeded)
                                 {
-                                    using var camera = new Basler.Pylon.Camera(camInfo);
-                                    camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
-                                    camera.Open();
+                                    using Mat frame = GrabResultToMat(grabResult);
+                                    using Mat rotatedFrame = RotateImage90Degrees(frame);
 
-                                    FlashCamera(FrontFlashEllipse);
-                                    PlayShutterSound();
+                                    //var zoomedImage = ApplyDigitalZoom(frame, 1.4);
+                                    //var bmp = zoomedImage.ToBitmap();
+                                    var bitmapImage = ConvertBitmapToImageSource(rotatedFrame.ToBitmap());
+                                    bitmapImage.Freeze();
 
-                                    using IGrabResult grabResult =
-                                        camera.StreamGrabber.GrabOne(3000, TimeoutHandling.ThrowException);
-
-                                    if (grabResult.GrabSucceeded)
+                                    capturedImages.Add(new CapturedCameraImage
                                     {
-                                        using Mat frame = GrabResultToMat(grabResult);
-                                        using Mat rotatedFrame = RotateImage90Degrees(frame);
+                                        Position = side,
+                                        Image = bitmapImage
+                                    });
 
-                                        //var zoomedImage = ApplyDigitalZoom(frame, 1.4);
-                                        //var bmp = zoomedImage.ToBitmap();
-                                        var bitmapImage = ConvertBitmapToImageSource(rotatedFrame.ToBitmap());
-                                        bitmapImage.Freeze();
-
-                                        capturedImages.Add(new CapturedCameraImage
-                                        {
-                                            Position = side,
-                                            Image = bitmapImage
-                                        });
-
-                                        Dispatcher.Invoke(() =>
-                                        {
-                                            PaletImage.Source = bitmapImage;
-                                            QuickCamPreview.Source = bitmapImage;
-                                        });
-
-                                        Console.WriteLine($"📸 Captured {side} side from Front camera");
-                                    }
-
-                                    camera.Close();
-
-                                    // rotate pallet for next side
-                                    if (side != CameraPosition.Left)
+                                    Dispatcher.Invoke(() =>
                                     {
+                                        PaletImage.Source = bitmapImage;
+                                        QuickCamPreview.Source = bitmapImage;
+                                    });
 
-                                        _messageQueue.Enqueue($"Image From: {side}");
+                                    Console.WriteLine($"📸 Captured {side} side from Front camera");
+                                }
 
-                                        int duration = _settings.RoutatorTimer != null ? (int)_settings.RoutatorTimer : 0;
+                                camera.Close();
 
-                                        // FIX (confirmed bug): `duration` was computed from
-                                        // _settings.RoutatorTimer above but the hardcoded
-                                        // literal 5200 was passed instead, making the
-                                        // Rotator Timer setting/slider have no effect here.
-                                        var sec = GetRotatorDurationInMilliseconds(_lastWeight);
-                                        await StartRoutatorWithDuration((int)sec);
-                                        await Task.Delay(1000);
+                                // rotate pallet for next side
+                                if (side != CameraPosition.Left)
+                                {
 
-                                    }
+                                    _messageQueue.Enqueue($"Image From: {side}");
+
+                                    int duration = _settings.RoutatorTimer != null ? (int)_settings.RoutatorTimer : 0;
+
+                                    // FIX (confirmed bug): `duration` was computed from
+                                    // _settings.RoutatorTimer above but the hardcoded
+                                    // literal 5200 was passed instead, making the
+                                    // Rotator Timer setting/slider have no effect here.
+                                    var sec = GetRotatorDurationInMilliseconds(_lastWeight);
+                                    await StartRoutatorWithDuration((int)sec);
+                                    await Task.Delay(1000);
+
                                 }
                             }
                         }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"⚠️ Capture failed: {ex.Message}");
-                        }
+
+
+
                     }
                 }
-
             });
-            //reset position of pallet
-            //int duration = _settings.RoutatorTimer != null ? (int)_settings.RoutatorTimer : 0;
-            //await TurnOnRotatorAsync();
-            //await Task.Delay(2000);
-
-            // ⚠️ ASSUMPTION: this final reset-rotation call still uses the
-            // original hardcoded 5200. Left as-is since this is a "return pallet
-            // to home position after full cycle" step, not the per-side rotation
-            // tied to the settings slider — but verify this is the intended
-            // duration for a full reset move vs. a single-side 90° step.
-            
-            //int sect = GetRotatorDurationInMilliseconds(_lastWeight);
-            //await StartRoutatorWithDuration(sect);
+           
             return capturedImages;
         }
         private Mat ApplyDigitalZoom(Mat frame, double zoomFactor = 1.5)
