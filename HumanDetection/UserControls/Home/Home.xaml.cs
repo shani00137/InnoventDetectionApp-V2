@@ -817,7 +817,7 @@ namespace HumanDetection
                     LoadingOverlay.Visibility = Visibility.Visible;
                     ProgressTxt.Text = "Starting capture...";
                 });
-
+                
                 while (!detectionPassed)
                 {
                     attempTaken++;
@@ -841,28 +841,29 @@ namespace HumanDetection
                     ReportProgress("📷 Capturing images...");
                     var cameraList = CameraFinder.Enumerate();
 
-                    // Capture images (MAIN THREAD)
-                    var imagesWithCamPosition = await CaptureSingleFrameFromAllCamerasAsync(cameraList, false);
+                    // Capture front + back images IN PARALLEL
+                    var frontCaptureTask = CaptureSingleFrameFromAllCamerasAsync(cameraList, false);
+                    StartCountdown();
+                    var backCaptureTask = CaptureSingleFrameFromAllCamerasAsync(cameraList, true);
+                    
+                    await Task.WhenAll(frontCaptureTask, backCaptureTask);
+
+                    var imagesWithCamPosition = frontCaptureTask.Result;
+                    var backSideImages = backCaptureTask.Result;
                     _lastCapturedCameraImages = imagesWithCamPosition;
 
-                    Dispatcher.Invoke(() =>
-                    {
-                        CapturedImages.Clear();
-                        foreach (var img in imagesWithCamPosition)
-                            CapturedImages.Add(img.Image);
-                    });
 
                     ReportProgress("🧠 Running AI + OCR in parallel...");
 
-                    // 🔥 RUN BOTH TASKS IN PARALLEL
-                    var aiTask = Task.Run(() =>
-                        RunAllAIDetectionsAsync(imagesWithCamPosition)
-                    );
+                    // Run front AI (full) and back AI (only needed for OCR bytes) IN PARALLEL
+                    var aiTask = Task.Run(() => RunAllAIDetectionsAsync(imagesWithCamPosition));
+                    var aiTaskBack = Task.Run(() => RunAllAIDetectionsAsync(backSideImages));
 
+                    await Task.WhenAll(aiTask, aiTaskBack);
 
-                    await Task.WhenAll(aiTask);
-                    StartCountdown();
+                   
                     var aiResult = aiTask.Result;
+                    var aiResultBack = aiTaskBack.Result;
                     double avgScore = aiResult.AvScore;
                     bool humanDetected = aiResult.HumanDetected;
                     int numberOfBox = aiResult.NumberOfBox;
@@ -870,52 +871,37 @@ namespace HumanDetection
 
                     LoadingCard.Visibility = Visibility.Visible;
 
+                    // Run OCR sequentially — local Python server can't handle concurrent requests
                     var cropByteList = aiResult.OCRBytes;
+                    var cropByteListBack = aiResultBack.OCRBytes;
                     List<OcrImageResult> ocrResultList = new List<OcrImageResult>();
 
-                    // FIX (confirmed bug): aiResult.OCRBytes could be null when
-                    // RunAllAIDetectionsAsync hit its early-return path (see fix
-                    // below). cropByteList.Any() would NullReferenceException.
-                    // Guarding here too as defense-in-depth.
                     if (cropByteList != null && cropByteList.Any())
                     {
                         var api = await RunOcrAsync(cropByteList);
-
                         if (api?.results != null)
                         {
                             var valid = api.results
-                                .Where(x => !string.IsNullOrWhiteSpace(x.Key))          // skip empty filename
-                                .Where(x => string.IsNullOrWhiteSpace(x.Value?.error))  // skip error images
+                                .Where(x => !string.IsNullOrWhiteSpace(x.Key))
+                                .Where(x => string.IsNullOrWhiteSpace(x.Value?.error))
                                 .Select(x => x.Value);
-
                             ocrResultList.AddRange(valid);
                         }
                     }
-                    //get result from backside image
-                    var BackSideCamPosition = await CaptureSingleFrameFromAllCamerasAsync(cameraList, true);
-                    var aiTaskBack = Task.Run(() =>
-                       RunAllAIDetectionsAsync(BackSideCamPosition)
-                   );
-
-
-                    await Task.WhenAll(aiTaskBack);
-
-                    _messageQueue.Enqueue("Please wait Calculate result..");
-                    var cropByteListBack = aiTask.Result.OCRBytes;
                     if (cropByteListBack != null && cropByteListBack.Any())
                     {
                         var api = await RunOcrAsync(cropByteListBack);
-
                         if (api?.results != null)
                         {
                             var valid = api.results
-                                .Where(x => !string.IsNullOrWhiteSpace(x.Key))          // skip empty filename
-                                .Where(x => string.IsNullOrWhiteSpace(x.Value?.error))  // skip error images
+                                .Where(x => !string.IsNullOrWhiteSpace(x.Key))
+                                .Where(x => string.IsNullOrWhiteSpace(x.Value?.error))
                                 .Select(x => x.Value);
-
                             ocrResultList.AddRange(valid);
                         }
                     }
+
+                    _messageQueue.Enqueue("Please wait Calculate result..");
                     LoadingOverlay.Visibility = Visibility.Collapsed;
                     LoadingCard.Visibility = Visibility.Collapsed;
                     StopCountdown();
@@ -924,6 +910,13 @@ namespace HumanDetection
                     {
                         NoBoxTxt.Text = aiResult.NumberOfBox.ToString();
                         PalletHeightTxt.Text = $"{aiResult.maxPalletHeight:F2} m";
+                    });
+
+                    Dispatcher.Invoke(() =>
+                    {
+                        CapturedImages.Clear();
+                        foreach (var img in imagesWithCamPosition)
+                            CapturedImages.Add(img.Image);
                     });
 
                     if (aiResult.maxPalletHeight > 1.7)
@@ -989,7 +982,7 @@ namespace HumanDetection
 
                     if (distinctDates >= 3)
                     {
-                        await StartBuzzlerWithDuration(6000, 1);
+                        await StartBuzzlerWithDuration(2000, 1);
                         DateExireBox.Background = System.Windows.Media.Brushes.Red;
                         DateExpireTxt.Text = "Yes";
                         await PlayAlertForSystem();
@@ -1429,7 +1422,7 @@ namespace HumanDetection
 
                                     var sec = GetRotatorDurationInMilliseconds(_lastWeight);
                                     await StartRoutatorWithDuration((int)sec);
-                                   
+                                    await Task.Delay(1000);
                                 }
                             }
                         }
@@ -1477,48 +1470,6 @@ namespace HumanDetection
             // Ensure weight is not negative
             if (currentWeight < 0) currentWeight = 0;
             return (int)(Math.Round(currentWeight * statisTime));
-            // Check ranges from lowest to highest weight
-            if (currentWeight <= 100.0)
-            {
-                return (int)(Math.Round(currentWeight * statisTime)); // 0 to 100 KG -> 2 seconds (2000 ms)
-            }
-            else if (currentWeight <= 200.0)
-            {
-                return (int)(Math.Round(currentWeight * statisTime)); // 101 to 200 KG -> 3 seconds (3000 ms)
-            }
-            else if (currentWeight <= 300.0)
-            {
-                return (int)(Math.Round(currentWeight * statisTime)); // 101 to 200 KG -> 3 seconds (3000 ms)
-            }
-            else if (currentWeight <= 400.0)
-            {
-                return (int)(Math.Round(currentWeight * statisTime)); // 101 to 200 KG -> 3 seconds (3000 ms)
-            }
-            else if (currentWeight <= 500.0)
-            {
-                return (int)(Math.Round(currentWeight * statisTime));// 201 to 500 KG -> 5.2 seconds (5200 ms)
-            }
-            else if (currentWeight <= 600.0)
-            {
-                return (int)(Math.Round(currentWeight * statisTime)); // 201 to 500 KG -> 5.2 seconds (5200 ms)
-            }
-            else if (currentWeight <= 700.0)
-            {
-                return (int)(Math.Round(currentWeight * statisTime)); // 501 to 800 KG -> 6.5 seconds (6500 ms)
-            }
-            else if (currentWeight <= 900.0)
-            {
-                return (int)(Math.Round(currentWeight * statisTime)); // 801 to 1200 KG -> 7.5 seconds (7500 ms)
-            }
-            else if (currentWeight <= 1000.0)
-            {
-                return (int)(Math.Round(currentWeight * statisTime)); // 801 to 1200 KG -> 7.5 seconds (7500 ms)
-            }
-            else
-            {
-                // Absolute maximum safety fallback for anything over 1200 KG
-                return (int)(Math.Round(currentWeight * statisTime)); // 8.5 seconds (8500 ms)
-            }
         }
         public async Task<BitmapImage?> CaptureSingleFrameFromCameraAsync(ICameraInfo cameraInfo)
         {
@@ -1644,15 +1595,9 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
 
                 var boxTask = RunBoxCountingModelAsync(image, side);
                 var humanTask = Task.Run(() => RunHumanDetectionModel(image));
-                //if (PalletSide.Top == side)
-                //{
-                //    await Task.WhenAll(boxTask, humanTask);
-                //}
-                //else
-                //{
-                //    await Task.WhenAll(boxTask);
-                //}
+
                 await Task.WhenAll(boxTask);
+
                 var boxResult = boxTask.Result;
                 var humanResult = humanTask.Result;
 
@@ -1904,20 +1849,20 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
 
                 if (newWidth <= 0 || newHeight <= 0) continue;
 
-                //var cropRect = new SixLabors.ImageSharp.Rectangle(newX, newY, newWidth, newHeight);
-                //using var crop = originalImage.Clone(ctx => ctx.Crop(cropRect));
-                //using var ms = new MemoryStream();
+                var cropRect = new SixLabors.ImageSharp.Rectangle(newX, newY, newWidth, newHeight);
+                using var crop = originalImage.Clone(ctx => ctx.Crop(cropRect));
+                using var ms = new MemoryStream();
 
-                //string tempFolder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "BoxCrops");
-                //Directory.CreateDirectory(tempFolder);
+                string tempFolder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "BoxCrops");
+                Directory.CreateDirectory(tempFolder);
 
-                //string fileName = $"crop_{DateTime.Now:yyyyMMdd_HHmmss_fff}_{Guid.NewGuid():N}.jpg";
-                //string filePath = System.IO.Path.Combine(tempFolder, fileName);
+                string fileName = $"crop_{DateTime.Now:yyyyMMdd_HHmmss_fff}_{Guid.NewGuid():N}.jpg";
+                string filePath = System.IO.Path.Combine(tempFolder, fileName);
 
-                //crop.SaveAsJpeg(ms);
-                //cropByteList.Add(ms.ToArray());
+                crop.SaveAsJpeg(ms);
+                cropByteList.Add(ms.ToArray());
 
-                //ms.Position = 0;
+                ms.Position = 0;
                 //using var fs = new FileStream(filePath, FileMode.Create, FileAccess.Write);
                 //ms.CopyTo(fs);
             }
@@ -2269,7 +2214,7 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
         }
         private async void Rotate_Click(object sender, EventArgs e)
         {
-            int sec = GetRotatorDurationInMilliseconds(_lastWeight);
+            int sec = GetRotatorDurationInMilliseconds(_lastWeight) - 1000;
             await StartRoutatorWithDuration((int)sec);
         }
         public async Task RestartProcess()
@@ -2347,16 +2292,16 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                 ExitTimeTxt.Text = "";
 
             });
-            //DateExireBox.Background = System.Windows.Media.Brushes.Transparent;
-            //SKUDetectBox.Background = System.Windows.Media.Brushes.Transparent;
-            //HumanDetectBox.Background = System.Windows.Media.Brushes.Transparent;
-            //HeightBox.Background = System.Windows.Media.Brushes.Transparent;
-            //NoBoxTxt.Text = "0";
-            //PalletHeightTxt.Text = "0";
-            //HumanDetectedTxt.Text = "";
-            //BarcodeSKUText.Text = "";
-            //DateExpireTxt.Text = "";
-            //ScoreTxt.Text = "0";
+            DateExireBox.Background = System.Windows.Media.Brushes.Transparent;
+            SKUDetectBox.Background = System.Windows.Media.Brushes.Transparent;
+            HumanDetectBox.Background = System.Windows.Media.Brushes.Transparent;
+            HeightBox.Background = System.Windows.Media.Brushes.Transparent;
+            NoBoxTxt.Text = "0";
+            PalletHeightTxt.Text = "0";
+            HumanDetectedTxt.Text = "";
+            BarcodeSKUText.Text = "";
+            DateExpireTxt.Text = "";
+            ScoreTxt.Text = "0";
             await StopBuzzer();
             //ResultDataList.Clear();
             //CapturedImages.Clear();
@@ -2813,7 +2758,7 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
 
                     // Check if weight stable for 5 seconds
                     if (!_isPalletDetectionRunning &&
-                        (DateTime.Now - _stableWeightStartTime.Value).TotalSeconds >= 1)
+                        (DateTime.Now - _stableWeightStartTime.Value).TotalSeconds >= 7)
                     {
                         if (_IsForkleffound == false)
                         {
