@@ -28,6 +28,7 @@ using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using SQLite;
 using System;
+using System.Globalization;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -93,7 +94,7 @@ namespace HumanDetection
 
 
         private YoloScorer<YoloCocoP5Model> _scorerHumanModel;
-        private YoloScorer<YoloCustomModel> _scorerBoxCountingModel;
+        private YoloScorer<YoloBoxCountingModel> _scorerBoxCountingModel;
         private SixLabors.Fonts.Font _font;
         private IAudioManager audioManager;
         private bool _isAlertPlaying = false;
@@ -519,7 +520,7 @@ namespace HumanDetection
                         throw new FileNotFoundException("BoxCount model missing");
 
                     _scorerBoxCountingModel =
-                        new YoloScorer<YoloCustomModel>(modelPathBoxCounting, sessionOptions);
+                        new YoloScorer<YoloBoxCountingModel>(modelPathBoxCounting, sessionOptions);
 
                     var modelPathHumanDetection =
                         System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
@@ -832,7 +833,7 @@ namespace HumanDetection
                         HumanDetect = null,
                         OCRResult = null,
                         PalletHeight = 0,
-                        Score = 0,
+                        Score = "",
                         SupplierName = null,
                         TotalWeight = null
                     };
@@ -860,8 +861,10 @@ namespace HumanDetection
                     var aiTaskBack = Task.Run(() => RunAllAIDetectionsAsync(backSideImages));
 
                     await Task.WhenAll(aiTask, aiTaskBack);
-
-                   
+                    StopCountdown();
+                    LoadingOverlay.Visibility = Visibility.Collapsed;
+                    LoadingCard.Visibility = Visibility.Collapsed;
+                    _messageQueue.Enqueue("Please wait Calculate result..");
                     var aiResult = aiTask.Result;
                     var aiResultBack = aiTaskBack.Result;
                     double avgScore = aiResult.AvScore;
@@ -869,7 +872,6 @@ namespace HumanDetection
                     int numberOfBox = aiResult.NumberOfBox;
                     ScoreTxt.Text = $"{avgScore * 100:0}%";
 
-                    LoadingCard.Visibility = Visibility.Visible;
 
                     // Run OCR sequentially — local Python server can't handle concurrent requests
                     var cropByteList = aiResult.OCRBytes;
@@ -902,9 +904,8 @@ namespace HumanDetection
                     }
 
                     _messageQueue.Enqueue("Please wait Calculate result..");
-                    LoadingOverlay.Visibility = Visibility.Collapsed;
-                    LoadingCard.Visibility = Visibility.Collapsed;
-                    StopCountdown();
+                  
+                    
                     // ✅ Update UI safely
                     Dispatcher.Invoke(() =>
                     {
@@ -914,7 +915,7 @@ namespace HumanDetection
 
                     Dispatcher.Invoke(() =>
                     {
-                        CapturedImages.Clear();
+                        //CapturedImages.Clear();
                         foreach (var img in imagesWithCamPosition)
                             CapturedImages.Add(img.Image);
                     });
@@ -927,12 +928,7 @@ namespace HumanDetection
 
 
                     }
-                    for (int i = 0; i < 3; i++)
-                    {
-                        await StartBuzzer();
-                        await Task.Delay(200);
-                        await StopBuzzer();
-                    }
+                    
                     if (humanDetected == true)
                     {
                         HumanDetectBox.Background = System.Windows.Media.Brushes.Red;
@@ -956,29 +952,51 @@ namespace HumanDetection
                         await PlayAlertForSystem();
                     }
 
-                    int distinctDates = ocrResultList
+                    var allDateStrings = ocrResultList
                             .Where(r => r?.dates != null)
                             .SelectMany(r => r.dates)
-                            .Where(v => !string.IsNullOrWhiteSpace(v))
+                            .Where(d => !string.IsNullOrWhiteSpace(d))
                             .Distinct()
-                            .Count();
-                    string AllDatesList = string.Join(", ",
-                                            ocrResultList
-                                                .Where(r => r?.dates != null)
-                                                .SelectMany(r => r.dates)
-                                                .Where(d => !string.IsNullOrWhiteSpace(d))
-                                        );
+                            .ToList();
+
+                    var dateFormats = new[] { "dd.MM.yyyy", "MM.dd.yyyy", "yyyy.MM.dd", "dd.MM.yy", "dd/MM/yyyy", "MM/dd/yyyy", "dd-MM-yyyy", "yyyy-dd-MM", "dd.MM", "MM.dd" };
+
+                    var parsedDates = allDateStrings
+                            .Select(d =>
+                            {
+                                var trimmed = d.Trim();
+                                DateTime? parsed = null;
+                                foreach (var fmt in dateFormats)
+                                {
+                                    if (DateTime.TryParseExact(trimmed, fmt, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
+                                    {
+                                        parsed = dt;
+                                        break;
+                                    }
+                                }
+                                return new { Parsed = parsed, Original = trimmed };
+                            })
+                            .OrderBy(x => x.Parsed.HasValue ? 0 : 1)
+                            .ThenBy(x => x.Parsed)
+                            .ThenBy(x => x.Original)
+                            .ToList();
+
+                    int distinctDates = parsedDates.Count;
+                    string AllDatesList = string.Join(", ", parsedDates.Select(x => x.Parsed.HasValue ? x.Parsed.Value.ToString("dd.MM.yyyy") : x.Original));
                     int barcodeCounts = ocrResultList
                                         .Where(r => r?.barcodes != null)
                                         .SelectMany(r => r.barcodes)
                                         .Where(v => !string.IsNullOrWhiteSpace(v) && v.Length > 6)
                                         .Count();
 
-                    string barcodeList = string.Join(", ", ocrResultList
+                    var distinctBarcodeItems = ocrResultList
                                        .Where(r => r?.barcodes != null)
                                        .SelectMany(r => r.barcodes)
                                        .Where(v => !string.IsNullOrWhiteSpace(v) && v.Length > 6)
-                                       .ToList());
+                                       .Distinct()
+                                       .OrderBy(v => v)
+                                       .ToList();
+                    string barcodeList = string.Join(", ", distinctBarcodeItems);
 
                     if (distinctDates >= 3)
                     {
@@ -997,7 +1015,12 @@ namespace HumanDetection
                     List<OcrGridItem> gridItems = new List<OcrGridItem>();
 
                     int index = 1;
-
+                    for (int i = 0; i < 3; i++)
+                    {
+                        await StartBuzzer();
+                        await Task.Delay(200);
+                        await StopBuzzer();
+                    }
                     foreach (var item in ocrResultList)
                     {
 
@@ -1025,17 +1048,24 @@ namespace HumanDetection
                             BarcodeCodeCount = barcodeCounts,
                             DublicateBarcodeCount = distinctBarcodes,
                             ExpiryDate = DateExpireTxt.Text,
-                            HumanDetect = humanDetected.ToString(),
+                            HumanDetect = humanDetected==true?"Yes":"NO",
                             OCRResult = OCRResultInString,
                             PalletHeight = aiResult.maxPalletHeight,
-                            Score = avgScore,
+                            Score = ScoreTxt.Text,
                             SupplierName = null,
                             TotalWeight = WeightText.Text,
                             AllDatesList = AllDatesList,
+                            DateList = parsedDates.Select(x => x.Parsed.HasValue ? x.Parsed.Value.ToString("dd.MM.yyyy") : x.Original).ToList(),
                             BarcodeList = barcodeList,
+                            BarcodeListItems = ocrResultList
+                                .Where(r => r?.barcodes != null)
+                                .SelectMany(r => r.barcodes)
+                                .Where(v => !string.IsNullOrWhiteSpace(v) && v.Length > 6)
+                                .Distinct()
+                                .ToList(),
                             GridItems = gridItems,
                             LableCount = LableCount,
-                            DateCount = AllDatesList.Count()
+                            DateCount = distinctDates
 
                         };
                         AddResult(obj, false);
@@ -1149,7 +1179,7 @@ namespace HumanDetection
                         }
 
 
-                        await ResetRecords();
+                        //await ResetRecords();
                     }
                     else
                     {
@@ -1359,8 +1389,11 @@ namespace HumanDetection
                 }
                 ReportProgress("Forkleft go away");
 
-                int sect = GetRotatorDurationInMilliseconds(_lastWeight);
-                await StartRoutatorWithDuration(sect);
+                //int sect = GetRotatorDurationInMilliseconds(_lastWeight);
+               int timeSpan= GetRotationMotorTimeMilliseconds(90, _lastWeight);
+           
+                await StartRoutatorWithDuration(timeSpan);
+              
 
                 // Run the secondary camera loop routines in parallel
                 var captureTasksElse = cameraInfos.Select(async camInfo =>
@@ -1470,6 +1503,38 @@ namespace HumanDetection
             // Ensure weight is not negative
             if (currentWeight < 0) currentWeight = 0;
             return (int)(Math.Round(currentWeight * statisTime));
+        }
+        public static int GetRotationMotorTimeMilliseconds(double angleDegrees, double palletWeightKg)
+        {
+            if (angleDegrees <= 0)
+                return 0;
+
+            const double referenceAngle = 90.0;
+
+            const double emptyTimeFor90Degree = 5.08;
+            const double noEffectWeightKg = 550.0;
+            const double heavyWeightKg = 950.0;
+            const double heavyTimeFor90Degree = 5.30;
+
+            const double safetyMarginSeconds = 0.05;
+
+            palletWeightKg = Math.Max(0, palletWeightKg);
+
+            double secondsPerKgAfterLimit =
+                (heavyTimeFor90Degree - emptyTimeFor90Degree) /
+                (heavyWeightKg - noEffectWeightKg);
+
+            double timeFor90Degree = emptyTimeFor90Degree;
+
+            if (palletWeightKg > noEffectWeightKg)
+            {
+                timeFor90Degree += (palletWeightKg - noEffectWeightKg) * secondsPerKgAfterLimit;
+            }
+
+            double finalSeconds =
+                (timeFor90Degree * (angleDegrees / referenceAngle)) + safetyMarginSeconds;
+
+            return (int)Math.Ceiling(finalSeconds * 1000);
         }
         public async Task<BitmapImage?> CaptureSingleFrameFromCameraAsync(ICameraInfo cameraInfo)
         {
@@ -2126,7 +2191,7 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                 if (!string.IsNullOrWhiteSpace(input.OCRResult))
                     resultModel.OCRResult = input.OCRResult;
 
-                if (input.Score.HasValue)
+                if (!string.IsNullOrWhiteSpace(input.Score))
                     resultModel.Score = input.Score;
 
                 if (input.StartTime.HasValue)
@@ -2147,8 +2212,12 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                     resultModel.LableCount = input.LableCount;
                 if (input.GridItems.Count > 0)
                     resultModel.GridItems = input.GridItems;
-
-
+                if (input.DateCount.HasValue)
+                    resultModel.DateCount = input.DateCount;
+                if (input.DateList != null)
+                    resultModel.DateList = input.DateList;
+                if (input.BarcodeListItems != null)
+                    resultModel.BarcodeListItems = input.BarcodeListItems;
 
             }
             // 🔹 ADD NEW RESULT

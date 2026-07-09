@@ -34,7 +34,7 @@ namespace UserControls.LivePreview
     public partial class LivePreview : Page
     {
         private YoloScorer<YoloCocoP5Model> _scorerHumanModel;
-        private YoloScorer<YoloCustomModel> _scorerBoxCountingModel;
+        private YoloScorer<YoloBoxCountingModel> _scorerBoxCountingModel;
         private Font _font;
 
         private CancellationTokenSource _cts;
@@ -124,7 +124,7 @@ namespace UserControls.LivePreview
             var modelPathBoxCounting = Path.Combine(
                 AppDomain.CurrentDomain.BaseDirectory,
                 "Assets/Weights/customBoxCount.onnx");
-            _scorerBoxCountingModel = new YoloScorer<YoloCustomModel>(modelPathBoxCounting, sessionOptions);
+            _scorerBoxCountingModel = new YoloScorer<YoloBoxCountingModel>(modelPathBoxCounting, sessionOptions);
 
             var modelPathHumanDetection = Path.Combine(
                 AppDomain.CurrentDomain.BaseDirectory,

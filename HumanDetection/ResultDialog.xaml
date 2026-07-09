@@ -3,461 +3,384 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
-                xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:local="clr-namespace:HumanDetection" xmlns:materialIcons="clr-namespace:Material.Icons.WPF;assembly=Material.Icons.WPF" 
-             
              mc:Ignorable="d" 
-             d:DesignHeight="450" d:DesignWidth="900">
-    <Border CornerRadius="3" Background="Black" BorderThickness="1" BorderBrush="Indigo">
-        <Grid Background="Black" Margin="5,5,5,5" >
+             d:DesignHeight="650" d:DesignWidth="900">
+    <Border CornerRadius="3" Background="#0D1117" BorderThickness="1" BorderBrush="#30363D">
+        <Grid Margin="5">
             <Grid.RowDefinitions>
-                <RowDefinition Height="auto"></RowDefinition>
-                <RowDefinition Height="*"></RowDefinition>
-                <RowDefinition Height="auto"></RowDefinition>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="auto"/>
             </Grid.RowDefinitions>
-            <StackPanel Grid.Row="0" HorizontalAlignment="Center" VerticalAlignment="Center">
-                <TextBlock Foreground="White" FontSize="20" Text="Pallet Results"></TextBlock>
-            </StackPanel>
-            <Grid Grid.Row="1" Margin="5,5,5,5">
-                
 
+            <!-- Tabbed Content -->
+            <Grid Grid.Row="0" Margin="3">
+                <TabControl BorderThickness="0" Background="Transparent"
+                            materialDesign:ColorZoneAssist.Mode="Standard">
+                    <TabControl.Resources>
+                        <Style TargetType="TabItem">
+                            <Setter Property="Background" Value="#161B22"/>
+                            <Setter Property="Foreground" Value="#8B949E"/>
+                            <Setter Property="BorderBrush" Value="#30363D"/>
+                            <Setter Property="FontSize" Value="14"/>
+                            <Setter Property="FontWeight" Value="SemiBold"/>
+                            <Setter Property="Padding" Value="20,8"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="TabItem">
+                                        <Border Name="Border" Background="#161B22" BorderBrush="#30363D" BorderThickness="1,1,1,0" CornerRadius="6,6,0,0" Margin="0,0,-1,0">
+                                            <ContentPresenter x:Name="ContentSite" VerticalAlignment="Center" HorizontalAlignment="Center" ContentSource="Header" Margin="20,8"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter TargetName="Border" Property="Background" Value="#0D1117"/>
+                                                <Setter TargetName="Border" Property="BorderBrush" Value="#58A6FF"/>
+                                                <Setter Property="Foreground" Value="#58A6FF"/>
+                                            </Trigger>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Border" Property="Background" Value="#1C2128"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </TabControl.Resources>
 
-                <Grid VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
-                    
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <ItemsControl ItemsSource="{Binding ResultDataList}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border CornerRadius="8" BorderThickness="1" Background="Transparent" BorderBrush="Indigo" Margin="10">
-                                        <StackPanel Orientation="Vertical">
-                                            <StackPanel Orientation="Horizontal" Margin="5">
-                                                <materialIcons:MaterialIcon Kind="ClockOutline" Width="20" Height="20" Foreground="White"/>
-                                                <TextBlock Margin="5" FontSize="16" Foreground="White"
-                                           Text="{Binding StartTime, StringFormat='{}{0:hh:mm:ss tt}'}"/>
-                                                <TextBlock Margin="5,5,0,0" FontSize="16" Foreground="White" Text="TO"/>
-                                                <TextBlock Margin="5,5,0,0" FontSize="16" Foreground="White" Text="{Binding EndTime, StringFormat='{}{0:hh:mm:ss tt}'}"/>
-                                            </StackPanel>
-
+                    <TabItem Header="Details">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" Background="#0D1117">
+                            <ItemsControl ItemsSource="{Binding ResultDataList}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border CornerRadius="8" BorderThickness="1" Background="#161B22" BorderBrush="#30363D" Margin="10">
                                             <StackPanel Orientation="Vertical">
 
-                                                <!-- ROW 1 : MAIN RESULTS -->
-                                                <Grid Margin="0">
+                                                <!-- Time Row -->
+                                                <StackPanel Orientation="Horizontal" Margin="12,10,12,0">
+                                                    <materialIcons:MaterialIcon Kind="ClockOutline" Width="18" Height="18" Foreground="#8B949E"/>
+                                                    <TextBlock Margin="8,0,0,0" FontSize="14" Foreground="#8B949E"
+                                                               Text="{Binding StartTime, StringFormat='{}{0:hh:mm:ss tt}'}"/>
+                                                    <TextBlock Margin="6,0,6,0" FontSize="14" Foreground="#484F58" Text="→"/>
+                                                    <TextBlock FontSize="14" Foreground="#8B949E"
+                                                               Text="{Binding EndTime, StringFormat='{}{0:hh:mm:ss tt}'}"/>
+                                                </StackPanel>
+
+                                                <!-- Metric Cards Row 1: Human, Boxes, Dup Barcode, Expiry -->
+                                                <Grid Margin="6,8,6,0">
                                                     <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="*" />
-                                                      
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="*"/>
                                                     </Grid.ColumnDefinitions>
 
-                                                    <!-- Human Detection -->
-                                                    <materialDesign:Card Grid.Column="0"
-             Margin="8"
-             Padding="16"
-             UniformCornerRadius="6"
-             BorderBrush="SlateBlue"
-             BorderThickness="2">
+                                                    <materialDesign:Card Grid.Column="0" Margin="4" Padding="12"
+                                                                        UniformCornerRadius="6" BorderBrush="#30363D" BorderThickness="1" Background="#0D1117">
                                                         <DockPanel>
-                                                            <materialIcons:MaterialIcon Kind="Human"
-                            Width="36"
-                            Height="36"
-                            Foreground="#FF6A00"
-                            DockPanel.Dock="Left"/>
-                                                            <StackPanel Margin="12,0,0,0">
-                                                                <TextBlock Foreground="White"  Text="Human Detection"
-               FontWeight="SemiBold"/>
-                                                                <TextBlock Text="{Binding HumanDetect}"
-               FontWeight="Bold"
-               Foreground="LimeGreen"/>
+                                                            <materialIcons:MaterialIcon Kind="Human" Width="28" Height="28" Foreground="#FF6A00" DockPanel.Dock="Left"/>
+                                                            <StackPanel Margin="10,0,0,0">
+                                                                <TextBlock Foreground="#8B949E" FontSize="11" Text="Human Detection"/>
+                                                                <TextBlock Text="{Binding HumanDetect}" FontSize="16" FontWeight="Bold" Foreground="#FF6A00"/>
                                                             </StackPanel>
                                                         </DockPanel>
                                                     </materialDesign:Card>
 
-                                                    <!-- Total Boxes -->
-                                                    <materialDesign:Card Grid.Column="1"
-             Margin="8"
-             Padding="16"
-             UniformCornerRadius="6"
-             BorderBrush="SlateBlue"
-             BorderThickness="2">
+                                                    <materialDesign:Card Grid.Column="1" Margin="4" Padding="12"
+                                                                        UniformCornerRadius="6" BorderBrush="#30363D" BorderThickness="1" Background="#0D1117">
                                                         <DockPanel>
-                                                            <materialIcons:MaterialIcon Kind="CubeOutline"
-                            Width="36"
-                            Height="36"
-                            Foreground="#00B4D8"
-                            DockPanel.Dock="Left"/>
-                                                            <StackPanel Margin="12,0,0,0">
-                                                                <TextBlock  Foreground="White" Text="Total Boxes"
-               FontWeight="SemiBold"/>
-                                                                <TextBlock Text="{Binding TotalBoxes}"
-               FontWeight="Bold"/>
+                                                            <materialIcons:MaterialIcon Kind="CubeOutline" Width="28" Height="28" Foreground="#58A6FF" DockPanel.Dock="Left"/>
+                                                            <StackPanel Margin="10,0,0,0">
+                                                                <TextBlock Foreground="#8B949E" FontSize="11" Text="Total Boxes"/>
+                                                                <TextBlock Text="{Binding TotalBoxes}" FontSize="16" FontWeight="Bold" Foreground="#58A6FF"/>
                                                             </StackPanel>
                                                         </DockPanel>
                                                     </materialDesign:Card>
 
-                                                    <!-- Duplicate Barcode -->
-                                                    <materialDesign:Card Grid.Column="2"
-             Margin="8"
-             Padding="16"
-             UniformCornerRadius="6"
-             BorderBrush="SlateBlue"
-             BorderThickness="2">
+                                                    <materialDesign:Card Grid.Column="2" Margin="4" Padding="12"
+                                                                        UniformCornerRadius="6" BorderBrush="#30363D" BorderThickness="1" Background="#0D1117">
                                                         <DockPanel>
-                                                            <materialIcons:MaterialIcon Kind="BarcodeScan"
-                            Width="36"
-                            Height="36"
-                            Foreground="#9D4EDD"
-                            DockPanel.Dock="Left"/>
-                                                            <StackPanel Margin="12,0,0,0">
-                                                                <TextBlock FontSize="10" Foreground="White" Text="Duplicate Barcode"
-               FontWeight="SemiBold"/>
-                                                                <TextBlock Text="{Binding DublicateBarcode}"
-               FontWeight="Bold"
-               Foreground="Red"/>
+                                                            <materialIcons:MaterialIcon Kind="BarcodeScan" Width="28" Height="28" Foreground="#D2A8FF" DockPanel.Dock="Left"/>
+                                                            <StackPanel Margin="10,0,0,0">
+                                                                <TextBlock Foreground="#8B949E" FontSize="11" Text="Duplicate Barcode"/>
+                                                                <TextBlock Text="{Binding DublicateBarcode}" FontSize="16" FontWeight="Bold" Foreground="#D2A8FF"/>
                                                             </StackPanel>
                                                         </DockPanel>
                                                     </materialDesign:Card>
 
-                                                    <!-- Expiry Date -->
-                                                    <materialDesign:Card Grid.Column="3"
-             Margin="8"
-             Padding="16"
-             UniformCornerRadius="6"
-             BorderBrush="SlateBlue"
-             BorderThickness="2">
+                                                    <materialDesign:Card Grid.Column="3" Margin="4" Padding="12"
+                                                                        UniformCornerRadius="6" BorderBrush="#30363D" BorderThickness="1" Background="#0D1117">
                                                         <DockPanel>
-                                                            <materialIcons:MaterialIcon Kind="CalendarClock"
-                            Width="36"
-                            Height="36"
-                            Foreground="#2ECC71"
-                            DockPanel.Dock="Left"/>
-                                                            <StackPanel Margin="12,0,0,0">
-                                                                <TextBlock  Foreground="White" Text="Expiry Date"
-               FontWeight="SemiBold"/>
-                                                                <TextBlock  Foreground="White" Text="{Binding ExpiryDate}"
-               FontWeight="Bold"/>
-                                                            </StackPanel>
-                                                        </DockPanel>
-                                                    </materialDesign:Card>
-                                                  
-                                                </Grid>
-
-                                                <!-- ROW 2 : PENDING PROPERTIES -->
-                                                <Grid Margin="0,0,0,0">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="*" />
-                                                    </Grid.ColumnDefinitions>
-
-                                                    <!-- Pallet Height -->
-                                                    <materialDesign:Card Grid.Column="0"
-             Margin="8"
-             Padding="16"
-             UniformCornerRadius="3"
-             BorderBrush="SlateBlue"
-             BorderThickness="2">
-                                                        <DockPanel>
-                                                            <materialIcons:MaterialIcon Kind="ArrowExpandVertical"
-                            Width="36"
-                            Height="36"
-                            Foreground="#F1C40F"
-                            DockPanel.Dock="Left"/>
-                                                            <StackPanel Margin="12,0,0,0">
-                                                                <TextBlock  Foreground="White" Text="Pallet Height"
-               FontWeight="SemiBold"/>
-                                                                <TextBlock Text="{Binding PalletHeight}"
-               FontWeight="Bold"/>
-                                                            </StackPanel>
-                                                        </DockPanel>
-                                                    </materialDesign:Card>
-
-                                                    <!-- Total Weight -->
-                                                    <materialDesign:Card Grid.Column="1"
-             Margin="8"
-             Padding="16"
-             UniformCornerRadius="6"
-             BorderBrush="SlateBlue"
-             BorderThickness="2">
-                                                        <DockPanel>
-                                                            <materialIcons:MaterialIcon Kind="Weight"
-                            Width="36"
-                            Height="36"
-                            Foreground="#E74C3C"
-                            DockPanel.Dock="Left"/>
-                                                            <StackPanel Margin="12,0,0,0">
-                                                                <TextBlock  Foreground="White" Text="Total Weight"
-               FontWeight="SemiBold"/>
-                                                                <TextBlock  Foreground="White" Text="{Binding TotalWeight}"
-               FontWeight="Bold"/>
-                                                            </StackPanel>
-                                                        </DockPanel>
-                                                    </materialDesign:Card>
-
-                                                    <!-- Supplier Name -->
-                                                    <materialDesign:Card Grid.Column="2"
-             Margin="8"
-             Padding="16"
-             UniformCornerRadius="6"
-             BorderBrush="SlateBlue"
-             BorderThickness="2">
-                                                        <DockPanel>
-                                                            <materialIcons:MaterialIcon Kind="Factory"
-                            Width="36"
-                            Height="36"
-                            Foreground="#3498DB"
-                            DockPanel.Dock="Left"/>
-                                                            <StackPanel Margin="12,0,0,0">
-                                                                <TextBlock  Foreground="White" Text="Lable Cont"
-               FontWeight="SemiBold"/>
-                                                                <TextBlock  Foreground="White" Text="{Binding LableCount}"
-               FontWeight="Bold"
-               TextTrimming="CharacterEllipsis"/>
-                                                            </StackPanel>
-                                                        </DockPanel>
-                                                    </materialDesign:Card>
-
-                                                    <!-- Barcode Count -->
-                                                    <materialDesign:Card Grid.Column="3"
-             Margin="8"
-             Padding="16"
-             UniformCornerRadius="6"
-             BorderBrush="SlateBlue"
-             BorderThickness="2">
-                                                        <DockPanel>
-                                                            <materialIcons:MaterialIcon Kind="Barcode"
-                            Width="36"
-                            Height="36"
-                            Foreground="#1ABC9C"
-                            DockPanel.Dock="Left"/>
-                                                            <StackPanel Margin="12,0,0,0">
-                                                                <TextBlock  Foreground="White" Text="Barcode Count"
-               FontWeight="SemiBold"/>
-                                                                <TextBlock  Foreground="White" Text="{Binding BarcodeCodeCount}"
-               FontWeight="Bold"/>
+                                                            <materialIcons:MaterialIcon Kind="CalendarClock" Width="28" Height="28" Foreground="#3FB950" DockPanel.Dock="Left"/>
+                                                            <StackPanel Margin="10,0,0,0">
+                                                                <TextBlock Foreground="#8B949E" FontSize="11" Text="Expiry Date"/>
+                                                                <TextBlock Text="{Binding ExpiryDate}" FontSize="16" FontWeight="Bold" Foreground="#3FB950"/>
                                                             </StackPanel>
                                                         </DockPanel>
                                                     </materialDesign:Card>
                                                 </Grid>
-                                                <Grid Margin="0">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="*" />
 
+                                                <!-- Metric Cards Row 2: Pallet Height, Weight, Label Count, Barcode Count -->
+                                                <Grid Margin="6,4,6,0">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="*"/>
                                                     </Grid.ColumnDefinitions>
 
-                                                    <materialDesign:Card Grid.Column="0"
-Margin="8"
-Padding="16"
-UniformCornerRadius="6"
-BorderBrush="SlateBlue"
-BorderThickness="2">
+                                                    <materialDesign:Card Grid.Column="0" Margin="4" Padding="12"
+                                                                        UniformCornerRadius="6" BorderBrush="#30363D" BorderThickness="1" Background="#0D1117">
                                                         <DockPanel>
-                                                            <materialIcons:MaterialIcon Kind="CalendarClock"
-               Width="36"
-               Height="36"
-               Foreground="#2ECC71"
-               DockPanel.Dock="Left"/>
-                                                            <StackPanel Margin="12,0,0,0">
-                                                                <TextBlock  Foreground="White" Text="Dates"
-  FontWeight="SemiBold"/>
-                                                                <TextBlock  Foreground="White" Text="{Binding DateCount}"
-  FontWeight="Bold"/>
+                                                            <materialIcons:MaterialIcon Kind="ArrowExpandVertical" Width="28" Height="28" Foreground="#D29922" DockPanel.Dock="Left"/>
+                                                            <StackPanel Margin="10,0,0,0">
+                                                                <TextBlock Foreground="#8B949E" FontSize="11" Text="Pallet Height"/>
+                                                                <TextBlock Text="{Binding PalletHeight, StringFormat={}{0:F2} m}" FontSize="16" FontWeight="Bold" Foreground="#D29922"/>
+                                                            </StackPanel>
+                                                        </DockPanel>
+                                                    </materialDesign:Card>
+
+                                                    <materialDesign:Card Grid.Column="1" Margin="4" Padding="12"
+                                                                        UniformCornerRadius="6" BorderBrush="#30363D" BorderThickness="1" Background="#0D1117">
+                                                        <DockPanel>
+                                                            <materialIcons:MaterialIcon Kind="Weight" Width="28" Height="28" Foreground="#F85149" DockPanel.Dock="Left"/>
+                                                            <StackPanel Margin="10,0,0,0">
+                                                                <TextBlock Foreground="#8B949E" FontSize="11" Text="Total Weight"/>
+                                                                <TextBlock Text="{Binding TotalWeight}" FontSize="16" FontWeight="Bold" Foreground="#F85149"/>
+                                                            </StackPanel>
+                                                        </DockPanel>
+                                                    </materialDesign:Card>
+
+                                                    <materialDesign:Card Grid.Column="2" Margin="4" Padding="12"
+                                                                        UniformCornerRadius="6" BorderBrush="#30363D" BorderThickness="1" Background="#0D1117">
+                                                        <DockPanel>
+                                                            <materialIcons:MaterialIcon Kind="Label" Width="28" Height="28" Foreground="#79C0FF" DockPanel.Dock="Left"/>
+                                                            <StackPanel Margin="10,0,0,0">
+                                                                <TextBlock Foreground="#8B949E" FontSize="11" Text="Label Count"/>
+                                                                <TextBlock Text="{Binding LableCount}" FontSize="16" FontWeight="Bold" Foreground="#79C0FF"/>
+                                                            </StackPanel>
+                                                        </DockPanel>
+                                                    </materialDesign:Card>
+
+                                                    <materialDesign:Card Grid.Column="3" Margin="4" Padding="12"
+                                                                        UniformCornerRadius="6" BorderBrush="#30363D" BorderThickness="1" Background="#0D1117">
+                                                        <DockPanel>
+                                                            <materialIcons:MaterialIcon Kind="Barcode" Width="28" Height="28" Foreground="#56D364" DockPanel.Dock="Left"/>
+                                                            <StackPanel Margin="10,0,0,0">
+                                                                <TextBlock Foreground="#8B949E" FontSize="11" Text="Barcode Count"/>
+                                                                <TextBlock Text="{Binding BarcodeCodeCount}" FontSize="16" FontWeight="Bold" Foreground="#56D364"/>
                                                             </StackPanel>
                                                         </DockPanel>
                                                     </materialDesign:Card>
                                                 </Grid>
+
+                                                <!-- Big Number Cards Row: Distinct Dates, Duplicate Count, Score -->
+                                                <Grid Margin="6,4,6,0">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <materialDesign:Card Grid.Column="0" Margin="4" Padding="12"
+                                                                        UniformCornerRadius="6" BorderBrush="#30363D" BorderThickness="1" Background="#0D1117">
+                                                        <StackPanel>
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <materialIcons:MaterialIcon Kind="CalendarClock" Width="20" Height="20" Foreground="#3FB950"/>
+                                                                <TextBlock Margin="8,0,0,0" Foreground="#8B949E" FontSize="11" Text="Distinct Dates"/>
+                                                            </StackPanel>
+                                                            <TextBlock Text="{Binding DateCount}" FontSize="28" FontWeight="Bold" Foreground="#3FB950" Margin="0,4,0,0"/>
+                                                        </StackPanel>
+                                                    </materialDesign:Card>
+
+                                                    <materialDesign:Card Grid.Column="1" Margin="4" Padding="12"
+                                                                        UniformCornerRadius="6" BorderBrush="#30363D" BorderThickness="1" Background="#0D1117">
+                                                        <StackPanel>
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <materialIcons:MaterialIcon Kind="BarcodeScan" Width="20" Height="20" Foreground="#D2A8FF"/>
+                                                                <TextBlock Margin="8,0,0,0" Foreground="#8B949E" FontSize="11" Text="Dup. Barcodes"/>
+                                                            </StackPanel>
+                                                            <TextBlock Text="{Binding DublicateBarcodeCount}" FontSize="28" FontWeight="Bold" Foreground="#D2A8FF" Margin="0,4,0,0"/>
+                                                        </StackPanel>
+                                                    </materialDesign:Card>
+
+                                                    <materialDesign:Card Grid.Column="2" Margin="4" Padding="12"
+                                                                        UniformCornerRadius="6" BorderBrush="#30363D" BorderThickness="1" Background="#0D1117">
+                                                        <StackPanel>
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <materialIcons:MaterialIcon Kind="Label" Width="20" Height="20" Foreground="#79C0FF"/>
+                                                                <TextBlock Margin="8,0,0,0" Foreground="#8B949E" FontSize="11" Text="Label Count"/>
+                                                            </StackPanel>
+                                                            <TextBlock Text="{Binding LableCount}" FontSize="28" FontWeight="Bold" Foreground="#79C0FF" Margin="0,4,0,0"/>
+                                                        </StackPanel>
+                                                    </materialDesign:Card>
+
+                                                    <materialDesign:Card Grid.Column="3" Margin="4" Padding="12"
+                                                                        UniformCornerRadius="6" BorderBrush="#30363D" BorderThickness="1" Background="#0D1117">
+                                                        <StackPanel>
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <materialIcons:MaterialIcon Kind="Star" Width="20" Height="20" Foreground="#D29922"/>
+                                                                <TextBlock Margin="8,0,0,0" Foreground="#8B949E" FontSize="11" Text="Score"/>
+                                                            </StackPanel>
+                                                            <TextBlock Text="{Binding Score}" FontSize="28" FontWeight="Bold" Foreground="#D29922" Margin="0,4,0,0"/>
+                                                        </StackPanel>
+                                                    </materialDesign:Card>
+                                                </Grid>
+
+                                                <!-- Date & Barcode Chips -->
+                                                <Grid Margin="6,8,6,0">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <materialDesign:Card Grid.Column="0" Margin="4" Padding="10"
+                                                                        UniformCornerRadius="6" BorderBrush="#30363D" BorderThickness="1" Background="#0D1117">
+                                                        <StackPanel>
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <materialIcons:MaterialIcon Kind="CalendarClock" Width="18" Height="18" Foreground="#3FB950"/>
+                                                                <TextBlock Margin="6,0,0,0" Foreground="#3FB950" FontSize="13" FontWeight="SemiBold" Text="All Dates"/>
+                                                            </StackPanel>
+                                                            <ScrollViewer Margin="0,6,0,0" MaxHeight="100" VerticalScrollBarVisibility="Auto">
+                                                                <ItemsControl ItemsSource="{Binding DateList}">
+                                                                    <ItemsControl.ItemsPanel>
+                                                                        <ItemsPanelTemplate>
+                                                                            <WrapPanel/>
+                                                                        </ItemsPanelTemplate>
+                                                                    </ItemsControl.ItemsPanel>
+                                                                    <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate>
+                                                                            <Border Margin="3" Padding="8,4" CornerRadius="10"
+                                                                                    Background="#1A3FB950" BorderBrush="#3FB950" BorderThickness="1">
+                                                                                <TextBlock Text="{Binding}" Foreground="#3FB950" FontSize="12" FontWeight="SemiBold"/>
+                                                                            </Border>
+                                                                        </DataTemplate>
+                                                                    </ItemsControl.ItemTemplate>
+                                                                </ItemsControl>
+                                                            </ScrollViewer>
+                                                        </StackPanel>
+                                                    </materialDesign:Card>
+
+                                                    <materialDesign:Card Grid.Column="1" Margin="4" Padding="10"
+                                                                        UniformCornerRadius="6" BorderBrush="#30363D" BorderThickness="1" Background="#0D1117">
+                                                        <StackPanel>
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <materialIcons:MaterialIcon Kind="Barcode" Width="18" Height="18" Foreground="#56D364"/>
+                                                                <TextBlock Margin="6,0,0,0" Foreground="#56D364" FontSize="13" FontWeight="SemiBold" Text="All Barcodes"/>
+                                                            </StackPanel>
+                                                            <ScrollViewer Margin="0,6,0,0" MaxHeight="100" VerticalScrollBarVisibility="Auto">
+                                                                <ItemsControl ItemsSource="{Binding BarcodeListItems}">
+                                                                    <ItemsControl.ItemsPanel>
+                                                                        <ItemsPanelTemplate>
+                                                                            <WrapPanel/>
+                                                                        </ItemsPanelTemplate>
+                                                                    </ItemsControl.ItemsPanel>
+                                                                    <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate>
+                                                                            <Border Margin="3" Padding="8,4" CornerRadius="10"
+                                                                                    Background="#1A56D364" BorderBrush="#56D364" BorderThickness="1">
+                                                                                <TextBlock Text="{Binding}" Foreground="#56D364" FontSize="12" FontWeight="SemiBold"/>
+                                                                            </Border>
+                                                                        </DataTemplate>
+                                                                    </ItemsControl.ItemTemplate>
+                                                                </ItemsControl>
+                                                            </ScrollViewer>
+                                                        </StackPanel>
+                                                    </materialDesign:Card>
+                                                </Grid>
+
+                                                <!-- OCR Result -->
+                                                <materialDesign:Card Margin="8,8,8,10" Padding="10"
+                                                                    UniformCornerRadius="6" BorderBrush="#30363D" BorderThickness="1" Background="#0D1117">
+                                                    <StackPanel>
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <materialIcons:MaterialIcon Kind="FileText" Width="18" Height="18" Foreground="#8B949E"/>
+                                                            <TextBlock Margin="6,0,0,0" Foreground="#8B949E" FontSize="13" FontWeight="SemiBold" Text="OCR Text"/>
+                                                        </StackPanel>
+                                                        <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="160" Margin="0,6,0,0">
+                                                            <TextBox Text="{Binding OCRResult}"
+                                                                     TextWrapping="Wrap"
+                                                                     IsReadOnly="True"
+                                                                     Background="Transparent"
+                                                                     BorderThickness="0"
+                                                                     Foreground="#C9D1D9"
+                                                                     FontSize="13"
+                                                                     FontFamily="Consolas"
+                                                                     VerticalScrollBarVisibility="Disabled"/>
+                                                        </ScrollViewer>
+                                                    </StackPanel>
+                                                </materialDesign:Card>
+
                                             </StackPanel>
-                                            <StackPanel>
-                                                <ItemsControl ItemsSource="{Binding GridItems}" Margin="5">
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </TabItem>
 
-                                                    <!-- Force 4 boxes per row -->
+                    <TabItem Header="Images">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" Background="#0D1117">
+                            <ItemsControl ItemsSource="{Binding ResultDataList}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border CornerRadius="8" BorderThickness="1" Background="#161B22" BorderBrush="#30363D" Margin="10" Padding="12">
+                                            <StackPanel>
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                                    <materialIcons:MaterialIcon Kind="Image" Width="20" Height="20" Foreground="#58A6FF"/>
+                                                    <TextBlock Margin="8,0,0,0" Foreground="#58A6FF" FontSize="15" FontWeight="SemiBold" Text="Captured Images"/>
+                                                </StackPanel>
+                                                <ItemsControl ItemsSource="{Binding GridItems}">
                                                     <ItemsControl.ItemsPanel>
                                                         <ItemsPanelTemplate>
                                                             <UniformGrid Columns="4"/>
                                                         </ItemsPanelTemplate>
                                                     </ItemsControl.ItemsPanel>
-
                                                     <ItemsControl.ItemTemplate>
                                                         <DataTemplate>
-
-                                                            <Border Width="150"
-                    Height="80"
-                    Margin="3"
-                    Padding="5"
-                    CornerRadius="4"
-                    BorderThickness="1"
-                    BorderBrush="Gray"
-                    Background="Transparent">
-
+                                                            <Border Width="160" Height="100" Margin="4" Padding="6"
+                                                                    CornerRadius="6" BorderThickness="1" BorderBrush="#30363D" Background="#0D1117">
                                                                 <StackPanel>
-
-                                                                    <!-- Image Number -->
                                                                     <TextBlock Text="{Binding ImageIndex}"
-                               FontWeight="Bold"
-                               FontSize="11"
-                               HorizontalAlignment="Center"
-                               Margin="0,0,0,1"/>
-
-                                                             
-
+                                                                               FontSize="14" FontWeight="Bold"
+                                                                               Foreground="#58A6FF"
+                                                                               HorizontalAlignment="Center"
+                                                                               Margin="0,0,0,4"/>
                                                                     <TextBlock Text="{Binding Barcodes}"
-                               TextWrapping="Wrap"
-                               FontSize="10"
-                               Margin="0,0,0,2"/>
-
-                                                
-
+                                                                               TextWrapping="Wrap"
+                                                                               FontSize="11"
+                                                                               Foreground="#56D364"
+                                                                               Margin="0,0,0,2"/>
                                                                     <TextBlock Text="{Binding Dates}"
-                               TextWrapping="Wrap"
-                               FontSize="10"/>
-
+                                                                               TextWrapping="Wrap"
+                                                                               FontSize="11"
+                                                                               Foreground="#3FB950"/>
                                                                 </StackPanel>
-
                                                             </Border>
-
                                                         </DataTemplate>
                                                     </ItemsControl.ItemTemplate>
-
                                                 </ItemsControl>
                                             </StackPanel>
-                                            <StackPanel>
-                                                <ScrollViewer Margin="10,10,10,10"
-                                                  VerticalScrollBarVisibility="Auto"
-                                                  HorizontalScrollBarVisibility="Disabled">
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </TabItem>
 
-                                                    <TextBox Text="{Binding AllDatesList}"
-                                                     TextWrapping="Wrap"
-                                                     IsReadOnly="True"
-                                                     BorderThickness="0"
-                                                     Background="Transparent"
-                                                     Foreground="White"
-                                                     FontSize="16"
-                                                     AcceptsReturn="True"
-                                                     VerticalScrollBarVisibility="Disabled"/>
-
-                                                </ScrollViewer>
-
-                                            </StackPanel>
-                                            <StackPanel>
-                                                <ScrollViewer Margin="10,10,10,10"
-        VerticalScrollBarVisibility="Auto"
-        HorizontalScrollBarVisibility="Disabled">
-
-                                                    <TextBox Text="{Binding BarcodeList}"
-                                                   TextWrapping="Wrap"
-                                                   IsReadOnly="True"
-                                                   BorderThickness="0"
-                                                   Background="Transparent"
-                                                   Foreground="White"
-                                                   FontSize="16"
-                                                   AcceptsReturn="True"
-                                                   VerticalScrollBarVisibility="Disabled"/>
-
-                                                </ScrollViewer>
-
-                                            </StackPanel>
-
-                                            <ScrollViewer VerticalScrollBarVisibility="Auto"
-              Height="200"
-              Margin="20"
-              Background="Transparent">
-
-                                                <ScrollViewer.Resources>
-                                                    
-                                                    <Style TargetType="ScrollBar" BasedOn="{StaticResource {x:Type ScrollBar}}">
-                                                        <Setter Property="Width" Value="10" />
-                                                        <Setter Property="Background" Value="Transparent" />
-                                                        <Setter Property="Template">
-                                                            <Setter.Value>
-                                                                <ControlTemplate TargetType="ScrollBar">
-                                                                    <Grid Background="{TemplateBinding Background}">
-                                                                        <Track x:Name="PART_Track" IsDirectionReversed="true">
-                                                                            <Track.DecreaseRepeatButton>
-                                                                                <RepeatButton Command="ScrollBar.LineUpCommand"
-                                                  Style="{x:Null}"
-                                                  Height="0"
-                                                  Content=""/>
-                                                                            </Track.DecreaseRepeatButton>
-                                                                            <Track.IncreaseRepeatButton>
-                                                                                <RepeatButton Command="ScrollBar.LineDownCommand"
-                                                  Style="{x:Null}"
-                                                  Height="0"
-                                                  Content=""/>
-                                                                            </Track.IncreaseRepeatButton>
-                                                                            <Track.Thumb>
-                                                                                <Thumb x:Name="Thumb"
-                                           Height="100"
-                                          
-                                           Background="#444"
-                                           BorderBrush="#666"
-                                           BorderThickness="1">
-                                                                                    <Thumb.Style>
-                                                                                        <Style TargetType="Thumb">
-                                                                                            
-                                                                                            <Setter Property="Background" Value="#555"/>
-                                                                                            <Setter Property="BorderBrush" Value="#777"/>
-                                                                                            <Setter Property="BorderThickness" Value="1"/>
-                                                                                            <Setter Property="Opacity" Value="0.8"/>
-                                                                                            <Style.Triggers>
-                                                                                                <Trigger Property="IsMouseOver" Value="True">
-                                                                                                    <Setter Property="Background" Value="#888"/>
-                                                                                                    <Setter Property="Opacity" Value="1"/>
-                                                                                                </Trigger>
-                                                                                                <Trigger Property="IsDragging" Value="True">
-                                                                                                    <Setter Property="Background" Value="#00BFFF"/>
-                                                                                                    <Setter Property="Opacity" Value="1"/>
-                                                                                                </Trigger>
-                                                                                            </Style.Triggers>
-                                                                                        </Style>
-                                                                                    </Thumb.Style>
-                                                                                </Thumb>
-                                                                            </Track.Thumb>
-                                                                        </Track>
-                                                                    </Grid>
-                                                                </ControlTemplate>
-                                                            </Setter.Value>
-                                                        </Setter>
-                                                    </Style>
-                                                </ScrollViewer.Resources>
-                                               
-                                                <TextBox Text="{Binding OCRResult}"
-                                                 TextWrapping="Wrap"
-                                                 IsReadOnly="True" MinHeight="200"
-                                                 Background="Transparent"
-                                                 BorderThickness="0"
-                                                 Foreground="White"
-                                                 FontSize="16"
-                                                 VerticalScrollBarVisibility="Hidden"
-                                                 HorizontalScrollBarVisibility="Disabled"/>
-                                            </ScrollViewer>
-
-                                        </StackPanel>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
-                </Grid>
+                </TabControl>
             </Grid>
-            <Grid Grid.Row="2">
-                <StackPanel Margin="5,5,7,5" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right" >
-                    <Button
-                            Background="#193D23"  
-                            Foreground="#34C759" 
-                            Content="Restart Proceess" 
-                            FontSize="14"
-                            Padding="10,5"
-                            HorizontalAlignment="Right"
-                            Margin="10,0,10,0"
-                            BorderThickness="0"
-                            Grid.Column="2"  Click="RestartButton_Click"/>
-                    <Button Click="CloseButton_Click"  Width="100" Content="Close" Foreground="White" VerticalAlignment="Center" HorizontalContentAlignment="Center" Background="Gray"   Padding="0" BorderThickness="0" >
-                    
-                </Button>
+
+            <!-- Footer Buttons -->
+            <Grid Grid.Row="1">
+                <StackPanel Margin="5,5,7,8" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
+                    <Button Background="#238636" Foreground="#FFFFFF" Content="Restart Process" FontSize="13" FontWeight="SemiBold"
+                            Padding="16,6" HorizontalAlignment="Right" Margin="10,0,10,0" BorderThickness="0"
+                            Cursor="Hand" Click="RestartButton_Click"/>
+                    <Button Click="CloseButton_Click" Width="90" Content="Close" Foreground="#C9D1D9"
+                            VerticalAlignment="Center" HorizontalContentAlignment="Center"
+                            Background="#21262D" BorderBrush="#30363D" BorderThickness="1" Padding="0"/>
                 </StackPanel>
             </Grid>
         </Grid>

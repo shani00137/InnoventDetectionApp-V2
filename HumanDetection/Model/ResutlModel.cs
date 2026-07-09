@@ -18,10 +18,12 @@ namespace Model
         public DateTime? StartTime { get; set; }
         public DateTime? EndTime { get; set; }
         public string? OCRResult { get; set; }
-        public double? Score { get; set; }
+        public string? Score { get; set; }
         public string? Name {get;set;}
         public string? AllDatesList { get; set; }
         public string? BarcodeList { get; set; }
+        public List<string>? DateList { get; set; }
+        public List<string>? BarcodeListItems { get; set; }
         public List<OcrGridItem>? GridItems { get; set; }
         public int? LableCount { get; set; }
         public int? DateCount { get; set; }

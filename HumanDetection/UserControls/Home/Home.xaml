@@ -123,7 +123,7 @@
                     </Grid>
                 </Border>
             <local:ResultDialog x:Name="ResultDialoag" Width="800"></local:ResultDialog>
-                <local:SuccessDialog x:Name="SucessDialog" Width="400"></local:SuccessDialog>
+                <local:SuccessDialog x:Name="SucessDialog" Width="350"></local:SuccessDialog>
               
             </Grid>
         </materialDesign:DialogHost.DialogContent>
