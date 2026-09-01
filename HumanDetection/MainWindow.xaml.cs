@@ -88,6 +88,8 @@ namespace HumanDetection
             ReportsNavBtn.Background = new SolidColorBrush(Colors.Transparent);
             TestingNavBtn.Foreground = new SolidColorBrush(Colors.White);
             TestingNavBtn.Background = new SolidColorBrush(Colors.Transparent);
+            MoxaStatusNavBtn.Foreground = new SolidColorBrush(Colors.White);
+            MoxaStatusNavBtn.Background = new SolidColorBrush(Colors.Transparent);
         }
 
         private void NavToHomePage_Click(object sender, RoutedEventArgs e)
@@ -131,6 +133,14 @@ namespace HumanDetection
             ResetNavButtons();
             TestingNavBtn.Foreground = new SolidColorBrush(NavForegroundColor);
             TestingNavBtn.Background = new SolidColorBrush(NavBackgroundColor);
+        }
+        private void NavToMoxaStatusPage_Click(object sender, RoutedEventArgs e)
+        {
+            var page = new Uri("UserControls/MoxaStatus/MoxaStatus.xaml", UriKind.Relative);
+            MainFrame.Navigate(page);
+            ResetNavButtons();
+            MoxaStatusNavBtn.Foreground = new SolidColorBrush(NavForegroundColor);
+            MoxaStatusNavBtn.Background = new SolidColorBrush(NavBackgroundColor);
         }
 
         #endregion

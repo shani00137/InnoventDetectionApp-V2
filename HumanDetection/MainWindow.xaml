@@ -62,6 +62,14 @@
                         <TextBlock Text="Testing"  VerticalAlignment="Center"/>
                     </StackPanel>
                 </Button>
+
+                <Button x:Name="MoxaStatusNavBtn" Click="NavToMoxaStatusPage_Click" Background="Transparent" Width="120" Height="32" Foreground="White"  Padding="10,0"
+         BorderBrush="Transparent" BorderThickness="0">
+                    <StackPanel Orientation="Horizontal">
+                        <materialIcons:MaterialIcon Kind="LanConnect" Width="20" Height="20" Margin="0,0,5,0"/>
+                        <TextBlock Text="Moxa Status"  VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
             </StackPanel>
 
                 <!-- Right Side - Window Controls -->
