@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -173,57 +175,113 @@ namespace ACGPUIO
         }
 
         // -----------------------------------------------------------------
-        // NEW: FC04 — Read Input Register (AI analog input)
-        // Returns the raw 16-bit analog value (0-65535), or null if the read failed.
-        // ⚠️ ASSUMPTION: Moxa ioLogik maps AI channels at Modbus input register
-        // address 0x0000 onward (AI0=0, AI1=1, ...). Verify in your device's
-        // "Modbus Address Mapping" — some firmware versions offset by 0x0800 or
-        // store the value already scaled in engineering units instead of raw.
+        // FC03/FC04 — single register read (used for AI analog input).
+        // Tries FC04 (Read Input Registers) then FC03 (Read Holding Registers)
+        // at several common Moxa ioLogik offsets, because analog-input mapping
+        // varies by model/firmware. Returns raw 16-bit value + the raw response
+        // bytes so the caller can diagnose when nothing matches.
+        // -----------------------------------------------------------------
+        private async Task<(int? Value, byte[] Raw)> ReadRegisterAsync(byte function, int address)
+        {
+            using var client = new TcpClient();
+            client.SendTimeout = 3000;
+            client.ReceiveTimeout = 3000;
+
+            await client.ConnectAsync(_moxaIP, ModbusPort);
+
+            using var stream = client.GetStream();
+
+            byte[] request = new byte[12];
+            request[0] = 0x00; request[1] = 0x04; // Transaction ID
+            request[2] = 0x00; request[3] = 0x00; // Protocol ID
+            request[4] = 0x00; request[5] = 0x06; // Length
+            request[6] = 0x01;                      // Unit ID
+            request[7] = function;                  // FC03 / FC04
+            request[8] = (byte)((address >> 8) & 0xFF);
+            request[9] = (byte)(address & 0xFF);
+            request[10] = 0x00; request[11] = 0x01;  // Read 1 register
+
+            await stream.WriteAsync(request, 0, request.Length);
+
+            // Response: header(9 bytes) + byte count(1) + register data(2 bytes)
+            byte[] response = new byte[11];
+            int bytesRead = await stream.ReadAsync(response, 0, response.Length);
+
+            byte[] raw = new byte[bytesRead];
+            Array.Copy(response, raw, bytesRead);
+
+            if (bytesRead >= 11 && response[7] == function && response[8] == 0x02)
+            {
+                // Big-endian 16-bit register value
+                return ((response[9] << 8) | response[10], raw);
+            }
+
+            if (bytesRead == 9 && (response[7] == (function | 0x80)))
+            {
+                // Modbus exception frame: func|0x80 + exception code
+                Log($"[AccessController] FC{function:X2} @0x{address:X4} → Modbus exception {response[8]:X2}.");
+            }
+            else
+            {
+                Log($"[AccessController] FC{function:X2} @0x{address:X4} → unexpected reply: {BitConverter.ToString(raw)}");
+            }
+
+            return (null, raw);
+        }
+
+        // -----------------------------------------------------------------
+        // AI — analog input. Returns the raw 16-bit value (0-65535) or null.
+        // Moxa ioLogik maps analog inputs differently per model/firmware, so we
+        // probe FC04 then FC03 at offsets 0x0000 and 0x0800 and log EVERY valid
+        // reply. If more than one register answers, we prefer a non-zero value
+        // (a register that reads 0 constantly is usually a status/other register,
+        // not the wired analog channel). The activity log tells us which combo
+        // is the real AI channel so the mapping can then be pinned down.
         // -----------------------------------------------------------------
         public async Task<int?> ReadAIAsync(int channel)
         {
-            try
+            int[] functions = { 0x04, 0x03 };
+            int[] offsets = { 0x0000, 0x0800 };
+
+            var valid = new List<(string Desc, int Value)>();
+
+            foreach (var function in functions)
             {
-                using var client = new TcpClient();
-                client.SendTimeout = 3000;
-                client.ReceiveTimeout = 3000;
-
-                await client.ConnectAsync(_moxaIP, ModbusPort);
-
-                using var stream = client.GetStream();
-
-                // FC04: Read Input Registers — read 1 register from the given channel address
-                byte[] request = new byte[12];
-                request[0] = 0x00; request[1] = 0x03; // Transaction ID
-                request[2] = 0x00; request[3] = 0x00; // Protocol ID
-                request[4] = 0x00; request[5] = 0x06; // Length
-                request[6] = 0x01;                      // Unit ID
-                request[7] = 0x04;                      // FC04: Read Input Registers
-                request[8] = (byte)((channel >> 8) & 0xFF);
-                request[9] = (byte)(channel & 0xFF);
-                request[10] = 0x00; request[11] = 0x01;  // Read 1 register
-
-                await stream.WriteAsync(request, 0, request.Length);
-
-                // Response: header(9 bytes) + byte count(1) + register data(2 bytes)
-                byte[] response = new byte[11];
-                int bytesRead = await stream.ReadAsync(response, 0, response.Length);
-
-                if (bytesRead >= 11 && response[7] == 0x04 && response[8] == 0x02)
+                foreach (var offset in offsets)
                 {
-                    int value = (response[9] << 8) | response[10]; // big-endian 16-bit
-                    Log($"[AccessController] AI{channel} read: {value}");
-                    return value;
+                    int address = offset + channel;
+                    try
+                    {
+                        (int? value, _) = await ReadRegisterAsync((byte)function, address);
+                        if (value.HasValue)
+                        {
+                            string desc = $"FC{function:X2} @0x{address:X4}";
+                            Log($"[AccessController] AI{channel} {desc} → {value.Value}");
+                            valid.Add((desc, value.Value));
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Log($"[AccessController] AI{channel} FC{function:X2} @0x{address:X4} error: {ex.Message}");
+                    }
                 }
+            }
 
-                Log($"[AccessController] ReadAIAsync({channel}): unexpected response.");
-                return null;
-            }
-            catch (Exception ex)
+            if (valid.Count > 0)
             {
-                Log($"[AccessController] ReadAIAsync({channel}) error: {ex.Message}");
-                return null;
+                // Prefer the first register that isn't stuck at 0 — that is most
+                // likely the wired analog channel. Fall back to any valid reply.
+                var nonZero = valid.FirstOrDefault(v => v.Value != 0);
+                var chosen = nonZero.Desc != null ? nonZero : valid[0];
+
+                Log($"[AccessController] AI{channel} using {chosen.Desc} (value {chosen.Value}). " +
+                    "Vary the input voltage — if this register changes, it is the AI channel.");
+                return chosen.Value;
             }
+
+            Log($"[AccessController] AI{channel} FAILED — no FC03/FC04 address combination returned the analog value. " +
+                "Check the device's 'Modbus Address Mapping' (some Moxa use FC03, some FC04; addresses often offset by 0x0800).");
+            return null;
         }
 
         // -----------------------------------------------------------------
