@@ -53,7 +53,7 @@
         <!-- Header -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="15,10">
             <materialIcons:MaterialIcon Kind="LanConnect" Width="22" Height="22" Margin="0,2,8,0" Foreground="White"/>
-            <TextBlock Text="MOXA STATUS â€” DEVICE TEST" FontSize="20" Foreground="White" FontWeight="Medium" VerticalAlignment="Center"/>
+            <TextBlock Text="MOXA STATUS - DEVICE TEST" FontSize="20" Foreground="White" FontWeight="Medium" VerticalAlignment="Center"/>
             <Border x:Name="ConnectionChip" Style="{StaticResource StatusChip}" Background="#1F2937" Margin="20,0,0,0">
                 <TextBlock x:Name="ConnectionTxt" Text="Disconnected" Foreground="#9CA3AF" FontSize="12"/>
             </Border>
@@ -62,6 +62,7 @@
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <Grid Margin="10,0,10,10">
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
@@ -116,28 +117,28 @@
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Margin="4">
-                                    <TextBlock Text="DO0 Â· Buzzer" Style="{StaticResource LabelTxt}" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="DO0 - Buzzer" Style="{StaticResource LabelTxt}" HorizontalAlignment="Center"/>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,6,0,0">
                                         <Button Content="ON" Width="45" Height="32" Margin="2" Style="{StaticResource RoundButton}" Tag="0:1" Click="DoBtn_Click"/>
                                         <Button Content="OFF" Width="45" Height="32" Margin="2" Style="{StaticResource RoundButton}" Tag="0:0" Click="DoBtn_Click"/>
                                     </StackPanel>
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" Margin="4">
-                                    <TextBlock Text="DO1 Â· Rotator" Style="{StaticResource LabelTxt}" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="DO1 - Rotator" Style="{StaticResource LabelTxt}" HorizontalAlignment="Center"/>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,6,0,0">
                                         <Button Content="ON" Width="45" Height="32" Margin="2" Style="{StaticResource RoundButton}" Tag="1:1" Click="DoBtn_Click"/>
                                         <Button Content="OFF" Width="45" Height="32" Margin="2" Style="{StaticResource RoundButton}" Tag="1:0" Click="DoBtn_Click"/>
                                     </StackPanel>
                                 </StackPanel>
                                 <StackPanel Grid.Column="2" Margin="4">
-                                    <TextBlock Text="DO2 Â· Blower" Style="{StaticResource LabelTxt}" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="DO2 - Blower" Style="{StaticResource LabelTxt}" HorizontalAlignment="Center"/>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,6,0,0">
                                         <Button Content="ON" Width="45" Height="32" Margin="2" Style="{StaticResource RoundButton}" Tag="2:1" Click="DoBtn_Click"/>
                                         <Button Content="OFF" Width="45" Height="32" Margin="2" Style="{StaticResource RoundButton}" Tag="2:0" Click="DoBtn_Click"/>
                                     </StackPanel>
                                 </StackPanel>
                                 <StackPanel Grid.Column="3" Margin="4">
-                                    <TextBlock Text="DO3 Â· Motor" Style="{StaticResource LabelTxt}" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="DO3 - Motor" Style="{StaticResource LabelTxt}" HorizontalAlignment="Center"/>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,6,0,0">
                                         <Button Content="ON" Width="45" Height="32" Margin="2" Style="{StaticResource RoundButton}" Tag="3:1" Click="DoBtn_Click"/>
                                         <Button Content="OFF" Width="45" Height="32" Margin="2" Style="{StaticResource RoundButton}" Tag="3:0" Click="DoBtn_Click"/>
@@ -148,7 +149,7 @@
                     </Border>
                 </Grid>
 
-                <!-- Middle: custom DI/DO test + raw commands -->
+                <!-- Middle: custom DI read + DO write -->
                 <Grid Grid.Row="1">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="50*"/>
@@ -165,7 +166,7 @@
                                          Style="{StaticResource MoxaStatusTextBox}"/>
                                 <Button x:Name="ReadDiBtn" Content="Read DI" Width="90" Height="36" Margin="8,0,0,0"
                                         Style="{StaticResource RoundButton}" Click="ReadDiBtn_Click"/>
-                                <TextBlock x:Name="DiReadResultTxt" Text="â€”" Foreground="#60A5FA" FontSize="14"
+                                <TextBlock x:Name="DiReadResultTxt" Text="-" Foreground="#60A5FA" FontSize="14"
                                            FontWeight="SemiBold" VerticalAlignment="Center" Margin="12,0,0,0"/>
                             </StackPanel>
                             <TextBlock Style="{StaticResource SectionTitle}" Text="DI QUICK VIEW" Margin="0,16,0,6"/>
@@ -214,8 +215,38 @@
                     </Border>
                 </Grid>
 
+                <!-- Analog input (AI) test -->
+                <Border Grid.Row="2" Style="{StaticResource MoxaBorder}" Margin="0,0,0,8">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionTitle}" Text="READ AI - ANALOG INPUT"/>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource LabelTxt}" Text="Channel: "/>
+                            <TextBox x:Name="AiReadChannelTxt" Width="50" Text="0"
+                                     Style="{StaticResource MoxaStatusTextBox}"/>
+                            <TextBlock Style="{StaticResource LabelTxt}" Text="Signal: " Margin="10,0,0,0"/>
+                            <ComboBox x:Name="AiSignalCmb" Width="110" SelectedIndex="0"
+                                      Style="{StaticResource MoxaStatusComboBox}">
+                                <ComboBoxItem Content="4-20 mA"/>
+                                <ComboBoxItem Content="0-10 V"/>
+                                <ComboBoxItem Content="0-5 V"/>
+                                <ComboBoxItem Content="Raw (0-65535)"/>
+                            </ComboBox>
+                            <Button x:Name="ReadAiBtn" Content="Read AI" Width="90" Height="36" Margin="8,0,0,0"
+                                    Style="{StaticResource RoundButton}" Click="ReadAiBtn_Click"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <TextBlock Style="{StaticResource LabelTxt}" Text="Raw Code: "/>
+                            <TextBlock x:Name="AiRawResultTxt" Text="-" Foreground="#60A5FA" FontSize="15"
+                                       FontWeight="SemiBold" Margin="0,0,20,0"/>
+                            <TextBlock Style="{StaticResource LabelTxt}" Text="Scaled Value: "/>
+                            <TextBlock x:Name="AiValueResultTxt" Text="-" Foreground="#4ADE80" FontSize="15"
+                                       FontWeight="SemiBold"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
                 <!-- Bottom: activity log -->
-                <Border Grid.Row="2" Style="{StaticResource MoxaBorder}" Margin="0,0,0,0">
+                <Border Grid.Row="3" Style="{StaticResource MoxaBorder}" Margin="0,0,0,0">
                     <DockPanel>
                         <TextBlock DockPanel.Dock="Top" Style="{StaticResource SectionTitle}" Text="ACTIVITY LOG"/>
                         <TextBox x:Name="LogBox" TextWrapping="Wrap" IsReadOnly="True" Height="180"

@@ -118,6 +118,55 @@ namespace UserControls.MoxaStatus
                 : $"DO{channel} command FAILED");
         }
 
+        private async void ReadAiBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (!int.TryParse(AiReadChannelTxt.Text, out int channel) || channel < 0 || channel > 15)
+            {
+                AppendLog("Invalid AI channel (0-15).");
+                return;
+            }
+
+            var raw = await GetController().ReadAIAsync(channel);
+            if (!raw.HasValue)
+            {
+                AiRawResultTxt.Text = "-";
+                AiValueResultTxt.Text = "READ FAIL";
+                AiValueResultTxt.Foreground =
+                    (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFrom("#F87171");
+                return;
+            }
+
+            int code = raw.Value;
+            string signalType = (AiSignalCmb.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Content?.ToString() ?? "Raw (0-65535)";
+            double engValue = code;
+            string unit = "";
+
+            switch (signalType)
+            {
+                case "4-20 mA":
+                    engValue = (code / 65535.0) * 16.0 + 4.0;
+                    unit = " mA";
+                    break;
+                case "0-10 V":
+                    engValue = (code / 65535.0) * 10.0;
+                    unit = " V";
+                    break;
+                case "0-5 V":
+                    engValue = (code / 65535.0) * 5.0;
+                    unit = " V";
+                    break;
+                default:
+                    unit = "";
+                    break;
+            }
+
+            AiRawResultTxt.Text = code.ToString();
+            AiValueResultTxt.Text = signalType == "Raw (0-65535)" ? code.ToString() : $"{engValue:F2}{unit}";
+            AiValueResultTxt.Foreground =
+                (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFrom("#4ADE80");
+            AppendLog($"AI{channel} raw={code} scaled={AiValueResultTxt.Text} ({signalType})");
+        }
+
         private async void ReadDiBtn_Click(object sender, RoutedEventArgs e)
         {
             if (!int.TryParse(DiReadChannelTxt.Text, out int channel) || channel < 0 || channel > 15)

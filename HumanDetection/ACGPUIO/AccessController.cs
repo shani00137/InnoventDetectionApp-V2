@@ -173,6 +173,60 @@ namespace ACGPUIO
         }
 
         // -----------------------------------------------------------------
+        // NEW: FC04 — Read Input Register (AI analog input)
+        // Returns the raw 16-bit analog value (0-65535), or null if the read failed.
+        // ⚠️ ASSUMPTION: Moxa ioLogik maps AI channels at Modbus input register
+        // address 0x0000 onward (AI0=0, AI1=1, ...). Verify in your device's
+        // "Modbus Address Mapping" — some firmware versions offset by 0x0800 or
+        // store the value already scaled in engineering units instead of raw.
+        // -----------------------------------------------------------------
+        public async Task<int?> ReadAIAsync(int channel)
+        {
+            try
+            {
+                using var client = new TcpClient();
+                client.SendTimeout = 3000;
+                client.ReceiveTimeout = 3000;
+
+                await client.ConnectAsync(_moxaIP, ModbusPort);
+
+                using var stream = client.GetStream();
+
+                // FC04: Read Input Registers — read 1 register from the given channel address
+                byte[] request = new byte[12];
+                request[0] = 0x00; request[1] = 0x03; // Transaction ID
+                request[2] = 0x00; request[3] = 0x00; // Protocol ID
+                request[4] = 0x00; request[5] = 0x06; // Length
+                request[6] = 0x01;                      // Unit ID
+                request[7] = 0x04;                      // FC04: Read Input Registers
+                request[8] = (byte)((channel >> 8) & 0xFF);
+                request[9] = (byte)(channel & 0xFF);
+                request[10] = 0x00; request[11] = 0x01;  // Read 1 register
+
+                await stream.WriteAsync(request, 0, request.Length);
+
+                // Response: header(9 bytes) + byte count(1) + register data(2 bytes)
+                byte[] response = new byte[11];
+                int bytesRead = await stream.ReadAsync(response, 0, response.Length);
+
+                if (bytesRead >= 11 && response[7] == 0x04 && response[8] == 0x02)
+                {
+                    int value = (response[9] << 8) | response[10]; // big-endian 16-bit
+                    Log($"[AccessController] AI{channel} read: {value}");
+                    return value;
+                }
+
+                Log($"[AccessController] ReadAIAsync({channel}): unexpected response.");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Log($"[AccessController] ReadAIAsync({channel}) error: {ex.Message}");
+                return null;
+            }
+        }
+
+        // -----------------------------------------------------------------
         // NEW: Start polling a DI channel — fires DIChanged event when the
         // sensor state changes (OFF→ON or ON→OFF).
         //
