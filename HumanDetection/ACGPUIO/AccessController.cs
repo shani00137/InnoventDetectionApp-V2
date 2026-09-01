@@ -231,17 +231,16 @@ namespace ACGPUIO
 
         // -----------------------------------------------------------------
         // AI — analog input. Returns the raw 16-bit value (0-65535) or null.
-        // Moxa ioLogik maps analog inputs differently per model/firmware, so we
-        // probe FC04 then FC03 at offsets 0x0000 and 0x0800 and log EVERY valid
-        // reply. If more than one register answers, we prefer a non-zero value
-        // (a register that reads 0 constantly is usually a status/other register,
-        // not the wired analog channel). The activity log tells us which combo
-        // is the real AI channel so the mapping can then be pinned down.
+        // VERIFIED mapping for ioLogik E1242-T: AI0=reg 512 (0x0200), AI1=513,
+        // ... read via FC04 (Read Input Registers). We probe FC04 then FC03 at
+        // the known 0x0200 offset plus common fallbacks (0x0000, 0x0800) and log
+        // every valid reply, preferring a non-zero register (a stuck-at-0
+        // register is usually status, not the wired analog channel).
         // -----------------------------------------------------------------
         public async Task<int?> ReadAIAsync(int channel)
         {
             int[] functions = { 0x04, 0x03 };
-            int[] offsets = { 0x0000, 0x0800 };
+            int[] offsets = { 0x0200, 0x0000, 0x0800 };
 
             var valid = new List<(string Desc, int Value)>();
 
@@ -280,7 +279,7 @@ namespace ACGPUIO
             }
 
             Log($"[AccessController] AI{channel} FAILED — no FC03/FC04 address combination returned the analog value. " +
-                "Check the device's 'Modbus Address Mapping' (some Moxa use FC03, some FC04; addresses often offset by 0x0800).");
+                "Known mapping for E124x is FC04 @0x0200 + channel (AI0=0x0200, AI1=0x0201, ...).");
             return null;
         }
 
