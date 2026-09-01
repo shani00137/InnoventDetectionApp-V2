@@ -154,7 +154,7 @@ def extract_possible_barcodes(texts):
     for t in texts:
         cleaned = re.sub(r'\D', '', t)
 
-        if len(cleaned) >= 6:
+        if len(cleaned) >= 7:
             barcodes.append(cleaned)
 
     return barcodes

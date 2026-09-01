@@ -9,7 +9,7 @@ namespace SQLite
     {
         public static string AppFolder =>
             Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "AdPort",
                 "AdPortDB");
 

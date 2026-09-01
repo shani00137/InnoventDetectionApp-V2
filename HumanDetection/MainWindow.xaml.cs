@@ -78,45 +78,59 @@ namespace HumanDetection
             this.Close();
         }
 
+        private void ResetNavButtons()
+        {
+            HomeNavBtn.Foreground = new SolidColorBrush(Colors.White);
+            HomeNavBtn.Background = new SolidColorBrush(Colors.Transparent);
+            SettingNavBtn.Foreground = new SolidColorBrush(Colors.White);
+            SettingNavBtn.Background = new SolidColorBrush(Colors.Transparent);
+            ReportsNavBtn.Foreground = new SolidColorBrush(Colors.White);
+            ReportsNavBtn.Background = new SolidColorBrush(Colors.Transparent);
+            TestingNavBtn.Foreground = new SolidColorBrush(Colors.White);
+            TestingNavBtn.Background = new SolidColorBrush(Colors.Transparent);
+        }
+
         private void NavToHomePage_Click(object sender, RoutedEventArgs e)
         {
             var homePage = new Uri("UserControls/Home/Home.xaml", UriKind.Relative);
-           
+       
             MainFrame.Navigate(homePage);
+            ResetNavButtons();
             HomeNavBtn.Foreground = new SolidColorBrush(NavForegroundColor);
             HomeNavBtn.Background = new SolidColorBrush(NavBackgroundColor);
-
-          
-
-            SettingNavBtn.Foreground = new SolidColorBrush(Colors.White);
-            SettingNavBtn.Background = new SolidColorBrush(Colors.Transparent);
-
         }
         private void NavToSettingPage_Click(object sender, RoutedEventArgs e)
         {
             var homePage = new Uri("UserControls/Settings/Setting.xaml", UriKind.Relative);
        
             MainFrame.Navigate(homePage);
-
+            ResetNavButtons();
             SettingNavBtn.Foreground = new SolidColorBrush(NavForegroundColor);
             SettingNavBtn.Background = new SolidColorBrush(NavBackgroundColor);
-
-            
-
-            HomeNavBtn.Foreground = new SolidColorBrush(Colors.White);
-            HomeNavBtn.Background = new SolidColorBrush(Colors.Transparent);
+        }
+        private void NavToReportsPage_Click(object sender, RoutedEventArgs e)
+        {
+            var homePage = new Uri("UserControls/Reports/ReportPage.xaml", UriKind.Relative);
+       
+            MainFrame.Navigate(homePage);
+            ResetNavButtons();
+            ReportsNavBtn.Foreground = new SolidColorBrush(NavForegroundColor);
+            ReportsNavBtn.Background = new SolidColorBrush(NavBackgroundColor);
         }
         private void NavToLivePreviewPage_Click(object sender, RoutedEventArgs e)
         {
             var homePage = new Uri("UserControls/LivePreview/LivePreview.xaml", UriKind.Relative);
           
             MainFrame.Navigate(homePage);
-
-            SettingNavBtn.Foreground = new SolidColorBrush(Colors.White);
-            SettingNavBtn.Background = new SolidColorBrush(Colors.Transparent);
-
-            HomeNavBtn.Foreground = new SolidColorBrush(Colors.White);
-            HomeNavBtn.Background = new SolidColorBrush(Colors.Transparent);
+            ResetNavButtons();
+        }
+        private void NavToTestingPage_Click(object sender, RoutedEventArgs e)
+        {
+            var page = new Uri("UserControls/Testing/Testing.xaml", UriKind.Relative);
+            MainFrame.Navigate(page);
+            ResetNavButtons();
+            TestingNavBtn.Foreground = new SolidColorBrush(NavForegroundColor);
+            TestingNavBtn.Background = new SolidColorBrush(NavBackgroundColor);
         }
 
         #endregion

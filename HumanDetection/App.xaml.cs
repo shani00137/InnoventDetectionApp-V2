@@ -3,6 +3,7 @@ using System.IO;
 using System.Text;
 using System.Windows;
 using Serilog;
+using SQLite;
 
 namespace HumanDetection
 {
@@ -46,6 +47,7 @@ namespace HumanDetection
         protected override void OnStartup(StartupEventArgs e)
         {
             Logger.Initialize();
+            Database.Initialize();
             SetupGlobalExceptionHandling();
             base.OnStartup(e);
         }

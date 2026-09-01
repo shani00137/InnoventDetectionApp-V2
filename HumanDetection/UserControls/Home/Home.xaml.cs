@@ -85,45 +85,75 @@ namespace HumanDetection
     /// </summary>
     public partial class Home : System.Windows.Controls.Page
     {
-        private VideoCapture _capture;
+        #region 1. Fields & Constants
+        // Application settings, AI models, camera references, UI state, and constants
 
-        private Mat _frame;
-        private bool _isRunning = true;
-        private bool _isRunning2 = true;
+        // --- Settings ---
         private AppSettings _settings;
-
-
-        private YoloScorer<YoloCocoP5Model> _scorerHumanModel;
-        private YoloScorer<YoloBoxCountingModel> _scorerBoxCountingModel;
-        private SixLabors.Fonts.Font _font;
-        private IAudioManager audioManager;
-        private bool _isAlertPlaying = false;
-        private bool _isSidebarOpen = false;
         public AccessController _ac;
-
-        private const int TargetFPS = 8;
-        private const int DetectionWidth = 640;
-        private const int DetectionHeight = 360;
-        private DispatcherTimer timer;
-        private int elapsedSeconds = 0;
-
-        private CancellationTokenSource _processingCts;
-        private bool _isProcessing = false;
-        private CaptureVisionRouter? cvRouter;
-        public ObservableCollection<BitmapImage> CapturedImages { get; set; }
-        public ObservableCollection<ResutlModel> ResultDataList { get; set; }
-        private ScaleSerialReader? _reader;
         private OcrPythonClient _ocrHost;
-        private bool _isPalletDetectionRunning = false;
-        private CancellationTokenSource? _palletCts;
-        public bool FirstTerm = true;
         public string pythonExe = @"C:\Users\Owner\AppData\Local\Programs\Python\Python310\python.exe";
         //public string pythonExe = @" C:\Users\USER\AppData\Local\Programs\Python\Python310\python.exe";
         private readonly SnackbarMessageQueue _messageQueue = new SnackbarMessageQueue(TimeSpan.FromSeconds(3));
-        public event EventHandler<DIChangedEventArgs> DIChanged;
-        private bool _IsForkleffound = false;
+
+        // --- AI Models ---
+        private YoloScorer<YoloCocoP5Model> _scorerHumanModel;
+        private YoloScorer<YoloBoxCountingModel> _scorerBoxCountingModel;
+        private SixLabors.Fonts.Font _font;
+
+        // --- Camera ---
+        private VideoCapture _capture;
+        private Mat _frame;
+        private CaptureVisionRouter? cvRouter;
         private List<CapturedCameraImage> _lastCapturedCameraImages = new();
         private readonly int CamDelay = 500;
+
+        // --- Audio / Alerts ---
+        private IAudioManager audioManager;
+        private bool _isAlertPlaying = false;
+
+        // --- GPIO / Hardware ---
+        public event EventHandler<DIChangedEventArgs> DIChanged;
+        private bool _IsForkleffound = false;
+
+        // --- Weight Scale ---
+        private ScaleSerialReader? _reader;
+        private DateTime? _stableWeightStartTime = null;
+        private double _lastWeight = 0;
+
+        // --- UI State ---
+        private bool _isRunning = true;
+        private bool _isRunning2 = true;
+        private bool _isSidebarOpen = false;
+        private bool _isPalletDetectionRunning = false;
+        private bool _isProcessing = false;
+        private bool _isPageUnloaded = false;
+        public bool FirstTerm = true;
+        private DispatcherTimer timer;
+        private int elapsedSeconds = 0;
+        private CancellationTokenSource _processingCts;
+        private CancellationTokenSource? _palletCts;
+        private CancellationTokenSource _ocrCancellationTokenSource;
+
+        // --- Collections ---
+        public ObservableCollection<BitmapImage> CapturedImages { get; set; }
+        public ObservableCollection<ResutlModel> ResultDataList { get; set; }
+        private ObservableCollection<OcrFrameResult> _ocrResults = new ObservableCollection<OcrFrameResult>();
+
+        // --- Constants ---
+        private const int TargetFPS = 8;
+        private const int DetectionWidth = 640;
+        private const int DetectionHeight = 360;
+        private const double WeightThreshold = 5.0;     // kg
+        private const double WeightTolerance = 0.2;      // ± fluctuation allowed
+        #endregion
+
+        #region 2. Constructor & Page Lifecycle
+        // Page construction, loaded event handlers, and unload cleanup
+
+        /// <summary>
+        /// Initializes the Home page, wires up dialog events, indicators, and audio.
+        /// </summary>
         public Home()
         {
             InitializeComponent();
@@ -148,6 +178,10 @@ namespace HumanDetection
             Loaded += MainWindow_LoadedAsync;
 
         }
+
+        /// <summary>
+        /// Legacy synchronous loaded handler (unused).
+        /// </summary>
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
 
@@ -155,50 +189,90 @@ namespace HumanDetection
             //LoadModels();
 
         }
-        #region Load Application Model and Devices
+
+        /// <summary>
+        /// Main async initialization entry point: loads settings, prepares all devices/models, and starts DI polling.
+        /// </summary>
         private async void MainWindow_LoadedAsync(object sender, RoutedEventArgs e)
         {
             try
             {
 
                 _settings = SettingsRepository.GetSettings();
-                if (_settings != null)
-                    _ac = new AccessController($"{_settings.MoxIP}");
-                RotatorPowerValueText.Text = _settings.RoutatorTimer.ToString();
-                RotatorSlider.Value = (double)_settings.RoutatorTimer;
 
-                PowerValueText.Text = _settings.ConfidenceLevel.ToString();
-                ConfidenceThresholdSlider.Value = double.Parse(_settings.ConfidenceLevel);
+                if (_settings != null)
+                {
+                    _ac = new AccessController($"{_settings.MoxIP}");
+                    RotatorPowerValueText.Text = _settings.RoutatorTimer.ToString();
+                    RotatorSlider.Value = (double)_settings.RoutatorTimer;
+
+                    PowerValueText.Text = _settings.ConfidenceLevel.ToString();
+                    ConfidenceThresholdSlider.Value = double.Parse(_settings.ConfidenceLevel);
+                }
+                else
+                {
+                    RotatorPowerValueText.Text = "0";
+                    RotatorSlider.Value = 0;
+                    PowerValueText.Text = "0";
+                    ConfidenceThresholdSlider.Value = 0;
+                }
 
                 ResultDialoag.Visibility = Visibility.Visible;
 
                 ResultDataList = new ObservableCollection<ResutlModel>();
 
-                // Show loading indicator
                 await PrepareAllDevicesAndModels();
-                snackbarMesssage.MessageQueue = _messageQueue; // Assign queue
-                                                               // Subscribe to the sensor event
-                _ac.DIChanged += OnSensorChanged;
+                if (_isPageUnloaded) return;
 
-                // Start polling DI channel 0 (your sensor port)
-                await _ac.StartDIPollingAsync(channel: 0);
+                snackbarMesssage.MessageQueue = _messageQueue; // Assign queue
+
+                if (_ac != null)
+                {
+                    // Subscribe to the sensor event
+                    _ac.DIChanged += OnSensorChanged;
+
+                    // Start polling DI channel 0 (your sensor port)
+                    await _ac.StartDIPollingAsync(channel: 0);
+                }
 
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Initialization failed: {ex.Message}", "Error",
-                                MessageBoxButton.OK, MessageBoxImage.Error);
+                if (!_isPageUnloaded)
+                    MessageBox.Show($"Initialization failed: {ex.Message}", "Error",
+                                    MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
             }
 
         }
+
+        /// <summary>
+        /// Handles page unload: cancels operations, stops scale and countdown.
+        /// </summary>
+        private void Page_Unloaded(object sender, RoutedEventArgs e)
+        {
+            _isPageUnloaded = true;
+            _processingCts?.Cancel();
+            _palletCts?.Cancel();
+            StopScale();
+            StopCountdown();
+        }
+        #endregion
+
+        #region 3. Initialization — Settings & Device Checks
+        // Orchestrates startup checks for AI models, GPIO, camera, API, and weight scale
+
+        /// <summary>
+        /// Coordinates all device and model initialization checks during startup.
+        /// </summary>
         public async Task PrepareAllDevicesAndModels()
         {
             LoadingOverlay.Visibility = Visibility.Visible;
 
             bool modelOk = await RunModelCheck(AiLoading, AiCheck, AiError, LoadModelsAsync);
+            if (_isPageUnloaded) return;
 
             if (!modelOk)
             {
@@ -208,6 +282,7 @@ namespace HumanDetection
 
 
             bool gpioOk = await RunDeviceCheck(GpioLoading, GpioCheck, GpioError, CheckGpioAsync);
+            if (_isPageUnloaded) return;
 
             if (!gpioOk)
             {
@@ -220,6 +295,7 @@ namespace HumanDetection
             }
 
             bool cameraOk = await RunDeviceCheck(CameraLoading, CameraCheck, CameraError, CheckCameraAsync);
+            if (_isPageUnloaded) return;
 
             if (!cameraOk)
             {
@@ -231,6 +307,7 @@ namespace HumanDetection
                                                 APICheck,
                                                 APIError,
                                                 StartFlaskApiAsync);
+            if (_isPageUnloaded) return;
 
             if (!apiOk)
             {
@@ -239,6 +316,8 @@ namespace HumanDetection
             }
 
             await Task.Delay(500);
+            if (_isPageUnloaded) return;
+
             bool weightOk = await RunDeviceCheck(WeightLoading, WeightCheck, WeightError, StartScaleAsync);
 
             if (!weightOk)
@@ -248,11 +327,15 @@ namespace HumanDetection
             }
 
 
-            LoadingOverlay.Visibility = Visibility.Collapsed;
+            if (!_isPageUnloaded)
+                LoadingOverlay.Visibility = Visibility.Collapsed;
             //await StartPalletDetectionProcAsync();
             //WeightText.Text = "1249 KG";
         }
 
+        /// <summary>
+        /// Runs a simple UI check with a delay, showing loader then success/error.
+        /// </summary>
         private async Task RunCheck(ProgressBar loader, TextBlock success, TextBlock error, int delay)
         {
             loader.Visibility = Visibility.Visible;
@@ -266,6 +349,10 @@ namespace HumanDetection
             loader.Visibility = Visibility.Collapsed;
             (ok ? success : error).Visibility = Visibility.Visible;
         }
+
+        /// <summary>
+        /// Runs an async model-check action and updates UI indicators accordingly.
+        /// </summary>
         private async Task<bool> RunModelCheck(ProgressBar loader, TextBlock success, TextBlock error, Func<Task<bool>> action)
         {
             loader.Visibility = Visibility.Visible;
@@ -293,6 +380,10 @@ namespace HumanDetection
 
             return result;
         }
+
+        /// <summary>
+        /// Runs an async device-check action and updates UI indicators accordingly.
+        /// </summary>
         private async Task<bool> RunDeviceCheck(ProgressBar loader, TextBlock success, TextBlock error, Func<Task<bool>> action)
         {
             loader.Visibility = Visibility.Visible;
@@ -315,6 +406,10 @@ namespace HumanDetection
 
             return result;
         }
+
+        /// <summary>
+        /// Checks GPIO connectivity by pinging the MOXA IP and verifying the access token.
+        /// </summary>
         private async Task<bool> CheckGpioAsync()
         {
             try
@@ -343,6 +438,10 @@ namespace HumanDetection
                 return false;
             }
         }
+
+        /// <summary>
+        /// Enumerates Basler cameras and returns true if more than one is found.
+        /// </summary>
         private async Task<bool> CheckCameraAsync()
         {
             return await Task.Run(() =>
@@ -367,6 +466,14 @@ namespace HumanDetection
                 }
             });
         }
+        #endregion
+
+        #region 4. Initialization — Python/Flask API & Models
+        // Starts the Python/Flask OCR API, kills stale processes, and loads ONNX models
+
+        /// <summary>
+        /// Starts the Flask OCR API server and waits for it to become reachable.
+        /// </summary>
         public async Task<bool> StartFlaskApiAsync()
         {
             try
@@ -390,6 +497,10 @@ namespace HumanDetection
                 return false;
             }
         }
+
+        /// <summary>
+        /// Polls the given URL up to 30 times waiting for the API to respond.
+        /// </summary>
         private async Task<bool> WaitForApiAsync(string url)
         {
             using var http = new HttpClient();
@@ -416,6 +527,10 @@ namespace HumanDetection
 
             return false;
         }
+
+        /// <summary>
+        /// Launches a Python script as a background process and returns the Process handle.
+        /// </summary>
         private Process StartPythonApi(string scriptName)
         {
             var psi = new ProcessStartInfo
@@ -456,6 +571,10 @@ namespace HumanDetection
 
             return process;
         }
+
+        /// <summary>
+        /// Kills any process currently bound to the specified TCP port.
+        /// </summary>
         public static void KillProcessesUsingPort(int port)
         {
             try
@@ -494,6 +613,10 @@ namespace HumanDetection
                 Debug.WriteLine("KillProcessesUsingPort error: " + ex.Message);
             }
         }
+
+        /// <summary>
+        /// Loads the YOLO ONNX models (box counting + human detection) and the annotation font.
+        /// </summary>
         private async Task<bool> LoadModelsAsync()
         {
             return await Task.Run(() =>
@@ -548,8 +671,14 @@ namespace HumanDetection
                 }
             });
         }
-
         #endregion
+
+        #region 5. Pallet Detection — Main Workflow
+        // Top-level pallet detection process: start, stop, per-camera check, and full capture/display cycle
+
+        /// <summary>
+        /// Starts the pallet detection process for all connected cameras.
+        /// </summary>
         public async Task StartPalletDetectionProcAsync()
         {
 
@@ -590,6 +719,10 @@ namespace HumanDetection
 
             await Task.WhenAll(cameraTasks);
         }
+
+        /// <summary>
+        /// Stops the pallet detection process: turns off blower/rotator and shows the success dialog.
+        /// </summary>
         public async Task StopPalletDetectionProc()
         {
             //await StopBuzzer();
@@ -608,19 +741,9 @@ namespace HumanDetection
             });
         }
 
-
-
-        private void Page_Unloaded(object sender, RoutedEventArgs e)
-        {
-            StopScale();
-        }
-
-
-        private ObservableCollection<OcrFrameResult> _ocrResults = new ObservableCollection<OcrFrameResult>();
-
-        private CancellationTokenSource _ocrCancellationTokenSource;
-
-        #region AIModel Detection
+        /// <summary>
+        /// Per-camera pallet check: resets countdown, shows loading UI, then triggers full capture and display.
+        /// </summary>
         private async Task CheckPalletStatus(ICameraInfo cameraInfo, CameraPosition position)
         {
             try
@@ -776,7 +899,6 @@ namespace HumanDetection
 
 
 
-
             }
             catch (Exception ex)
             {
@@ -788,23 +910,10 @@ namespace HumanDetection
                 Console.WriteLine("[Camera] Process stopped.");
             }
         }
-        private BitmapImage ImageSharpToBitmapImage(Image<Rgba32> image)
-        {
-            using (var ms = new MemoryStream())
-            {
-                image.SaveAsBmp(ms); // or SaveAsPng
-                ms.Seek(0, SeekOrigin.Begin);
 
-                var bitmap = new BitmapImage();
-                bitmap.BeginInit();
-                bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                bitmap.StreamSource = ms;
-                bitmap.EndInit();
-                bitmap.Freeze(); // 🔥 important for cross-thread
-
-                return bitmap;
-            }
-        }
+        /// <summary>
+        /// Full detection cycle: captures all cameras, runs AI + OCR, evaluates results, and saves outputs.
+        /// </summary>
         private async Task CaptureAndDisplayAllCamerasAsync()
         {
             try
@@ -812,6 +921,7 @@ namespace HumanDetection
                 await StartBlower();
                 bool detectionPassed = false;
                 int attempTaken = 0;
+                string task1Start = "", task1End = "", task2Start = "", task2End = "";
 
                 Dispatcher.Invoke(() =>
                 {
@@ -842,12 +952,15 @@ namespace HumanDetection
                     ReportProgress("📷 Capturing images...");
                     var cameraList = CameraFinder.Enumerate();
 
-                    // Capture front + back images IN PARALLEL
+                    //Task 1 start — Capture front + back images IN PARALLEL
+                    task1Start = DateTime.Now.ToString("HH:mm:ss.fff");
                     var frontCaptureTask = CaptureSingleFrameFromAllCamerasAsync(cameraList, false);
                     StartCountdown();
                     var backCaptureTask = CaptureSingleFrameFromAllCamerasAsync(cameraList, true);
                     
                     await Task.WhenAll(frontCaptureTask, backCaptureTask);
+                    task1End = DateTime.Now.ToString("HH:mm:ss.fff");
+                    //Task 1 end
 
                     var imagesWithCamPosition = frontCaptureTask.Result;
                     var backSideImages = backCaptureTask.Result;
@@ -856,11 +969,14 @@ namespace HumanDetection
 
                     ReportProgress("🧠 Running AI + OCR in parallel...");
 
-                    // Run front AI (full) and back AI (only needed for OCR bytes) IN PARALLEL
+                    //Task 2 start — Run front AI (full) and back AI (only needed for OCR bytes) IN PARALLEL
+                    task2Start = DateTime.Now.ToString("HH:mm:ss.fff");
                     var aiTask = Task.Run(() => RunAllAIDetectionsAsync(imagesWithCamPosition));
                     var aiTaskBack = Task.Run(() => RunAllAIDetectionsAsync(backSideImages));
 
                     await Task.WhenAll(aiTask, aiTaskBack);
+                    task2End = DateTime.Now.ToString("HH:mm:ss.fff");
+                    //Task 2 end
                     StopCountdown();
                     LoadingOverlay.Visibility = Visibility.Collapsed;
                     LoadingCard.Visibility = Visibility.Collapsed;
@@ -1171,7 +1287,34 @@ namespace HumanDetection
                                 $"Distinct Dates: {distinctDates}\r\n" +
                                 $"Pallet Condition: {payload.palletCondition}\r\n" +
                                 $"OCR Results:\r\n{OCRResultInString}\r\n";
-                            File.WriteAllText(System.IO.Path.Combine(saveDir, "result.txt"), resultText);
+                            string resultFilePath = System.IO.Path.Combine(saveDir, "result.txt");
+                            File.WriteAllText(resultFilePath, resultText);
+
+                            DetectionResultRepository.Insert(new DetectionResultModel
+                            {
+                                ScanDate = DateTime.Now,
+                                Status = DetectionStatus.Success.ToString(),
+                                Score = avgScore,
+                                TotalBoxes = numberOfBox,
+                                PalletHeight = aiResult.maxPalletHeight,
+                                Weight = WeightText.Text,
+                                HumanDetected = humanDetected ? "Yes" : "No",
+                                BarcodeCount = distinctBarcodes,
+                                BarcodeList = barcodeList,
+                                DateCount = distinctDates,
+                                DateList = AllDatesList,
+                                OCRResult = OCRResultInString,
+                                EntryTime = EntryTimeTxt.Text,
+                                ExitTime = ExitTimeTxt.Text,
+                                ImagesPath = imgDir,
+                                AnnotatedPath = annoDir,
+                                ResultFilePath = resultFilePath,
+                                Attempts = attempTaken,
+                                Task1StartTime = task1Start,
+                                Task1EndTime = task1End,
+                                Task2StartTime = task2Start,
+                                Task2EndTime = task2End
+                            });
                         }
                         catch (Exception ex)
                         {
@@ -1186,6 +1329,39 @@ namespace HumanDetection
                         _messageQueue.Enqueue("System has found score less then 70, process restart..");
                         if (attempTaken >= 3)
                         {
+                            try
+                            {
+                                DetectionResultRepository.Insert(new DetectionResultModel
+                                {
+                                    ScanDate = DateTime.Now,
+                                    Status = DetectionStatus.LessScore.ToString(),
+                                    Score = avgScore,
+                                    TotalBoxes = numberOfBox,
+                                    PalletHeight = aiResult.maxPalletHeight,
+                                    Weight = WeightText.Text,
+                                    HumanDetected = humanDetected ? "Yes" : "No",
+                                    BarcodeCount = distinctBarcodes,
+                                    BarcodeList = barcodeList,
+                                    DateCount = distinctDates,
+                                    DateList = AllDatesList,
+                                    OCRResult = OCRResultInString,
+                                    EntryTime = EntryTimeTxt.Text,
+                                    ExitTime = DateTime.Now.ToString("HH:mm:ss"),
+                                    ImagesPath = "",
+                                    AnnotatedPath = "",
+                                    ResultFilePath = "",
+                                    Attempts = attempTaken,
+                                    Task1StartTime = task1Start,
+                                    Task1EndTime = task1End,
+                                    Task2StartTime = task2Start,
+                                    Task2EndTime = task2End
+                                });
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Failed to save LessScore result: {ex.Message}");
+                            }
+
                             await StopPalletDetectionProc();
                             break;
                         }
@@ -1203,9 +1379,48 @@ namespace HumanDetection
                 await StopBuzzer();
                 await OffBlower();
                 await OffRotatorAsync();
+
+                try
+                {
+                    DetectionResultRepository.Insert(new DetectionResultModel
+                    {
+                        ScanDate = DateTime.Now,
+                        Status = DetectionStatus.Failed.ToString(),
+                        Score = 0,
+                        TotalBoxes = 0,
+                        PalletHeight = 0,
+                        Weight = "",
+                        HumanDetected = "",
+                        BarcodeCount = 0,
+                        BarcodeList = "",
+                        DateCount = 0,
+                        DateList = "",
+                        OCRResult = ex.Message,
+                        EntryTime = "",
+                        ExitTime = DateTime.Now.ToString("HH:mm:ss"),
+                        ImagesPath = "",
+                        AnnotatedPath = "",
+                        ResultFilePath = "",
+                        Attempts = 0,
+                        Task1StartTime = "",
+                        Task1EndTime = "",
+                        Task2StartTime = "",
+                        Task2EndTime = ""
+                    });
+                }
+                catch { }
+
                 MessageBox.Show(ex.Message);
             }
         }
+        #endregion
+
+        #region 6. Camera — Frame Capture
+        // Captures frames from one or all Basler cameras and converts them to BitmapImage
+
+        /// <summary>
+        /// Captures a single frame from every connected camera, handling rotation and first/second pass logic.
+        /// </summary>
         /// <summary>
         /// Save Result to API
         /// </summary>
@@ -1451,7 +1666,7 @@ namespace HumanDetection
                                 {
                                     _messageQueue.Enqueue($"Image From: {side}");
 
-                                    int duration = _settings.RoutatorTimer != null ? (int)_settings.RoutatorTimer : 0;
+                                    int duration = _settings?.RoutatorTimer != null ? (int)_settings.RoutatorTimer : 0;
 
                                     var sec = GetRotatorDurationInMilliseconds(_lastWeight);
                                     await StartRoutatorWithDuration((int)sec);
@@ -1473,69 +1688,10 @@ namespace HumanDetection
             capturedImages.AddRange(concurrentCapturedImages);
             return capturedImages;
         }
-        private Mat ApplyDigitalZoom(Mat frame, double zoomFactor = 1.5)
-        {
-            // zoomFactor > 1.0 zooms in. e.g. 1.5 = crop to 66% of frame, then scale back up.
-            int newWidth = (int)(frame.Width / zoomFactor);
-            int newHeight = (int)(frame.Height / zoomFactor);
 
-            int x = (frame.Width - newWidth) / 2;
-            int y = (frame.Height - newHeight) / 2;
-
-            var roi = new OpenCvSharp.Rect(x, y, newWidth, newHeight);
-            using var cropped = new Mat(frame, roi);
-
-            var zoomed = new Mat();
-            Cv2.Resize(cropped, zoomed, frame.Size(), 0, 0, InterpolationFlags.Cubic);
-
-            return zoomed;
-        }
-
-        private Mat RotateImage90Degrees(Mat frame)
-        {
-            var rotated = new Mat();
-            Cv2.Rotate(frame, rotated, RotateFlags.Rotate90Clockwise);
-            return rotated;
-        }
-        public int GetRotatorDurationInMilliseconds(double currentWeight)
-        {
-            double statisTime = 5.4;
-            // Ensure weight is not negative
-            if (currentWeight < 0) currentWeight = 0;
-            return (int)(Math.Round(currentWeight * statisTime));
-        }
-        public static int GetRotationMotorTimeMilliseconds(double angleDegrees, double palletWeightKg)
-        {
-            if (angleDegrees <= 0)
-                return 0;
-
-            const double referenceAngle = 90.0;
-
-            const double emptyTimeFor90Degree = 5.08;
-            const double noEffectWeightKg = 550.0;
-            const double heavyWeightKg = 950.0;
-            const double heavyTimeFor90Degree = 5.30;
-
-            const double safetyMarginSeconds = 0.05;
-
-            palletWeightKg = Math.Max(0, palletWeightKg);
-
-            double secondsPerKgAfterLimit =
-                (heavyTimeFor90Degree - emptyTimeFor90Degree) /
-                (heavyWeightKg - noEffectWeightKg);
-
-            double timeFor90Degree = emptyTimeFor90Degree;
-
-            if (palletWeightKg > noEffectWeightKg)
-            {
-                timeFor90Degree += (palletWeightKg - noEffectWeightKg) * secondsPerKgAfterLimit;
-            }
-
-            double finalSeconds =
-                (timeFor90Degree * (angleDegrees / referenceAngle)) + safetyMarginSeconds;
-
-            return (int)Math.Ceiling(finalSeconds * 1000);
-        }
+        /// <summary>
+        /// Captures a single frame from a specific camera and returns it as a BitmapImage.
+        /// </summary>
         public async Task<BitmapImage?> CaptureSingleFrameFromCameraAsync(ICameraInfo cameraInfo)
         {
             return await Task.Run(() =>
@@ -1580,6 +1736,39 @@ namespace HumanDetection
             });
         }
 
+        /// <summary>
+        /// Converts a Basler IGrabResult to an OpenCV Mat (grayscale → BGR).
+        /// </summary>
+        private Mat GrabResultToMat(IGrabResult grabResult)
+        {
+            // Get the pixel data as byte array
+            byte[] buffer = (byte[])grabResult.PixelData;
+
+            // Create empty mat with correct dimensions
+            Mat mat = new Mat(grabResult.Height, grabResult.Width, MatType.CV_8UC1);
+
+            // Copy data using Marshal (safe approach)
+            Marshal.Copy(buffer, 0, mat.Data, buffer.Length);
+
+            // Convert grayscale to color (BGR)
+            Mat colorMat = new Mat();
+            Cv2.CvtColor(mat, colorMat, ColorConversionCodes.GRAY2BGR);
+
+            // Optional: Apply color map for visualization (requires OpenCvSharp 4.x)
+            // Mat colored = new Mat();
+            // Cv2.ApplyColorMap(colorMat, colored, ColormapTypes.Jet);
+            // return colored;
+
+            return colorMat;
+        }
+        #endregion
+
+        #region 7. AI — Model Prediction & OCR
+        // Runs YOLO box-counting, human detection, and OCR prediction on captured images
+
+        /// <summary>
+        /// Runs all AI models (box counting + human detection) on a list of captured camera images.
+        /// </summary>
         private async Task<(double AvScore, bool HumanDetected, int NumberOfBox, List<byte[]> OCRBytes, double maxPalletHeight, List<byte[]> AnnotatedImages)>
 RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
         {
@@ -1730,14 +1919,9 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             return (finalAverageScore, HumanDetected, NumberOfBox, ocrResults, maxPalletHeight, annotatedImages);
         }
 
-        private void ReportProgress(string message)
-        {
-            Dispatcher.Invoke(() =>
-            {
-                ProgressTxt.Text = message;
-            });
-        }
-
+        /// <summary>
+        /// Runs the box-counting YOLO model on an image, calculates pallet height, crops boxes for OCR, and draws annotations.
+        /// </summary>
         private async Task<ImagePredictionResult> RunBoxCountingModelAsync(Image<Rgba32> originalImage, PalletSide side)
         {
             UpdateProgressStatus("Box Counting AI Model Start");
@@ -2018,7 +2202,9 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             };
         }
 
-
+        /// <summary>
+        /// Runs the human/person detection YOLO model and returns true if a person is detected above confidence threshold.
+        /// </summary>
         private bool RunHumanDetectionModel(Image<Rgba32> image)
         {
             UpdateProgressStatus("Human Detection AI Model Start");
@@ -2038,7 +2224,9 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             return humanDetected;
         }
 
-
+        /// <summary>
+        /// Sends cropped box images to the Flask OCR API and returns the parsed response.
+        /// </summary>
         private async Task<OcrApiResponse> RunOcrAsync(List<byte[]> images)
         {
 
@@ -2072,8 +2260,35 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             var json = await response.Content.ReadAsStringAsync();
             return JsonConvert.DeserializeObject<OcrApiResponse>(json);
         }
+        #endregion
 
+        #region 8. AI — Image Conversion Helpers
+        // Converts between BitmapImage, ImageSharp, and System.Drawing formats; image transforms
 
+        /// <summary>
+        /// Converts an ImageSharp Image to a WPF BitmapImage (thread-safe, frozen).
+        /// </summary>
+        private BitmapImage ImageSharpToBitmapImage(Image<Rgba32> image)
+        {
+            using (var ms = new MemoryStream())
+            {
+                image.SaveAsBmp(ms); // or SaveAsPng
+                ms.Seek(0, SeekOrigin.Begin);
+
+                var bitmap = new BitmapImage();
+                bitmap.BeginInit();
+                bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                bitmap.StreamSource = ms;
+                bitmap.EndInit();
+                bitmap.Freeze(); // 🔥 important for cross-thread
+
+                return bitmap;
+            }
+        }
+
+        /// <summary>
+        /// Converts a WPF BitmapImage to an ImageSharp Image of Rgba32 format.
+        /// </summary>
         private Image<Rgba32> BitmapImageToImageSharp(BitmapImage bitmapImage)
         {
             using var memory = new MemoryStream();
@@ -2083,6 +2298,10 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             memory.Position = 0;
             return SixLabors.ImageSharp.Image.Load<Rgba32>(memory);
         }
+
+        /// <summary>
+        /// Converts a System.Drawing.Bitmap to a WPF BitmapImage via PNG memory stream.
+        /// </summary>
         private BitmapImage ConvertBitmapToImageSource(Bitmap bitmap)
         {
             // Clone the original bitmap to release any underlying locks (thread-safety)
@@ -2104,6 +2323,91 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             }
         }
 
+        /// <summary>
+        /// Applies digital zoom by cropping the center of the frame and scaling back up.
+        /// </summary>
+        private Mat ApplyDigitalZoom(Mat frame, double zoomFactor = 1.5)
+        {
+            // zoomFactor > 1.0 zooms in. e.g. 1.5 = crop to 66% of frame, then scale back up.
+            int newWidth = (int)(frame.Width / zoomFactor);
+            int newHeight = (int)(frame.Height / zoomFactor);
+
+            int x = (frame.Width - newWidth) / 2;
+            int y = (frame.Height - newHeight) / 2;
+
+            var roi = new OpenCvSharp.Rect(x, y, newWidth, newHeight);
+            using var cropped = new Mat(frame, roi);
+
+            var zoomed = new Mat();
+            Cv2.Resize(cropped, zoomed, frame.Size(), 0, 0, InterpolationFlags.Cubic);
+
+            return zoomed;
+        }
+
+        /// <summary>
+        /// Rotates an OpenCV Mat 90 degrees clockwise.
+        /// </summary>
+        private Mat RotateImage90Degrees(Mat frame)
+        {
+            var rotated = new Mat();
+            Cv2.Rotate(frame, rotated, RotateFlags.Rotate90Clockwise);
+            return rotated;
+        }
+
+        /// <summary>
+        /// Calculates the rotator motor duration in milliseconds based on current weight.
+        /// </summary>
+        public int GetRotatorDurationInMilliseconds(double currentWeight)
+        {
+            double statisTime = 5.4;
+            // Ensure weight is not negative
+            if (currentWeight < 0) currentWeight = 0;
+            return (int)(Math.Round(currentWeight * statisTime));
+        }
+
+        /// <summary>
+        /// Calculates motor time for a given rotation angle and pallet weight, accounting for weight-based slowdown.
+        /// </summary>
+        public static int GetRotationMotorTimeMilliseconds(double angleDegrees, double palletWeightKg)
+        {
+            if (angleDegrees <= 0)
+                return 0;
+
+            const double referenceAngle = 90.0;
+
+            const double emptyTimeFor90Degree = 5.08;
+            const double noEffectWeightKg = 550.0;
+            const double heavyWeightKg = 950.0;
+            const double heavyTimeFor90Degree = 5.30;
+
+            const double safetyMarginSeconds = 0.05;
+
+            palletWeightKg = Math.Max(0, palletWeightKg);
+
+            double secondsPerKgAfterLimit =
+                (heavyTimeFor90Degree - emptyTimeFor90Degree) /
+                (heavyWeightKg - noEffectWeightKg);
+
+            double timeFor90Degree = emptyTimeFor90Degree;
+
+            if (palletWeightKg > noEffectWeightKg)
+            {
+                timeFor90Degree += (palletWeightKg - noEffectWeightKg) * secondsPerKgAfterLimit;
+            }
+
+            double finalSeconds =
+                (timeFor90Degree * (angleDegrees / referenceAngle)) + safetyMarginSeconds;
+
+            return (int)Math.Ceiling(finalSeconds * 1000);
+        }
+        #endregion
+
+        #region 9. OCR — Legacy
+        // Legacy Python-based OCR invocation (superseded by Flask API)
+
+        /// <summary>
+        /// Runs a Python OCR script synchronously on a single image file and returns the output.
+        /// </summary>
         public string RunOCR(string pythonExe, string scriptPath, string imagePath)
         {
             var psi = new ProcessStartInfo
@@ -2131,29 +2435,14 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                 return output.Trim();
             }
         }
-        private Mat GrabResultToMat(IGrabResult grabResult)
-        {
-            // Get the pixel data as byte array
-            byte[] buffer = (byte[])grabResult.PixelData;
+        #endregion
 
-            // Create empty mat with correct dimensions
-            Mat mat = new Mat(grabResult.Height, grabResult.Width, MatType.CV_8UC1);
+        #region 10. Result Management
+        // Adds/updates detection results and formats OCR output as human-readable strings
 
-            // Copy data using Marshal (safe approach)
-            Marshal.Copy(buffer, 0, mat.Data, buffer.Length);
-
-            // Convert grayscale to color (BGR)
-            Mat colorMat = new Mat();
-            Cv2.CvtColor(mat, colorMat, ColorConversionCodes.GRAY2BGR);
-
-            // Optional: Apply color map for visualization (requires OpenCvSharp 4.x)
-            // Mat colored = new Mat();
-            // Cv2.ApplyColorMap(colorMat, colored, ColormapTypes.Jet);
-            // return colored;
-
-            return colorMat;
-        }
-
+        /// <summary>
+        /// Adds a new result or updates the most recent existing result in ResultDataList.
+        /// </summary>
         private void AddResult(ResutlModel input, bool isNew = false)
         {
             if (input == null)
@@ -2243,9 +2532,58 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             }
         }
 
+        /// <summary>
+        /// Converts an OCR image result into a human-readable string with barcodes, dates, and raw text.
+        /// </summary>
+        private string OcrResultToString(OcrImageResult result)
+        {
+            if (result == null)
+                return "No OCR result";
 
+            var sb = new StringBuilder();
 
+            // ---- BAR CODES ----
+            if (result.barcodes?.Any() == true)
+            {
+                sb.AppendLine("📦 Barcodes:");
+                foreach (var b in result.barcodes)
+                {
+                    sb.AppendLine($"  • {b}");
+                }
+                sb.AppendLine();
+            }
 
+            // ---- DATES ----
+            if (result.dates?.Any() == true)
+            {
+                sb.AppendLine("📅 Dates:");
+                foreach (var d in result.dates)
+                {
+                    sb.AppendLine($"  • {d}");
+                }
+                sb.AppendLine();
+            }
+
+            // ---- RAW TEXT ----
+            if (result.raw_text?.Any() == true)
+            {
+                sb.AppendLine("📝 Text:");
+                foreach (var t in result.raw_text)
+                {
+                    sb.AppendLine($"  • {t}");
+                }
+            }
+
+            return sb.ToString();
+        }
+        #endregion
+
+        #region 11. UI — Dialogs & Result Display
+        // Handles image click popup, dialog close, and result/restart dialog events
+
+        /// <summary>
+        /// Opens the image detail dialog when a captured image thumbnail is clicked.
+        /// </summary>
         private void Image_Click(object sender, MouseButtonEventArgs e)
         {
             if (sender is Border border && border.Child is System.Windows.Controls.Image img)
@@ -2263,10 +2601,17 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             }
         }
 
+        /// <summary>
+        /// Closes the image dialog popup.
+        /// </summary>
         private void CloseDialog_Click(object sender, RoutedEventArgs e)
         {
             ImageDialogHost.IsOpen = false; // ✅ close popup
         }
+
+        /// <summary>
+        /// Handles the result dialog close event by closing the dialog host.
+        /// </summary>
         private void ResultDialog_CloseClicked(object sender, EventArgs e)
         {
             // Close the dialog
@@ -2274,6 +2619,9 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             MaterialDesignThemes.Wpf.DialogHost.CloseDialogCommand.Execute(null, null);
         }
 
+        /// <summary>
+        /// Handles the restart-process request from the result dialog.
+        /// </summary>
         private void ResultDialog_RestartProcessClicked(object sender, EventArgs e)
         {
             RestartProcess();
@@ -2281,11 +2629,38 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             RebootDeviceAsync();
 
         }
+
+        /// <summary>
+        /// Shows the result dialog popup with current scan results.
+        /// </summary>
+        private void ShowResult_Click(object sender, EventArgs e)
+        {
+            // ✅ show popup
+
+            PictureDialog.Visibility = Visibility.Collapsed;
+            ResultDialoag.Visibility = Visibility.Visible;
+            SucessDialog.Visibility = Visibility.Collapsed;
+
+            ImageDialogHost.IsOpen = true;
+
+        }
+        #endregion
+
+        #region 12. UI — Process Control Buttons
+        // Manual rotation, process restart, reset records, stop, and progress reporting
+
+        /// <summary>
+        /// Manually triggers the rotator for a calculated duration based on current weight.
+        /// </summary>
         private async void Rotate_Click(object sender, EventArgs e)
         {
             int sec = GetRotatorDurationInMilliseconds(_lastWeight) - 1000;
             await StartRoutatorWithDuration((int)sec);
         }
+
+        /// <summary>
+        /// Resets UI state, clears result indicators, and re-enumerates cameras for a fresh detection cycle.
+        /// </summary>
         public async Task RestartProcess()
         {
             // FIX (cleanup, low risk): this was `Dispatcher.Invoke(async () => ...)`
@@ -2353,6 +2728,10 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             }
 
         }
+
+        /// <summary>
+        /// Resets all UI indicators and text fields to their default empty/zero state.
+        /// </summary>
         public async Task ResetRecords()
         {
             Dispatcher.Invoke(() =>
@@ -2392,305 +2771,149 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             //AddResult(obj, true);
 
         }
+
+        /// <summary>
+        /// Restarts the detection process via RestartProcess().
+        /// </summary>
         private void Restart_Click(object sender, EventArgs e)
         {
             RestartProcess();
         }
+
+        /// <summary>
+        /// Stops the running pallet detection process.
+        /// </summary>
         private async void StopProc_Click(object sender, EventArgs e)
         {
             await StopPalletDetectionProc();
         }
-        private void ShowResult_Click(object sender, EventArgs e)
+
+        /// <summary>
+        /// Updates the progress text displayed to the user.
+        /// </summary>
+        private void ReportProgress(string message)
         {
-            // ✅ show popup
-
-            PictureDialog.Visibility = Visibility.Collapsed;
-            ResultDialoag.Visibility = Visibility.Visible;
-            SucessDialog.Visibility = Visibility.Collapsed;
-
-            ImageDialogHost.IsOpen = true;
-
-        }
-        private string OcrResultToString(OcrImageResult result)
-        {
-            if (result == null)
-                return "No OCR result";
-
-            var sb = new StringBuilder();
-
-            // ---- BAR CODES ----
-            if (result.barcodes?.Any() == true)
+            Dispatcher.Invoke(() =>
             {
-                sb.AppendLine("📦 Barcodes:");
-                foreach (var b in result.barcodes)
-                {
-                    sb.AppendLine($"  • {b}");
-                }
-                sb.AppendLine();
-            }
-
-            // ---- DATES ----
-            if (result.dates?.Any() == true)
-            {
-                sb.AppendLine("📅 Dates:");
-                foreach (var d in result.dates)
-                {
-                    sb.AppendLine($"  • {d}");
-                }
-                sb.AppendLine();
-            }
-
-            // ---- RAW TEXT ----
-            if (result.raw_text?.Any() == true)
-            {
-                sb.AppendLine("📝 Text:");
-                foreach (var t in result.raw_text)
-                {
-                    sb.AppendLine($"  • {t}");
-                }
-            }
-
-            return sb.ToString();
+                ProgressTxt.Text = message;
+            });
         }
         #endregion
-        #region UIControls
-        private void StartCountdown()
-        {
-            timer = new DispatcherTimer();
-            timer.Interval = TimeSpan.FromSeconds(1);
-            timer.Tick += Timer_Tick;
-            timer.Start();
-        }
-        // Public method to stop the timer from outside
-        public void StopCountdown()
-        {
-            if (timer != null && timer.IsEnabled)
-            {
-                timer.Stop();
-                //System.Windows.Application.Current.Shutdown(); // Stops the WPF application
-            }
-        }
-        public void ResetCountdown()
-        {
-            if (timer != null)
-            {
-                timer.Stop();
-            }
 
-            elapsedSeconds = 0;
-            Dispatcher.Invoke(() =>
-            {
-                CountdownText.Text = "0 Sec";
-            });
-        }
+        #region 13. GPIO & Hardware Control
+        // Buzzer, blower, rotator control, device reboot, and fork-lift sensor handling
 
-        private void Timer_Tick(object sender, EventArgs e)
-        {
-            elapsedSeconds++;
-            CountdownText.Text = $"{elapsedSeconds} Sec";
-        }
-
-        private void StopButton_Click(object sender, RoutedEventArgs e)
-        {
-            StopCountdown();
-        }
-        private void FlashCamera(UIElement targetElement)
-        {
-            Dispatcher.Invoke(() =>
-            {
-                // Get the base storyboard from UI thread
-                if (FindResource("CameraFlashStoryboard") is Storyboard baseStoryboard)
-                {
-                    // Clone so we can modify safely
-                    Storyboard storyboard = baseStoryboard.Clone();
-
-                    // Set the animation target on UI thread
-                    Storyboard.SetTarget(storyboard.Children[0], targetElement);
-
-                    // Begin animation on UI thread
-                    storyboard.Begin();
-                }
-
-                // Play sound (also safe on UI thread)
-                //PlayShutterSound();
-            });
-        }
-
-        private async void PlayShutterSound()
-        {
-            try
-            {
-                audioManager.Play("Resources/Audio/shutter.mp3");
-                await Task.Delay(500); // short shutter sound
-                audioManager.Stop();
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Error playing shutter sound: {ex.Message}");
-            }
-        }
-        private async Task PalletDetectedSoundStart()
-        {
-            try
-            {
-                audioManager.Play("Resources/Audio/pallet.wav");
-                await Task.Delay(500); // short shutter sound
-                audioManager.Stop();
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Error playing shutter sound: {ex.Message}");
-            }
-        }
-        private async Task PlayAlertForSystem()
-        {
-            try
-            {
-                audioManager.Play("Resources/Audio/warning.wav");
-                await Task.Delay(500); // short shutter sound
-                audioManager.Stop();
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Error playing shutter sound: {ex.Message}");
-            }
-        }
-
-
-        private void SetCameraUI(Border borderControl, bool isAvailable)
-        {
-            if (borderControl == null) return;
-
-            System.Windows.Application.Current.Dispatcher.Invoke(() =>
-            {
-                if (isAvailable)
-                {
-                    borderControl.BorderBrush = (SolidColorBrush)(new BrushConverter().ConvertFromString("#00E108")); // green green
-                    if (borderControl.Child is StackPanel panel &&
-                        panel.Children[0] is Grid grid &&
-                        grid.Children[0] is Ellipse ellipse)
-                    {
-                        ellipse.Opacity = 1;
-                    }
-
-                }
-                else
-                {
-                    borderControl.BorderBrush = (SolidColorBrush)(new BrushConverter().ConvertFromString("#FF0000")); // red
-                    if (borderControl.Child is StackPanel panel &&
-                        panel.Children[0] is Grid grid &&
-                        grid.Children[0] is Ellipse ellipse)
-                    {
-                        ellipse.Opacity = 0;
-                    }
-                }
-            });
-        }
-        private void ShowPalletFromLeft()
-        {
-            Dispatcher.Invoke(() =>
-            {
-                PaletImage.Opacity = 1; // ensure visible
-                var storyboard = (Storyboard)FindResource("ShowPalletFromTopStoryboard");
-                storyboard.Begin(this, true);
-            });
-        }
-        private void UpdateProgressStatus(String Status)
-        {
-            Dispatcher.Invoke(() =>
-            {
-                ProgressTxt.Text = Status;
-            });
-        }
-        private void SetIndicator(System.Windows.Controls.Image indicator, bool isOn)
-        {
-            string imageUri = isOn
-                ? "pack://application:,,,/Resources/Images/on_indicator.png"   // Red (ON)
-                : "pack://application:,,,/Resources/Images/off_indicator.png"; // Green (OFF)
-
-            indicator.Source = new BitmapImage(new Uri(imageUri));
-        }
-        private void ConfidenceThresholder_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-        {
-            if (PowerValueText != null)
-                PowerValueText.Text = ((int)e.NewValue).ToString();
-            Task.Delay(100);
-            var settings = _settings;
-            settings.ConfidenceLevel = e.NewValue.ToString();
-            SettingsRepository.UpdateConfidenceThresHoldSettings(settings);
-            Task.Delay(100);
-            _settings = SettingsRepository.GetSettings();
-        }
-        private void Rotator_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-        {
-            if (RotatorPowerValueText != null)
-                RotatorPowerValueText.Text = ((int)e.NewValue).ToString();
-            Task.Delay(100);
-            var settings = _settings;
-            settings.RoutatorTimer = ((int)e.NewValue);
-            SettingsRepository.UpdateRotatorSettings(settings);
-            Task.Delay(100);
-            _settings = SettingsRepository.GetSettings();
-
-        }
-
-
-        #endregion
-
-        // Create ONE shared controller for the whole class
-
+        /// <summary>
+        /// Starts the buzzer via the GPIO access controller.
+        /// </summary>
         public async Task StartBuzzer()
         {
             await _ac.StartBuzzerAsync();
         }
-        public async Task StartRotatorWithWeightAsync()
-        {
-            await _ac.StartRotatorWithWeightAsync(_lastWeight);
-        }
+
+        /// <summary>
+        /// Stops the buzzer via the GPIO access controller.
+        /// </summary>
         public async Task StopBuzzer()
         {
             await _ac.OffBuzzerAsync();
         }
 
+        /// <summary>
+        /// Activates the buzzer for a specified duration, repeating the specified number of times.
+        /// </summary>
+        public async Task StartBuzzlerWithDuration(int duration, int repeat)
+        {
+            for (int i = 0; i < repeat; i++)
+            {
+                await StartBuzzer();              // 🔔 ON
+                await Task.Delay(duration);       // ON duration
+
+                await StopBuzzer();               // 🔕 OFF
+                await Task.Delay(1000);           // 1 second rest
+            }
+        }
+
+        /// <summary>
+        /// Starts the blower via the GPIO access controller.
+        /// </summary>
         public async Task StartBlower()
         {
             await _ac.StartBlowerAsync();
 
         }
 
-
+        /// <summary>
+        /// Turns off the blower via the GPIO access controller.
+        /// </summary>
         public async Task OffBlower()
         {
             await _ac.OffBlowerAsync();
         }
+
+        /// <summary>
+        /// Starts the rotator motor via the GPIO access controller.
+        /// </summary>
         public async Task StartRotator()
         {
             await _ac.StartRotatorAsync();
         }
+
+        /// <summary>
+        /// Turns off the rotator motor via the GPIO access controller.
+        /// </summary>
         public async Task OffRotatorAsync()
         {
             await _ac.OffRotatorAsync();
 
         }
+
+        /// <summary>
+        /// Starts the rotator motor for a specific duration in milliseconds.
+        /// </summary>
         public async Task StartRoutatorWithDuration(int sec)
         {
             await _ac.StartRotatorForDurationAsync(sec);
 
         }
+
+        /// <summary>
+        /// Starts the rotator motor in reverse for a specific duration (currently disabled).
+        /// </summary>
         public async Task StartRotatorReverseForDurationAsync(int sec)
         {
             //await _ac.StartRotatorReverseForDurationAsync(sec);
 
         }
+
+        /// <summary>
+        /// Turns on the rotator motor via the GPIO access controller.
+        /// </summary>
         public async Task TurnOnRotatorAsync()
         {
             await _ac.StartRotatorAsync();
 
         }
+
+        /// <summary>
+        /// Starts the rotator with weight-based duration adjustment.
+        /// </summary>
+        public async Task StartRotatorWithWeightAsync()
+        {
+            await _ac.StartRotatorWithWeightAsync(_lastWeight);
+        }
+
+        /// <summary>
+        /// Reboots the GPIO-attached device (currently disabled).
+        /// </summary>
         public async Task RebootDeviceAsync()
         {
             //await _ac.RebootDeviceAsync();
         }
+
+        /// <summary>
+        /// Handles DI sensor channel changes: shows/hides forklift image when detected/cleared.
+        /// </summary>
         private void OnSensorChanged(object sender, DIChangedEventArgs e)
         {
             if (e.Channel == 0 && e.IsActive)
@@ -2731,28 +2954,25 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                 });
             }
         }
-        public async Task StartBuzzlerWithDuration(int duration, int repeat)
-        {
-            for (int i = 0; i < repeat; i++)
-            {
-                await StartBuzzer();              // 🔔 ON
-                await Task.Delay(duration);       // ON duration
+        #endregion
 
-                await StopBuzzer();               // 🔕 OFF
-                await Task.Delay(1000);           // 1 second rest
-            }
-        }
+        #region 14. Weight Scale Management
+        // Serial scale reader lifecycle, weight event handling, and human-detected effects
 
-        #region manage weight machine events
-
+        /// <summary>
+        /// Initializes and starts the serial weight scale reader on the configured COM port.
+        /// </summary>
         private async Task<bool> StartScaleAsync()
         {
             return await Task.Run(() =>
             {
                 try
                 {
+                    if (_isPageUnloaded) return false;
                     if (_reader != null && _reader.IsOpen)
                         return true;
+                    if (_settings == null || string.IsNullOrWhiteSpace(_settings.ComPort))
+                        return false;
 
                     _reader = new ScaleSerialReader
                     {
@@ -2780,6 +3000,9 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             });
         }
 
+        /// <summary>
+        /// Unsubscribes from scale events, stops, and disposes the serial reader.
+        /// </summary>
         private void StopScale()
         {
             if (_reader == null) return;
@@ -2791,11 +3014,10 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             _reader.Dispose();
             _reader = null;
         }
-        private DateTime? _stableWeightStartTime = null;
-        private const double WeightThreshold = 5.0;     // kg
-        private const double WeightTolerance = 0.2;      // ± fluctuation allowed
-        private double _lastWeight = 0;
 
+        /// <summary>
+        /// Handles weight-received events: starts pallet detection when stable weight is above threshold.
+        /// </summary>
         private void Reader_WeightReceived(object? sender, double w)
         {
             Dispatcher.Invoke(async () =>
@@ -2841,6 +3063,9 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             });
         }
 
+        /// <summary>
+        /// Handles errors from the weight scale reader by updating the UI text.
+        /// </summary>
         private void Reader_Error(object? sender, Exception ex)
         {
             Dispatcher.Invoke(() =>
@@ -2848,6 +3073,10 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                 WeightText.Text = "ERR";
             });
         }
+
+        /// <summary>
+        /// Triggers buzzer and visual effects when a human is detected (currently simplified).
+        /// </summary>
         private async Task TriggerHumanDetectedEffectAsync(bool isFound)
         {
             if (isFound)
@@ -2885,7 +3114,243 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                 }
             }
         }
+        #endregion
 
+        #region 15. UI Controls — Countdown, Indicators, Sliders
+        // Countdown timer, button clicks, camera flash, audio playback, UI indicators, and slider value changes
+
+        /// <summary>
+        /// Starts the countdown timer, incrementing every second.
+        /// </summary>
+        private void StartCountdown()
+        {
+            timer = new DispatcherTimer();
+            timer.Interval = TimeSpan.FromSeconds(1);
+            timer.Tick += Timer_Tick;
+            timer.Start();
+        }
+
+        /// <summary>
+        /// Stops the countdown timer if it is running.
+        /// </summary>
+        public void StopCountdown()
+        {
+            if (timer != null && timer.IsEnabled)
+            {
+                timer.Stop();
+                //System.Windows.Application.Current.Shutdown(); // Stops the WPF application
+            }
+        }
+
+        /// <summary>
+        /// Resets the countdown timer and elapsed seconds counter to zero.
+        /// </summary>
+        public void ResetCountdown()
+        {
+            if (timer != null)
+            {
+                timer.Stop();
+            }
+
+            elapsedSeconds = 0;
+            Dispatcher.Invoke(() =>
+            {
+                CountdownText.Text = "0 Sec";
+            });
+        }
+
+        /// <summary>
+        /// Timer tick handler: increments elapsed seconds and updates the countdown display.
+        /// </summary>
+        private void Timer_Tick(object sender, EventArgs e)
+        {
+            elapsedSeconds++;
+            CountdownText.Text = $"{elapsedSeconds} Sec";
+        }
+
+        /// <summary>
+        /// Stops the countdown when the stop button is clicked.
+        /// </summary>
+        private void StopButton_Click(object sender, RoutedEventArgs e)
+        {
+            StopCountdown();
+        }
+
+        /// <summary>
+        /// Plays the camera flash animation on the specified UI element.
+        /// </summary>
+        private void FlashCamera(UIElement targetElement)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                // Get the base storyboard from UI thread
+                if (FindResource("CameraFlashStoryboard") is Storyboard baseStoryboard)
+                {
+                    // Clone so we can modify safely
+                    Storyboard storyboard = baseStoryboard.Clone();
+
+                    // Set the animation target on UI thread
+                    Storyboard.SetTarget(storyboard.Children[0], targetElement);
+
+                    // Begin animation on UI thread
+                    storyboard.Begin();
+                }
+
+                // Play sound (also safe on UI thread)
+                //PlayShutterSound();
+            });
+        }
+
+        /// <summary>
+        /// Plays the camera shutter sound effect.
+        /// </summary>
+        private async void PlayShutterSound()
+        {
+            try
+            {
+                audioManager.Play("Resources/Audio/shutter.mp3");
+                await Task.Delay(500); // short shutter sound
+                audioManager.Stop();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error playing shutter sound: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Plays the pallet-detected sound effect.
+        /// </summary>
+        private async Task PalletDetectedSoundStart()
+        {
+            try
+            {
+                audioManager.Play("Resources/Audio/pallet.wav");
+                await Task.Delay(500); // short shutter sound
+                audioManager.Stop();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error playing shutter sound: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Plays the system warning/alert sound effect.
+        /// </summary>
+        private async Task PlayAlertForSystem()
+        {
+            try
+            {
+                audioManager.Play("Resources/Audio/warning.wav");
+                await Task.Delay(500); // short shutter sound
+                audioManager.Stop();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error playing shutter sound: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Updates the camera availability indicator border and inner ellipse color.
+        /// </summary>
+        private void SetCameraUI(Border borderControl, bool isAvailable)
+        {
+            if (borderControl == null) return;
+
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                if (isAvailable)
+                {
+                    borderControl.BorderBrush = (SolidColorBrush)(new BrushConverter().ConvertFromString("#00E108")); // green green
+                    if (borderControl.Child is StackPanel panel &&
+                        panel.Children[0] is Grid grid &&
+                        grid.Children[0] is Ellipse ellipse)
+                    {
+                        ellipse.Opacity = 1;
+                    }
+
+                }
+                else
+                {
+                    borderControl.BorderBrush = (SolidColorBrush)(new BrushConverter().ConvertFromString("#FF0000")); // red
+                    if (borderControl.Child is StackPanel panel &&
+                        panel.Children[0] is Grid grid &&
+                        grid.Children[0] is Ellipse ellipse)
+                    {
+                        ellipse.Opacity = 0;
+                    }
+                }
+            });
+        }
+
+        /// <summary>
+        /// Triggers the "pallet from left" entrance animation on the pallet image.
+        /// </summary>
+        private void ShowPalletFromLeft()
+        {
+            Dispatcher.Invoke(() =>
+            {
+                PaletImage.Opacity = 1; // ensure visible
+                var storyboard = (Storyboard)FindResource("ShowPalletFromTopStoryboard");
+                storyboard.Begin(this, true);
+            });
+        }
+
+        /// <summary>
+        /// Updates the progress status text on the UI.
+        /// </summary>
+        private void UpdateProgressStatus(String Status)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                ProgressTxt.Text = Status;
+            });
+        }
+
+        /// <summary>
+        /// Sets an indicator image to ON or OFF state.
+        /// </summary>
+        private void SetIndicator(System.Windows.Controls.Image indicator, bool isOn)
+        {
+            string imageUri = isOn
+                ? "pack://application:,,,/Resources/Images/on_indicator.png"   // Red (ON)
+                : "pack://application:,,,/Resources/Images/off_indicator.png"; // Green (OFF)
+
+            indicator.Source = new BitmapImage(new Uri(imageUri));
+        }
+
+        /// <summary>
+        /// Saves the confidence threshold slider value to settings when changed.
+        /// </summary>
+        private void ConfidenceThresholder_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (PowerValueText != null)
+                PowerValueText.Text = ((int)e.NewValue).ToString();
+            Task.Delay(100);
+            var settings = _settings;
+            settings.ConfidenceLevel = e.NewValue.ToString();
+            SettingsRepository.UpdateConfidenceThresHoldSettings(settings);
+            Task.Delay(100);
+            _settings = SettingsRepository.GetSettings();
+        }
+
+        /// <summary>
+        /// Saves the rotator timer slider value to settings when changed.
+        /// </summary>
+        private void Rotator_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (RotatorPowerValueText != null)
+                RotatorPowerValueText.Text = ((int)e.NewValue).ToString();
+            Task.Delay(100);
+            var settings = _settings;
+            settings.RoutatorTimer = ((int)e.NewValue);
+            SettingsRepository.UpdateRotatorSettings(settings);
+            Task.Delay(100);
+            _settings = SettingsRepository.GetSettings();
+
+        }
         #endregion
     }
 }

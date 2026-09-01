@@ -1,0 +1,174 @@
+<Page x:Class="UserControls.Reports.ReportPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+      xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes" 
+      xmlns:materialIcons="clr-namespace:Material.Icons.WPF;assembly=Material.Icons.WPF"
+      mc:Ignorable="d" 
+      d:DesignHeight="450" d:DesignWidth="800"
+      Title="Reports"
+      Loaded="Page_Loaded">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="15,5,10,5">
+            <materialIcons:MaterialIcon Kind="ChevronLeft" Width="20" Height="20" Margin="0,2,0,0" Foreground="White"/>
+            <TextBlock Text="Detection Reports" FontSize="22" Foreground="White" Margin="0,0,5,0" FontWeight="Medium"/>
+        </StackPanel>
+
+        <!-- Filters -->
+        <Border Grid.Row="1" Background="#09090B" Margin="5,5,5,5" CornerRadius="12" Padding="12,10"
+                BorderThickness="1" BorderBrush="White">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="Status" Foreground="White" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <ComboBox x:Name="StatusFilter" Width="140" Height="40" Margin="0,0,15,0"
+                         
+                          Foreground="White"
+                          SelectedIndex="0" SelectionChanged="StatusFilter_SelectionChanged">
+                    <ComboBoxItem Content="All" IsSelected="True"/>
+                    <ComboBoxItem Content="Success"/>
+                    <ComboBoxItem Content="Failed"/>
+                    <ComboBoxItem Content="LessScore"/>
+                </ComboBox>
+
+                <TextBlock Text="From" Foreground="White" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <DatePicker x:Name="DateFrom" Width="160" Height="40" Margin="0,0,15,0"
+                            Foreground="White"
+                            SelectedDateChanged="DateFilter_Changed"
+                            Background="Transparent"/>
+
+                <TextBlock Text="To" Foreground="White" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <DatePicker x:Name="DateTo" Width="160" Height="40" Margin="0,0,15,0"
+                            Foreground="White"
+                            SelectedDateChanged="DateFilter_Changed"
+                           
+                            Background="Transparent"/>
+
+                <Button x:Name="RefreshBtn" Content="Refresh" Width="90" Height="40"
+                        Click="RefreshBtn_Click"
+                        Background="#0D2A4B" Foreground="White" BorderThickness="0"
+                        materialDesign:ButtonAssist.CornerRadius="8"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Summary Cards + Grid -->
+        <Grid Grid.Row="2" Margin="5,5,5,5">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- Stats Cards -->
+            <Grid Grid.Row="0" Margin="0,0,0,5">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Background="#09090B" CornerRadius="10" Margin="4" Padding="12,8"
+                        BorderThickness="1" BorderBrush="#22543D">
+                    <StackPanel>
+                        <TextBlock Text="SUCCESS" Foreground="#4ADE80" FontSize="11" FontWeight="SemiBold" Opacity="0.8"/>
+                        <TextBlock x:Name="SuccessCount" Text="0" Foreground="#4ADE80" FontSize="22" FontWeight="Bold" Margin="0,2,0,0"/>
+                        <TextBlock x:Name="SuccessDateRange" Text="" Foreground="#4ADE80" FontSize="10" Opacity="0.6" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="1" Background="#09090B" CornerRadius="10" Margin="4" Padding="12,8"
+                        BorderThickness="1" BorderBrush="#541C1C">
+                    <StackPanel>
+                        <TextBlock Text="FAILED" Foreground="#F87171" FontSize="11" FontWeight="SemiBold" Opacity="0.8"/>
+                        <TextBlock x:Name="FailedCount" Text="0" Foreground="#F87171" FontSize="22" FontWeight="Bold" Margin="0,2,0,0"/>
+                        <TextBlock x:Name="FailedDateRange" Text="" Foreground="#F87171" FontSize="10" Opacity="0.6" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="2" Background="#09090B" CornerRadius="10" Margin="4" Padding="12,8"
+                        BorderThickness="1" BorderBrush="#54421C">
+                    <StackPanel>
+                        <TextBlock Text="LESS SCORE" Foreground="#FBBF24" FontSize="11" FontWeight="SemiBold" Opacity="0.8"/>
+                        <TextBlock x:Name="LessScoreCount" Text="0" Foreground="#FBBF24" FontSize="22" FontWeight="Bold" Margin="0,2,0,0"/>
+                        <TextBlock x:Name="LessScoreDateRange" Text="" Foreground="#FBBF24" FontSize="10" Opacity="0.6" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="3" Background="#09090B" CornerRadius="10" Margin="4" Padding="12,8"
+                        BorderThickness="1" BorderBrush="#1C3A54">
+                    <StackPanel>
+                        <TextBlock Text="TOTAL" Foreground="#60A5FA" FontSize="11" FontWeight="SemiBold" Opacity="0.8"/>
+                        <TextBlock x:Name="TotalCount" Text="0" Foreground="#60A5FA" FontSize="22" FontWeight="Bold" Margin="0,2,0,0"/>
+                        <TextBlock x:Name="TotalDateRange" Text="" Foreground="#60A5FA" FontSize="10" Opacity="0.6" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- Data Grid -->
+            <Border Grid.Row="1" Background="#09090B" CornerRadius="12" Margin="5,0,5,5" BorderBrush="#222228" BorderThickness="1">
+                <DataGrid x:Name="ReportsGrid"
+                          AutoGenerateColumns="False"
+                          HeadersVisibility="Column"
+                          CanUserAddRows="False"
+                          CanUserSortColumns="True"
+                          Background="#09090B"
+                          Foreground="White"
+                          GridLinesVisibility="All"
+                          HorizontalGridLinesBrush="#222228"
+                          VerticalGridLinesBrush="#222228"
+                          BorderThickness="0"
+                          RowBackground="#09090B"
+                          AlternatingRowBackground="#111113"
+                          SelectionMode="Single"
+                          IsReadOnly="True"
+                          MouseDoubleClick="ReportsGrid_MouseDoubleClick"
+                          ScrollViewer.HorizontalScrollBarVisibility="Auto">
+
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="50" />
+                        <DataGridTextColumn Header="Date" Binding="{Binding ScanDate, StringFormat=dd/MM/yyyy HH:mm}" Width="140" />
+                        <DataGridTemplateColumn Header="Status" Width="100">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Border CornerRadius="6" Padding="6,2" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                            Background="{Binding Status, Converter={StaticResource StatusToBrushConverter}}">
+                                        <TextBlock Text="{Binding Status}" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
+                                    </Border>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="Score" Binding="{Binding Score, StringFormat={}{0:P0}}" Width="70" />
+                        <DataGridTextColumn Header="Boxes" Binding="{Binding TotalBoxes}" Width="60" />
+                        <DataGridTextColumn Header="Height(m)" Binding="{Binding PalletHeight, StringFormat={}{0:F2}}" Width="80" />
+                        <DataGridTextColumn Header="Weight" Binding="{Binding Weight}" Width="80" />
+                        <DataGridTextColumn Header="Human" Binding="{Binding HumanDetected}" Width="60" />
+                        <DataGridTextColumn Header="Barcodes" Binding="{Binding BarcodeCount}" Width="70" />
+                        <DataGridTextColumn Header="Labels" Binding="{Binding DateCount}" Width="60" />
+                        <DataGridTextColumn Header="Attempts" Binding="{Binding Attempts}" Width="70" />
+                        <DataGridTextColumn Header="Task1 Time" Binding="{Binding Task1TimeRange}" Width="180" />
+                        <DataGridTextColumn Header="Task2 Time" Binding="{Binding Task2TimeRange}" Width="180" />
+                        <DataGridTextColumn Header="Entry" Binding="{Binding EntryTime}" Width="70" />
+                        <DataGridTextColumn Header="Exit" Binding="{Binding ExitTime}" Width="70" />
+                        <DataGridTemplateColumn Header="Action" Width="80">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="Delete" Background="#441514" Foreground="#FF3B30"
+                                            BorderThickness="0" Padding="8,3" FontSize="11"
+                                            Click="DeleteBtn_Click"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+
+                </DataGrid>
+            </Border>
+        </Grid>
+    </Grid>
+</Page>
