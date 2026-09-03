@@ -108,6 +108,38 @@ namespace HumanDetection
         private List<CapturedCameraImage> _lastCapturedCameraImages = new();
         private readonly int CamDelay = 500;
 
+        // Basler exposure time in microseconds (applied to every camera on each grab)
+        private double _exposureTimeUs = 12000;
+
+        /// <summary>
+        /// Applies the configured exposure time to a Basler camera after it is opened.
+        /// </summary>
+        private void ApplyExposure(Basler.Pylon.Camera camera)
+        {
+            try
+            {
+                if (_exposureTimeUs > 0 &&
+                    camera.Parameters[PLCamera.ExposureTime].IsWritable)
+                {
+                    camera.Parameters[PLCamera.ExposureTime].SetValue(_exposureTimeUs);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠ Could not set exposure time: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Updates the stored exposure time and label when the Exposure slider changes.
+        /// </summary>
+        private void ExposureSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            _exposureTimeUs = Math.Round(ExposureSlider.Value, 0);
+            if (ExposureValueTxt != null)
+                ExposureValueTxt.Text = $"{(int)_exposureTimeUs} us";
+        }
+
         // --- Audio / Alerts ---
         private IAudioManager audioManager;
         private bool _isAlertPlaying = false;
@@ -135,6 +167,14 @@ namespace HumanDetection
         private CancellationTokenSource? _palletCts;
         private CancellationTokenSource _ocrCancellationTokenSource;
 
+        // --- Process Timing (ms) ---
+        private System.Diagnostics.Stopwatch _processStopwatch = new System.Diagnostics.Stopwatch();
+        private double _captureMs;
+        private double _aiMs;
+        private double _humanMs;
+        private double _ocrMs;
+        private double _rotationMs;
+
         // --- Collections ---
         public ObservableCollection<BitmapImage> CapturedImages { get; set; }
         public ObservableCollection<ResutlModel> ResultDataList { get; set; }
@@ -146,6 +186,10 @@ namespace HumanDetection
         private const int DetectionHeight = 360;
         private const double WeightThreshold = 5.0;     // kg
         private const double WeightTolerance = 0.2;      // ± fluctuation allowed
+
+        // --- Height Sensor (Analog Input) ---
+        private const int HeightAIChannel = 0;           // AI-00 channel on Moxa
+        private const double HeightSensorOffsetMeters = 2.42; // empty-baseline offset
         #endregion
 
         #region 2. Constructor & Page Lifecycle
@@ -165,7 +209,7 @@ namespace HumanDetection
                 ResultDialoag.Visibility = Visibility.Collapsed;
                 ImageDialogHost.IsOpen = false;
             };
-            SetIndicator(SensorIndicator, true);        // Sensor ON
+            SetIndicator(SensorIndicator, false);       // Sensor OFF until AI-00 port is verified
             SetIndicator(TemperatureIndicator, false);  // Temperature OK
             SetIndicator(HumidityIndicator, false);      // Humidity ON
             SetIndicator(MotorIndicator, false);
@@ -228,10 +272,13 @@ namespace HumanDetection
 
                 if (_ac != null)
                 {
-                    // Subscribe to the sensor event
+                    // Subscribe to both sensors' events BEFORE starting polling
+                    _ac.AIChanged += OnAIChanged;
                     _ac.DIChanged += OnSensorChanged;
 
-                    // Start polling DI channel 0 (your sensor port)
+                    // Start continuous polling — both share one Modbus connection
+                    // so they work simultaneously without fighting over sockets.
+                    await _ac.StartAIPollingAsync(channel: HeightAIChannel);
                     await _ac.StartDIPollingAsync(channel: 0);
                 }
 
@@ -258,6 +305,58 @@ namespace HumanDetection
             _palletCts?.Cancel();
             StopScale();
             StopCountdown();
+
+            // Stop AI + DI polling and unsubscribe (both loops run in the background
+            // and must be stopped together so they don't keep marshaling to the UI
+            // thread after this page is unloaded).
+            if (_ac != null)
+            {
+                _ac.AIChanged -= OnAIChanged;
+                _ac.DIChanged -= OnSensorChanged;
+                _ac.StopAIPolling();
+                _ac.StopDIPolling();
+            }
+        }
+
+        /// <summary>
+        /// Returns true when a pallet detection/scan is currently running on this page.
+        /// MainWindow checks this before navigating away to warn the operator.
+        /// </summary>
+        public bool IsProcessRunning => _isPalletDetectionRunning || _isProcessing;
+
+        /// <summary>
+        /// Stops everything running on this Home page: pallet detection, buzzers,
+        /// blower, rotator, weight scale, polling loops and any open dialogs.
+        /// Called by MainWindow before switching screens when a process is running.
+        /// </summary>
+        public async Task StopAllProcessesAsync()
+        {
+            _isPalletDetectionRunning = false;
+            _isProcessing = false;
+            _isRunning = false;
+            _isRunning2 = false;
+
+            _processingCts?.Cancel();
+            _palletCts?.Cancel();
+
+            try { await StopBuzzer(); } catch { }
+            try { await OffBlower(); } catch { }
+            try { await OffRotatorAsync(); } catch { }
+
+            StopScale();
+            StopCountdown();
+
+            if (_ac != null)
+            {
+                _ac.StopAIPolling();
+                _ac.StopDIPolling();
+            }
+
+            Dispatcher.BeginInvoke(() =>
+            {
+                ImageDialogHost.IsOpen = false;
+                LoadingOverlay.Visibility = Visibility.Collapsed;
+            });
         }
         #endregion
 
@@ -294,6 +393,16 @@ namespace HumanDetection
                 //await TurnOnRotatorAsync();
             }
 
+            // AI-00 analog port check — turns Sensor Lidar indicator green when working
+            bool aiPortOk = await CheckAIPortAsync();
+            if (_isPageUnloaded) return;
+
+            SetSensorIndicator(aiPortOk);
+            if (!aiPortOk)
+            {
+                ProgressTxt.Text = "AI-00 height sensor not reachable!";
+            }
+
             bool cameraOk = await RunDeviceCheck(CameraLoading, CameraCheck, CameraError, CheckCameraAsync);
             if (_isPageUnloaded) return;
 
@@ -312,7 +421,9 @@ namespace HumanDetection
             if (!apiOk)
             {
                 ProgressTxt.Text = "OCR service failed to start!";
-                return;
+                // Do NOT return here — if we bail out, LoadingOverlay below never
+                // collapses and the full-screen overlay blocks all navigation,
+                // making the app appear frozen on the home screen.
             }
 
             await Task.Delay(500);
@@ -465,6 +576,44 @@ namespace HumanDetection
                     return false;
                 }
             });
+        }
+
+        /// <summary>
+        /// Checks the Moxa AI-00 analog input port status. When a valid raw value is
+        /// received, the port is reachable/working and the sensor indicator turns green.
+        /// </summary>
+        private async Task<bool> CheckAIPortAsync()
+        {
+            try
+            {
+                if (_ac == null)
+                    return false;
+
+                // Trigger a read on AI-00 (register 512 / 0x0200 on the E1242-T)
+                int? raw = await _ac.ReadAIAsync(HeightAIChannel);
+
+                if (raw.HasValue)
+                {
+                    Console.WriteLine($"AI-00 port check OK — raw value: {raw.Value}");
+                    return true;
+                }
+
+                Console.WriteLine("AI-00 port check FAILED — no valid register response.");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("AI-00 port check error: " + ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Turns the Sensor Lidar indicator green (ON) once the AI-00 port is verified.
+        /// </summary>
+        private void SetSensorIndicator(bool isOn)
+        {
+            Dispatcher.Invoke(() => SetIndicator(SensorIndicator, isOn));
         }
         #endregion
 
@@ -682,6 +831,10 @@ namespace HumanDetection
         public async Task StartPalletDetectionProcAsync()
         {
 
+            // Start the total process timer and reset stage timings
+            _processStopwatch.Restart();
+            _captureMs = 0; _aiMs = 0; _humanMs = 0; _ocrMs = 0; _rotationMs = 0;
+
             Dispatcher.Invoke(() =>
             {
                 EntryTimeTxt.Text = DateTime.Now.ToString("HH:mm:ss");
@@ -726,19 +879,37 @@ namespace HumanDetection
         public async Task StopPalletDetectionProc()
         {
             //await StopBuzzer();
+            _processStopwatch.Stop();
+
+            string captureStr = FormatMs(_captureMs);
+            string humanStr = FormatMs(_humanMs);
+            string ocrStr = FormatMs(_ocrMs);
+            string totalStr = FormatMs(_processStopwatch.Elapsed.TotalMilliseconds);
+            string exposureStr = $"{(int)_exposureTimeUs} us";
+
             await OffBlower();
             await OffRotatorAsync();
 
-            Dispatcher.Invoke(async () =>
+            Dispatcher.BeginInvoke(() =>
             {
                 PictureDialog.Visibility = Visibility.Collapsed;
                 ResultDialoag.Visibility = Visibility.Collapsed;
                 SucessDialog.Visibility = Visibility.Visible;
+                SucessDialog.SetTiming(captureStr, exposureStr, humanStr, ocrStr, totalStr);
                 ImageDialogHost.IsOpen = true;
 
 
                 ExitTimeTxt.Text = DateTime.Now.ToString("HH:mm:ss");
             });
+        }
+
+        /// <summary>
+        /// Formats a duration in milliseconds as seconds with two decimals (e.g. "1.25 s").
+        /// </summary>
+        private static string FormatMs(double ms)
+        {
+            if (ms <= 0) return "--";
+            return $"{ms / 1000.0:0.00} s";
         }
 
         /// <summary>
@@ -954,11 +1125,14 @@ namespace HumanDetection
 
                     //Task 1 start — Capture front + back images IN PARALLEL
                     task1Start = DateTime.Now.ToString("HH:mm:ss.fff");
+                    var captureTimer = System.Diagnostics.Stopwatch.StartNew();
                     var frontCaptureTask = CaptureSingleFrameFromAllCamerasAsync(cameraList, false);
                     StartCountdown();
                     var backCaptureTask = CaptureSingleFrameFromAllCamerasAsync(cameraList, true);
                     
                     await Task.WhenAll(frontCaptureTask, backCaptureTask);
+                    captureTimer.Stop();
+                    _captureMs = captureTimer.Elapsed.TotalMilliseconds;
                     task1End = DateTime.Now.ToString("HH:mm:ss.fff");
                     //Task 1 end
 
@@ -971,10 +1145,14 @@ namespace HumanDetection
 
                     //Task 2 start — Run front AI (full) and back AI (only needed for OCR bytes) IN PARALLEL
                     task2Start = DateTime.Now.ToString("HH:mm:ss.fff");
+                    var aiTimer = System.Diagnostics.Stopwatch.StartNew();
+                    _humanMs = 0;
                     var aiTask = Task.Run(() => RunAllAIDetectionsAsync(imagesWithCamPosition));
                     var aiTaskBack = Task.Run(() => RunAllAIDetectionsAsync(backSideImages));
 
                     await Task.WhenAll(aiTask, aiTaskBack);
+                    aiTimer.Stop();
+                    _aiMs = aiTimer.Elapsed.TotalMilliseconds;
                     task2End = DateTime.Now.ToString("HH:mm:ss.fff");
                     //Task 2 end
                     StopCountdown();
@@ -994,6 +1172,7 @@ namespace HumanDetection
                     var cropByteListBack = aiResultBack.OCRBytes;
                     List<OcrImageResult> ocrResultList = new List<OcrImageResult>();
 
+                    var ocrTimer = System.Diagnostics.Stopwatch.StartNew();
                     if (cropByteList != null && cropByteList.Any())
                     {
                         var api = await RunOcrAsync(cropByteList);
@@ -1018,6 +1197,8 @@ namespace HumanDetection
                             ocrResultList.AddRange(valid);
                         }
                     }
+                    ocrTimer.Stop();
+                    _ocrMs = ocrTimer.Elapsed.TotalMilliseconds;
 
                     _messageQueue.Enqueue("Please wait Calculate result..");
                   
@@ -1450,6 +1631,7 @@ namespace HumanDetection
                             using var camera = new Basler.Pylon.Camera(camInfo);
                             camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
                             camera.Open();
+                            ApplyExposure(camera);
 
                             FlashCamera(TopFlashEllipse);
                             PlayShutterSound();
@@ -1483,6 +1665,7 @@ namespace HumanDetection
                             using var camera = new Basler.Pylon.Camera(camInfo);
                             camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
                             camera.Open();
+                            ApplyExposure(camera);
 
                             FlashCamera(TopFlashEllipse);
                             PlayShutterSound();
@@ -1517,6 +1700,7 @@ namespace HumanDetection
                             using var camera = new Basler.Pylon.Camera(camInfo);
                             camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
                             camera.Open();
+                            ApplyExposure(camera);
 
                             FlashCamera(TopFlashEllipse);
                             PlayShutterSound();
@@ -1551,6 +1735,7 @@ namespace HumanDetection
                             using var camera = new Basler.Pylon.Camera(camInfo);
                             camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
                             camera.Open();
+                            ApplyExposure(camera);
 
                             FlashCamera(TopFlashEllipse);
                             PlayShutterSound();
@@ -1596,6 +1781,7 @@ namespace HumanDetection
                 // Wait until forklift leaves before starting rotation
                 _messageQueue.Enqueue("Wait for Forkleft go away");
                 ReportProgress("Wait for Forkleft go away");
+                var rotationTimer = System.Diagnostics.Stopwatch.StartNew();
                 while (_IsForkleffound)
                 {
                     await StartBuzzer();
@@ -1606,8 +1792,10 @@ namespace HumanDetection
 
                 //int sect = GetRotatorDurationInMilliseconds(_lastWeight);
                int timeSpan= GetRotationMotorTimeMilliseconds(90, _lastWeight);
-           
+          
                 await StartRoutatorWithDuration(timeSpan);
+                rotationTimer.Stop();
+                _rotationMs += rotationTimer.Elapsed.TotalMilliseconds;
               
 
                 // Run the secondary camera loop routines in parallel
@@ -1630,6 +1818,7 @@ namespace HumanDetection
                                 using var camera = new Basler.Pylon.Camera(camInfo);
                                 camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
                                 camera.Open();
+                                ApplyExposure(camera);
 
                                 FlashCamera(FrontFlashEllipse);
                                 PlayShutterSound();
@@ -1703,6 +1892,7 @@ namespace HumanDetection
 
                         camera.CameraOpened += Basler.Pylon.Configuration.AcquireSingleFrame;
                         camera.Open();
+                        ApplyExposure(camera);
 
                         // 🔦 Flash + sound (adjust if needed)
                         FlashCamera(FrontFlashEllipse);
@@ -1848,12 +2038,15 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
 
 
                 var boxTask = RunBoxCountingModelAsync(image, side);
+                var humanTimer = System.Diagnostics.Stopwatch.StartNew();
                 var humanTask = Task.Run(() => RunHumanDetectionModel(image));
 
                 await Task.WhenAll(boxTask);
 
                 var boxResult = boxTask.Result;
                 var humanResult = humanTask.Result;
+                humanTimer.Stop();
+                _humanMs += humanTimer.Elapsed.TotalMilliseconds;
 
                 // ✅ Collect average score
                 if (boxResult.AverageScore > 0)
@@ -2680,6 +2873,7 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             HeightBox.Background = System.Windows.Media.Brushes.Transparent;
             NoBoxTxt.Text = "0";
             PalletHeightTxt.Text = "0";
+            SensorHeightTxt.Text = "Sensor: --";
             HumanDetectedTxt.Text = "";
             BarcodeSKUText.Text = "";
             DateExpireTxt.Text = "";
@@ -2746,6 +2940,7 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             HeightBox.Background = System.Windows.Media.Brushes.Transparent;
             NoBoxTxt.Text = "0";
             PalletHeightTxt.Text = "0";
+            SensorHeightTxt.Text = "Sensor: --";
             HumanDetectedTxt.Text = "";
             BarcodeSKUText.Text = "";
             DateExpireTxt.Text = "";
@@ -2920,7 +3115,7 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             {
                 _IsForkleffound = true;
                 _messageQueue.Enqueue("Fork Left Arrived");
-                Dispatcher.Invoke(() =>
+                Dispatcher.BeginInvoke(() =>
                 {
                     ForkliftImage.Visibility = Visibility.Visible;
                     ForkliftImage.Opacity = 1;
@@ -2946,13 +3141,36 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             {
                 _messageQueue.Enqueue("Fork go away");
                 _IsForkleffound = false;
-                Dispatcher.Invoke(() =>
+                Dispatcher.BeginInvoke(() =>
                 {
                     ForkliftImage.Opacity = 0;
                     ForkliftImage.Visibility = Visibility.Collapsed;
                     ForkliftFlashEllipse.Opacity = 0;
                 });
             }
+        }
+
+        /// <summary>
+        /// Handles AI (analog input) value changes. Reads the AI-00 raw value, converts it
+        /// to a 0–10 V signal, and computes the actual pallet height by subtracting the
+        /// baseline (empty) offset of 2.42 m. Updates both the Height card value and the
+        /// live sensor display.
+        /// </summary>
+        private void OnAIChanged(object? sender, AIChangedEventArgs e)
+        {
+            if (e.Channel != HeightAIChannel) return;
+
+            // Raw 16-bit value (0–65535) → 0–10 V signal (matches the Python script)
+            double mA = (e.RawValue / 65535.0) * 10.0;
+
+            // Actual pallet height = sensor reading minus the 2.42 m empty-baseline offset
+            double exactHeight = Math.Round(mA - HeightSensorOffsetMeters, 2);
+
+            Dispatcher.BeginInvoke(() =>
+            {
+                PalletHeightTxt.Text = $"{Math.Abs(exactHeight)} m";
+                SensorHeightTxt.Text = $"Sensor: {mA:F2} V | Raw: {e.RawValue}";
+            });
         }
         #endregion
 

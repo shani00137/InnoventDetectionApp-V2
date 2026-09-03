@@ -11,6 +11,29 @@
         Icon="/Images/innovent.ico" 
         Title="MainWindow" Height="450" Width="800">
 
+    <materialDesign:DialogHost x:Name="NavConfirmDialogHost">
+        <materialDesign:DialogHost.DialogContent>
+            <Border CornerRadius="8" Background="#161B22" BorderBrush="#30363D" BorderThickness="1" Width="420" Padding="20">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                        <materialIcons:MaterialIcon Kind="AlertCircleOutline" Width="26" Height="26" Foreground="#FBBF24"/>
+                        <TextBlock Text="Switch Screen" FontSize="18" FontWeight="Bold" Foreground="#FFFFFF" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock Text="A process is currently running on the Home screen. If you switch now, all running processes will be stopped."
+                               TextWrapping="Wrap" Foreground="#C9D1D9" FontSize="14" Margin="0,0,0,16"/>
+                    <TextBlock Text="Are you sure you want to switch screen?"
+                               TextWrapping="Wrap" Foreground="#8B949E" FontSize="13" Margin="0,0,0,20"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="No, stay" Width="100" Height="34" Margin="0,0,10,0"
+                                Background="#21262D" Foreground="#C9D1D9" BorderBrush="#30363D" BorderThickness="1"
+                                Click="NavConfirmNo_Click"/>
+                        <Button Content="Yes, stop &amp; switch" Width="150" Height="34"
+                                Background="#238636" Foreground="#FFFFFF" BorderThickness="0"
+                                Click="NavConfirmYes_Click"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </materialDesign:DialogHost.DialogContent>
 
         <Grid  Margin="0" Background="Black" MouseDown="TitleBar_MouseDown">
 
@@ -97,5 +120,6 @@
             <Frame x:Name="MainFrame" NavigationUIVisibility="Hidden" />
         </Grid>
         </Grid>
-   
+    </materialDesign:DialogHost>
+
 </Window>

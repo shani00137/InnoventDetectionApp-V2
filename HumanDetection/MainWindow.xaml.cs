@@ -29,6 +29,10 @@ namespace HumanDetection
 
         System.Windows.Media.Color NavForegroundColor = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#787AFF");
         System.Windows.Media.Color NavBackgroundColor = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#111134");
+
+        private Uri _pendingNavUri;
+        private Action _pendingNavAction;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -40,6 +44,66 @@ namespace HumanDetection
 
             //  LoadCamera();
 
+        }
+
+        /// <summary>
+        /// Checks the current (Home) page for a running process. If one is running,
+        /// opens a confirmation dialog; navigation only happens after the operator
+        /// confirms. Returns true when it is safe/OK to navigate now.
+        /// </summary>
+        private bool TryNavigate(Uri uri, Action navigateAction)
+        {
+            // Only Home runs background processes that need stopping.
+            if (MainFrame.Content is Home home && home.IsProcessRunning)
+            {
+                _pendingNavUri = uri;
+                _pendingNavAction = navigateAction;
+                NavConfirmDialogHost.IsOpen = true;
+                return false;
+            }
+
+            navigateAction();
+            return true;
+        }
+
+        private void NavConfirmYes_Click(object sender, RoutedEventArgs e)
+        {
+            NavConfirmDialogHost.IsOpen = false;
+
+            var navigateAction = _pendingNavAction;
+            if (navigateAction == null) return;
+
+            // Stop the pending action reference, then (if leaving Home) stop processes.
+            _pendingNavAction = null;
+            _pendingNavUri = null;
+
+            if (MainFrame.Content is Home home)
+            {
+                _ = StopAndNavigateAsync(home, navigateAction);
+            }
+            else
+            {
+                navigateAction();
+            }
+        }
+
+        private void NavConfirmNo_Click(object sender, RoutedEventArgs e)
+        {
+            NavConfirmDialogHost.IsOpen = false;
+            _pendingNavUri = null;
+            _pendingNavAction = null;
+        }
+
+        private async Task StopAndNavigateAsync(Home home, Action navigateAction)
+        {
+            try
+            {
+                await home.StopAllProcessesAsync();
+            }
+            catch
+            {
+            }
+            navigateAction();
         }
 
         #region Window UI Controls
@@ -94,53 +158,73 @@ namespace HumanDetection
 
         private void NavToHomePage_Click(object sender, RoutedEventArgs e)
         {
-            var homePage = new Uri("UserControls/Home/Home.xaml", UriKind.Relative);
-       
-            MainFrame.Navigate(homePage);
-            ResetNavButtons();
-            HomeNavBtn.Foreground = new SolidColorBrush(NavForegroundColor);
-            HomeNavBtn.Background = new SolidColorBrush(NavBackgroundColor);
+            TryNavigate(
+                new Uri("UserControls/Home/Home.xaml", UriKind.Relative),
+                () =>
+                {
+                    MainFrame.Navigate(new Uri("UserControls/Home/Home.xaml", UriKind.Relative));
+                    ResetNavButtons();
+                    HomeNavBtn.Foreground = new SolidColorBrush(NavForegroundColor);
+                    HomeNavBtn.Background = new SolidColorBrush(NavBackgroundColor);
+                });
         }
         private void NavToSettingPage_Click(object sender, RoutedEventArgs e)
         {
-            var homePage = new Uri("UserControls/Settings/Setting.xaml", UriKind.Relative);
-       
-            MainFrame.Navigate(homePage);
-            ResetNavButtons();
-            SettingNavBtn.Foreground = new SolidColorBrush(NavForegroundColor);
-            SettingNavBtn.Background = new SolidColorBrush(NavBackgroundColor);
+            TryNavigate(
+                new Uri("UserControls/Settings/Setting.xaml", UriKind.Relative),
+                () =>
+                {
+                    MainFrame.Navigate(new Uri("UserControls/Settings/Setting.xaml", UriKind.Relative));
+                    ResetNavButtons();
+                    SettingNavBtn.Foreground = new SolidColorBrush(NavForegroundColor);
+                    SettingNavBtn.Background = new SolidColorBrush(NavBackgroundColor);
+                });
         }
         private void NavToReportsPage_Click(object sender, RoutedEventArgs e)
         {
-            var homePage = new Uri("UserControls/Reports/ReportPage.xaml", UriKind.Relative);
-       
-            MainFrame.Navigate(homePage);
-            ResetNavButtons();
-            ReportsNavBtn.Foreground = new SolidColorBrush(NavForegroundColor);
-            ReportsNavBtn.Background = new SolidColorBrush(NavBackgroundColor);
+            TryNavigate(
+                new Uri("UserControls/Reports/ReportPage.xaml", UriKind.Relative),
+                () =>
+                {
+                    MainFrame.Navigate(new Uri("UserControls/Reports/ReportPage.xaml", UriKind.Relative));
+                    ResetNavButtons();
+                    ReportsNavBtn.Foreground = new SolidColorBrush(NavForegroundColor);
+                    ReportsNavBtn.Background = new SolidColorBrush(NavBackgroundColor);
+                });
         }
         private void NavToLivePreviewPage_Click(object sender, RoutedEventArgs e)
         {
-            var homePage = new Uri("UserControls/LivePreview/LivePreview.xaml", UriKind.Relative);
-          
-            MainFrame.Navigate(homePage);
-            ResetNavButtons();
+            TryNavigate(
+                new Uri("UserControls/LivePreview/LivePreview.xaml", UriKind.Relative),
+                () =>
+                {
+                    MainFrame.Navigate(new Uri("UserControls/LivePreview/LivePreview.xaml", UriKind.Relative));
+                    ResetNavButtons();
+                });
         }
         private void NavToTestingPage_Click(object sender, RoutedEventArgs e)
         {
-            var page = new Uri("UserControls/Testing/Testing.xaml", UriKind.Relative);
-            MainFrame.Navigate(page);
-            ResetNavButtons();
-            TestingNavBtn.Foreground = new SolidColorBrush(NavForegroundColor);
-            TestingNavBtn.Background = new SolidColorBrush(NavBackgroundColor);
+            TryNavigate(
+                new Uri("UserControls/Testing/Testing.xaml", UriKind.Relative),
+                () =>
+                {
+                    MainFrame.Navigate(new Uri("UserControls/Testing/Testing.xaml", UriKind.Relative));
+                    ResetNavButtons();
+                    TestingNavBtn.Foreground = new SolidColorBrush(NavForegroundColor);
+                    TestingNavBtn.Background = new SolidColorBrush(NavBackgroundColor);
+                });
         }
         private void NavToMoxaStatusPage_Click(object sender, RoutedEventArgs e)
         {
-            var page = new Uri("UserControls/MoxaStatus/MoxaStatus.xaml", UriKind.Relative);
-            MainFrame.Navigate(page);
-            ResetNavButtons();
-            MoxaStatusNavBtn.Foreground = new SolidColorBrush(NavForegroundColor);
-            MoxaStatusNavBtn.Background = new SolidColorBrush(NavBackgroundColor);
+            TryNavigate(
+                new Uri("UserControls/MoxaStatus/MoxaStatus.xaml", UriKind.Relative),
+                () =>
+                {
+                    MainFrame.Navigate(new Uri("UserControls/MoxaStatus/MoxaStatus.xaml", UriKind.Relative));
+                    ResetNavButtons();
+                    MoxaStatusNavBtn.Foreground = new SolidColorBrush(NavForegroundColor);
+                    MoxaStatusNavBtn.Background = new SolidColorBrush(NavBackgroundColor);
+                });
         }
 
         #endregion

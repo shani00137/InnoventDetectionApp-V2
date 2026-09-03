@@ -53,27 +53,50 @@
                            Margin="0,5,0,0"/>
             </StackPanel>
 
-            <!-- Timer Display -->
-            <!--<Border Grid.Row="2"
+            <!-- Timing Breakdown -->
+            <Border Grid.Row="2"
                     CornerRadius="8"
-                    Background="#2A2A2A"
-                    BorderBrush="#444"
+                    Background="#222"
+                    BorderBrush="#333"
                     BorderThickness="1"
-                    Padding="20,10"
-                    HorizontalAlignment="Center"
-                    Margin="0,10,0,15">
-                <StackPanel Orientation="Horizontal">
-                    <materialIcons:MaterialIcon Kind="TimerOutline"
-                                                Width="24" Height="24"
-                                                Foreground="#888"
-                                                VerticalAlignment="Center"/>
-                    <TextBlock x:Name="TimerText"
-                               Text="00:00"
-                               FontSize="28" FontWeight="Bold"
-                               Foreground="White"
-                               Margin="10,0,0,0"/>
+                    Padding="18,12"
+                    Margin="0,8,0,12">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <materialIcons:MaterialIcon Kind="TimerOutline" Width="18" Height="18" Foreground="#888"/>
+                        <TextBlock Text="Process Timing" FontSize="14" FontWeight="Bold" Foreground="#C9D1D9" Margin="8,0,0,0"/>
+                    </StackPanel>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Picture Capture" Foreground="#8B949E" FontSize="13"/>
+                        <TextBlock x:Name="TimingCapture" Grid.Row="0" Grid.Column="1" Text="--" Foreground="#FFFFFF" FontSize="13" FontWeight="SemiBold"/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Exposure Time" Foreground="#8B949E" FontSize="13"/>
+                        <TextBlock x:Name="TimingExposure" Grid.Row="1" Grid.Column="1" Text="--" Foreground="#00E108" FontSize="13" FontWeight="SemiBold"/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Human Detection" Foreground="#8B949E" FontSize="13"/>
+                        <TextBlock x:Name="TimingHuman" Grid.Row="2" Grid.Column="1" Text="--" Foreground="#FFFFFF" FontSize="13" FontWeight="SemiBold"/>
+
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="OCR" Foreground="#8B949E" FontSize="13"/>
+                        <TextBlock x:Name="TimingOcr" Grid.Row="3" Grid.Column="1" Text="--" Foreground="#FFFFFF" FontSize="13" FontWeight="SemiBold"/>
+
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Total Process" Foreground="#FBBF24" FontSize="13" FontWeight="Bold" Margin="0,6,0,0"/>
+                        <TextBlock x:Name="TimingTotal" Grid.Row="4" Grid.Column="1" Text="--" VerticalAlignment="Center" Foreground="#FFFFFF" FontSize="13" FontWeight="SemiBold" Margin="0,6,0,0"/>
+                    </Grid>
                 </StackPanel>
-            </Border>-->
+            </Border>
 
             <!-- Status Bar -->
             <Border Grid.Row="3"

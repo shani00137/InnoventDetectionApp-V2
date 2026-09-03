@@ -156,12 +156,17 @@
                         <DataGridTextColumn Header="Task2 Time" Binding="{Binding Task2TimeRange}" Width="180" />
                         <DataGridTextColumn Header="Entry" Binding="{Binding EntryTime}" Width="70" />
                         <DataGridTextColumn Header="Exit" Binding="{Binding ExitTime}" Width="70" />
-                        <DataGridTemplateColumn Header="Action" Width="80">
+                        <DataGridTemplateColumn Header="Action" Width="150">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <Button Content="Delete" Background="#441514" Foreground="#FF3B30"
-                                            BorderThickness="0" Padding="8,3" FontSize="11"
-                                            Click="DeleteBtn_Click"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button Content="Open Folder" Background="#0D2A4B" Foreground="White"
+                                                BorderThickness="0" Padding="8,3" FontSize="11" Margin="0,0,4,0"
+                                                Click="OpenFolderBtn_Click"/>
+                                        <Button Content="Delete" Background="#441514" Foreground="#FF3B30"
+                                                BorderThickness="0" Padding="8,3" FontSize="11"
+                                                Click="DeleteBtn_Click"/>
+                                    </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>

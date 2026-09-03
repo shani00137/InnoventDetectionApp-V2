@@ -101,6 +101,33 @@ namespace SQLite
                 cmd.ExecuteNonQuery();
             }
 
+            // --- Migration: ensure newer columns exist on pre-existing tables.
+            // CREATE TABLE IF NOT EXISTS does NOT add columns to an existing table,
+            // so existing databases may be missing columns added later. Each missing
+            // column is added with ALTER TABLE if it is not already present.
+            using (var migCmd = con.CreateCommand())
+            {
+                string[] columnDefs =
+                {
+                    "Task1StartTime TEXT",
+                    "Task1EndTime TEXT",
+                    "Task2StartTime TEXT",
+                    "Task2EndTime TEXT"
+                };
+
+                foreach (var def in columnDefs)
+                {
+                    string colName = def.Split(' ')[0];
+                    migCmd.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('DetectionResults') WHERE name = '{colName}'";
+                    long exists = (long)migCmd.ExecuteScalar();
+                    if (exists == 0)
+                    {
+                        migCmd.CommandText = $"ALTER TABLE DetectionResults ADD COLUMN {def}";
+                        migCmd.ExecuteNonQuery();
+                    }
+                }
+            }
+
         }
 
         private static string GetConnectionString()

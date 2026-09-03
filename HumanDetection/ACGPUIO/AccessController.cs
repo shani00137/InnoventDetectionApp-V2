@@ -8,6 +8,28 @@ using System.Threading.Tasks;
 namespace ACGPUIO
 {
     // -----------------------------------------------------------------------
+    // Event args for AI (analog input) value changes
+    // -----------------------------------------------------------------------
+    public class AIChangedEventArgs : EventArgs
+    {
+        /// <summary>Which AI channel was read (0-based).</summary>
+        public int Channel { get; }
+
+        /// <summary>Raw 16-bit value (0–65535) read from the register.</summary>
+        public int RawValue { get; }
+
+        /// <summary>When the reading was taken.</summary>
+        public DateTime Timestamp { get; }
+
+        public AIChangedEventArgs(int channel, int rawValue)
+        {
+            Channel = channel;
+            RawValue = rawValue;
+            Timestamp = DateTime.Now;
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // Event args for DI sensor state changes
     // -----------------------------------------------------------------------
     public class DIChangedEventArgs : EventArgs
@@ -37,12 +59,23 @@ namespace ACGPUIO
         // Prevents concurrent DO command collisions on the Modbus socket
         private readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
 
+        // Single shared, persistent Modbus TCP connection used by all polling
+        // loops (DI + AI) so they never fight over competing sockets. Serialized
+        // via _lock above.
+        private TcpClient? _sharedClient;
+        private NetworkStream? _sharedStream;
+        private readonly object _connLock = new object();
+
         // Tracks the background "auto-off" task started by StartRotatorAsync
         private CancellationTokenSource _rotatorAutoOffCts;
 
         // DI polling
         private CancellationTokenSource _diPollCts;
         private bool _diPollRunning = false;
+
+        // AI polling
+        private CancellationTokenSource _aiPollCts;
+        private bool _aiPollRunning = false;
 
         // Optional logging hook — wire this to your logger (Console, Serilog, etc.)
         public Action<string> Log { get; set; } = _ => { };
@@ -62,6 +95,137 @@ namespace ACGPUIO
         public AccessController(string moxaIP = "192.168.1.135")
         {
             _moxaIP = moxaIP;
+        }
+
+        // -----------------------------------------------------------------
+        // Shared Modbus TCP connection — lazily created, reused, auto-repaired.
+        // Callers must hold _lock before using _sharedStream.
+        // -----------------------------------------------------------------
+        private NetworkStream GetSharedStream()
+        {
+            lock (_connLock)
+            {
+                if (_sharedClient == null || !_sharedClient.Connected || _sharedStream == null)
+                {
+                    _sharedClient?.Dispose();
+                    _sharedStream?.Dispose();
+
+                    _sharedClient = new TcpClient();
+                    _sharedClient.SendTimeout = 3000;
+                    _sharedClient.ReceiveTimeout = 3000;
+
+                    // Use ConnectAsync with a timeout so an unreachable Moxa
+                    // can't block background polling threads for a long time.
+                    if (!_sharedClient.ConnectAsync(_moxaIP, ModbusPort).Wait(1500))
+                    {
+                        _sharedClient.Dispose();
+                        _sharedClient = null;
+                        _sharedStream = null;
+                        throw new TimeoutException("Modbus connection timed out.");
+                    }
+
+                    _sharedClient.NoDelay = true;
+                    _sharedStream = _sharedClient.GetStream();
+                }
+                return _sharedStream;
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // Reads one holding/input register over the shared connection.
+        // Returns the raw value or null.
+        // -----------------------------------------------------------------
+        private async Task<int?> ReadRegisterSharedAsync(byte function, int address)
+        {
+            await _lock.WaitAsync();
+            try
+            {
+                var stream = GetSharedStream();
+
+                byte[] request = new byte[12];
+                request[0] = 0x00; request[1] = 0x04; // Transaction ID
+                request[2] = 0x00; request[3] = 0x00; // Protocol ID
+                request[4] = 0x00; request[5] = 0x06; // Length
+                request[6] = 0x01;                      // Unit ID
+                request[7] = function;                  // FC03 / FC04
+                request[8] = (byte)((address >> 8) & 0xFF);
+                request[9] = (byte)(address & 0xFF);
+                request[10] = 0x00; request[11] = 0x01; // Read 1 register
+
+                await stream.WriteAsync(request, 0, request.Length);
+
+                byte[] response = new byte[11];
+                int bytesRead = await stream.ReadAsync(response, 0, response.Length);
+
+                if (bytesRead >= 11 && response[7] == function && response[8] == 0x02)
+                {
+                    return (response[9] << 8) | response[10];
+                }
+                return null;
+            }
+            catch
+            {
+                // Connection may have dropped — close so GetSharedStream repairs it next time
+                lock (_connLock)
+                {
+                    _sharedClient?.Dispose();
+                    _sharedClient = null;
+                    _sharedStream = null;
+                }
+                return null;
+            }
+            finally
+            {
+                _lock.Release();
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // Reads one DI (discrete input) over the shared connection.
+        // Returns true/false or null on failure.
+        // -----------------------------------------------------------------
+        private async Task<bool?> ReadDISharedAsync(int channel)
+        {
+            await _lock.WaitAsync();
+            try
+            {
+                var stream = GetSharedStream();
+
+                byte[] request = new byte[12];
+                request[0] = 0x00; request[1] = 0x02; // Transaction ID
+                request[2] = 0x00; request[3] = 0x00; // Protocol ID
+                request[4] = 0x00; request[5] = 0x06; // Length
+                request[6] = 0x01;                      // Unit ID
+                request[7] = 0x02;                      // FC02: Read Discrete Inputs
+                request[8] = (byte)((channel >> 8) & 0xFF);
+                request[9] = (byte)(channel & 0xFF);
+                request[10] = 0x00; request[11] = 0x01; // Read 1 coil
+
+                await stream.WriteAsync(request, 0, request.Length);
+
+                byte[] response = new byte[10];
+                int bytesRead = await stream.ReadAsync(response, 0, response.Length);
+
+                if (bytesRead >= 10 && response[7] == 0x02)
+                {
+                    return (response[9] & 0x01) == 1;
+                }
+                return null;
+            }
+            catch
+            {
+                lock (_connLock)
+                {
+                    _sharedClient?.Dispose();
+                    _sharedClient = null;
+                    _sharedStream = null;
+                }
+                return null;
+            }
+            finally
+            {
+                _lock.Release();
+            }
         }
 
         // -----------------------------------------------------------------
@@ -284,6 +448,20 @@ namespace ACGPUIO
         }
 
         // -----------------------------------------------------------------
+        // FAST path — reads one AI channel directly at the single verified
+        // register (FC04 @ 0x0200 + channel) over the shared connection.
+        // Used by StartAIPollingAsync so the analog loop stays light and does
+        // not starve the DI polling loop that runs concurrently on the same
+        // connection (the 6-way probe in ReadAIAsync is only done once at
+        // startup in the AI-00 port check).
+        // -----------------------------------------------------------------
+        public async Task<int?> ReadAIRawSharedAsync(int channel)
+        {
+            int address = 0x0200 + channel;
+            return await ReadRegisterSharedAsync(0x04, address);
+        }
+
+        // -----------------------------------------------------------------
         // NEW: Start polling a DI channel — fires DIChanged event when the
         // sensor state changes (OFF→ON or ON→OFF).
         //
@@ -305,12 +483,15 @@ namespace ACGPUIO
         // sensors on different DI channels, call StartDIPollingAsync() once
         // per channel — each call runs its own independent polling loop.
         // -----------------------------------------------------------------
-        public async Task StartDIPollingAsync(int channel = 0)
+        // NOTE: This method returns immediately — it does NOT block until the
+        // polling loop stops. The loop runs in the background. Callers can use
+        // `await` to get back right away, or fire-and-forget.
+        public Task StartDIPollingAsync(int channel = 0)
         {
             if (_diPollRunning)
             {
                 Log("[AccessController] DI polling already running — call StopDIPolling() first.");
-                return;
+                return Task.CompletedTask;
             }
 
             _diPollCts = new CancellationTokenSource();
@@ -320,13 +501,13 @@ namespace ACGPUIO
 
             bool? lastState = null;
 
-            await Task.Run(async () =>
+            Task.Run(async () =>
             {
                 while (!_diPollCts.Token.IsCancellationRequested)
                 {
                     try
                     {
-                        bool? current = await ReadDIAsync(channel);
+                        bool? current = await ReadDISharedAsync(channel);
 
                         if (current.HasValue)
                         {
@@ -362,6 +543,8 @@ namespace ACGPUIO
                 Log($"[AccessController] DI polling stopped on channel {channel}.");
 
             }, _diPollCts.Token);
+
+            return Task.CompletedTask;
         }
 
         // -----------------------------------------------------------------
@@ -372,6 +555,86 @@ namespace ACGPUIO
             _diPollCts?.Cancel();
             _diPollRunning = false;
             Log("[AccessController] DI polling stop requested.");
+        }
+
+        // -----------------------------------------------------------------------
+        // 🔔 EVENT — fires whenever an AI (analog input) channel is read
+        // Wire this up in Home.xaml.cs:
+        //     _ac.AIChanged += OnAIChanged;
+        // -----------------------------------------------------------------------
+        public event EventHandler<AIChangedEventArgs> AIChanged;
+
+        // How often to poll the AI registers (milliseconds).
+        public int AIPollingIntervalMs { get; set; } = 500;
+
+        // -----------------------------------------------------------------
+        // Start polling an AI channel — fires AIChanged event on every read.
+        // Usage in Home.xaml.cs:
+        //
+        //   _ac.AIChanged += OnAIChanged;
+        //   await _ac.StartAIPollingAsync(channel: 0);
+        //
+        // Call StopAIPolling() when you no longer need it.
+        // -----------------------------------------------------------------
+        // NOTE: This method returns immediately — it does NOT block until the
+        // polling loop stops. The loop runs in the background. Callers can use
+        // `await` to get back right away, or fire-and-forget.
+        public Task StartAIPollingAsync(int channel = 0)
+        {
+            if (_aiPollRunning)
+            {
+                Log("[AccessController] AI polling already running — call StopAIPolling() first.");
+                return Task.CompletedTask;
+            }
+
+            _aiPollCts = new CancellationTokenSource();
+            _aiPollRunning = true;
+
+            Log($"[AccessController] AI polling started on channel {channel} every {AIPollingIntervalMs}ms.");
+
+            Task.Run(async () =>
+            {
+                while (!_aiPollCts.Token.IsCancellationRequested)
+                {
+                    try
+                    {
+                        int? value = await ReadAIRawSharedAsync(channel);
+                        if (value.HasValue)
+                        {
+                            AIChanged?.Invoke(this, new AIChangedEventArgs(channel, value.Value));
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Log($"[AccessController] AI polling error: {ex.Message}");
+                    }
+
+                    try
+                    {
+                        await Task.Delay(AIPollingIntervalMs, _aiPollCts.Token);
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        break;
+                    }
+                }
+
+                _aiPollRunning = false;
+                Log($"[AccessController] AI polling stopped on channel {channel}.");
+
+            }, _aiPollCts.Token);
+
+            return Task.CompletedTask;
+        }
+
+        // -----------------------------------------------------------------
+        // Stop AI polling
+        // -----------------------------------------------------------------
+        public void StopAIPolling()
+        {
+            _aiPollCts?.Cancel();
+            _aiPollRunning = false;
+            Log("[AccessController] AI polling stop requested.");
         }
 
         // -----------------------------------------------------------------
@@ -531,10 +794,19 @@ namespace ACGPUIO
         public void Dispose()
         {
             StopDIPolling();
+            StopAIPolling();
             _diPollCts?.Dispose();
+            _aiPollCts?.Dispose();
             _rotatorAutoOffCts?.Cancel();
             _rotatorAutoOffCts?.Dispose();
             _lock?.Dispose();
+            lock (_connLock)
+            {
+                _sharedClient?.Dispose();
+                _sharedClient = null;
+                _sharedStream?.Dispose();
+                _sharedStream = null;
+            }
         }
     }
 }

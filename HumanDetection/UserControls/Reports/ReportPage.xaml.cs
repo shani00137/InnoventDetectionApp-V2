@@ -124,6 +124,30 @@ namespace UserControls.Reports
             }
         }
 
+        private void OpenFolderBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.DataContext is DetectionResultModel result)
+            {
+                string folder = result.ImagesPath;
+                if (string.IsNullOrWhiteSpace(folder))
+                {
+                    MessageBox.Show("No saved folder for this report.", "Open Folder",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                try
+                {
+                    System.Diagnostics.Process.Start("explorer.exe", folder);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Failed to open folder: {ex.Message}", "Error",
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+        }
+
         private void ReportsGrid_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
             if (ReportsGrid.SelectedItem is DetectionResultModel result)
