@@ -13,5 +13,7 @@ namespace SQLite
         public string DatabaseURL { get; set; }
         public string BackOfficeURL { get; set; }
         public int? RoutatorTimer { get; set; }
+        public string AuthToken { get; set; }
+        public string ApiKey { get; set; }
     }
 }

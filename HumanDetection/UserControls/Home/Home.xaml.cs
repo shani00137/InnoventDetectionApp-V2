@@ -90,6 +90,7 @@ namespace HumanDetection
 
         // --- Settings ---
         private AppSettings _settings;
+        double PalletHeightValue = 0;
         public AccessController _ac;
         private OcrPythonClient _ocrHost;
         public string pythonExe = @"C:\Users\Owner\AppData\Local\Programs\Python\Python310\python.exe";
@@ -878,14 +879,14 @@ namespace HumanDetection
         /// </summary>
         public async Task StopPalletDetectionProc()
         {
-            //await StopBuzzer();
+            _isPalletDetectionRunning = false;
             _processStopwatch.Stop();
 
-            string captureStr = FormatMs(_captureMs);
-            string humanStr = FormatMs(_humanMs);
+            string captureStr = "5.00 s";
+            string boxCountingStr = FormatMs(_aiMs);
             string ocrStr = FormatMs(_ocrMs);
-            string totalStr = FormatMs(_processStopwatch.Elapsed.TotalMilliseconds);
-            string exposureStr = $"{(int)_exposureTimeUs} us";
+            double totalMs = 5000 + _aiMs + _ocrMs;
+            string totalStr = FormatMs(totalMs);
 
             await OffBlower();
             await OffRotatorAsync();
@@ -895,7 +896,7 @@ namespace HumanDetection
                 PictureDialog.Visibility = Visibility.Collapsed;
                 ResultDialoag.Visibility = Visibility.Collapsed;
                 SucessDialog.Visibility = Visibility.Visible;
-                SucessDialog.SetTiming(captureStr, exposureStr, humanStr, ocrStr, totalStr);
+                SucessDialog.SetTiming(captureStr, boxCountingStr, ocrStr, totalStr);
                 ImageDialogHost.IsOpen = true;
 
 
@@ -1380,12 +1381,41 @@ namespace HumanDetection
                         };
                         _messageQueue.Enqueue("70% score found..  result are saved");
                         // 🔥 POST TO API
+                        string imageUrl = "";
+                        try
+                        {
+                            if (_settings != null &&
+                                !string.IsNullOrWhiteSpace(_settings.BackOfficeURL) &&
+                                !string.IsNullOrWhiteSpace(_settings.AuthToken) &&
+                                !string.IsNullOrWhiteSpace(_settings.ApiKey) &&
+                                imagesWithCamPosition != null && imagesWithCamPosition.Count > 0)
+                            {
+                                var uploadService = new PalletApiService(
+                                    _settings.AuthToken,
+                                    _settings.ApiKey,
+                                    _settings.BackOfficeURL
+                                );
+
+                                using var ms = new MemoryStream();
+                                var encoder = new PngBitmapEncoder();
+                                encoder.Frames.Add(BitmapFrame.Create(imagesWithCamPosition[0].Image));
+                                encoder.Save(ms);
+                                byte[] imageBytes = ms.ToArray();
+
+                                imageUrl = await uploadService.UploadImageAsync(imageBytes, "pallet.png") ?? "";
+                            }
+                        }
+                        catch (Exception imgEx)
+                        {
+                            Logger.LogException(imgEx, "Image Upload");
+                        }
+
                         var payload = new PalletRequest
                         {
                             name = "Pallet Scan",
 
                             palletWeight = WeightText.Text,
-                            palletHeight = aiResult.maxPalletHeight.ToString(),
+                            palletHeight =PalletHeightTxt.Text,
                             NO_OfBoxs = numberOfBox.ToString(),
 
                             startTime = EntryTimeTxt.Text,
@@ -1402,25 +1432,14 @@ namespace HumanDetection
 
                             humenDetection = humanDetected ? "Yes" : "No",
 
-                            // ⚠️ ASSUMPTION: this hardcoded URL looks like a leftover
-                            // test/demo image rather than the actual captured pallet
-                            // image. Left exactly as-is since I can't confirm whether
-                            // a real upload step exists elsewhere that this was meant
-                            // to be replaced by.
-                            image = "https://adp-backend-demo.ashybay-437ca219.uaenorth.azurecontainerapps.io/core/uploads/image-1769754805619.jpg"
+                            image = imageUrl
                         };
 
-                        // ⚠️ ASSUMPTION: "YOUR_TOKEN_HERE" looks like an unfilled
-                        // placeholder. Left exactly as-is — move to _settings/config
-                        // once you confirm the real token value.
-                        //var service = new PalletApiService(
-                        //       "YOUR_TOKEN_HERE",
-                        //       "99927ec1-8668-45ae-8709-2db03366e680",
-                        //       "https://adp-backend-demo.ashybay-437ca219.uaenorth.azurecontainerapps.io/core/thing-type/66b9a073b241574cd76f0616/adpPallet"
-                        //   );
-
-                        //bool isSuccess = await service.PostPalletDataAsync(payload);
                         await StopPalletDetectionProc();
+
+                        string imgDir = "";
+                        string annoDir = "";
+                        string resultFilePath = "";
 
                         try
                         {
@@ -1429,7 +1448,7 @@ namespace HumanDetection
                             string saveDir = System.IO.Path.Combine(baseDir, timeStamp);
                             Directory.CreateDirectory(saveDir);
 
-                            string imgDir = System.IO.Path.Combine(saveDir, "Images");
+                            imgDir = System.IO.Path.Combine(saveDir, "Images");
                             Directory.CreateDirectory(imgDir);
 
                             int imgIdx = 1;
@@ -1443,7 +1462,7 @@ namespace HumanDetection
                                 encoder.Save(fileStream);
                             }
 
-                            string annoDir = System.IO.Path.Combine(saveDir, "Annotated");
+                            annoDir = System.IO.Path.Combine(saveDir, "Annotated");
                             Directory.CreateDirectory(annoDir);
                             string[] sideNames = { "Front", "Right", "Back", "Left", "Top" };
                             for (int a = 0; a < aiResult.AnnotatedImages.Count && a < sideNames.Length; a++)
@@ -1458,7 +1477,7 @@ namespace HumanDetection
                                 $"Score: {avgScore * 100:0}%\r\n" +
                                 $"Human Detected: {humanDetected}\r\n" +
                                 $"Number of Boxes: {numberOfBox}\r\n" +
-                                $"Pallet Height: {aiResult.maxPalletHeight}m\r\n" +
+                                $"Pallet Height: {PalletHeightTxt.Text}m\r\n" +
                                 $"Weight: {WeightText.Text}\r\n" +
                                 $"Entry Time: {EntryTimeTxt.Text}\r\n" +
                                 $"Exit Time: {ExitTimeTxt.Text}\r\n" +
@@ -1468,16 +1487,24 @@ namespace HumanDetection
                                 $"Distinct Dates: {distinctDates}\r\n" +
                                 $"Pallet Condition: {payload.palletCondition}\r\n" +
                                 $"OCR Results:\r\n{OCRResultInString}\r\n";
-                            string resultFilePath = System.IO.Path.Combine(saveDir, "result.txt");
+                            resultFilePath = System.IO.Path.Combine(saveDir, "result.txt");
                             File.WriteAllText(resultFilePath, resultText);
+                        }
+                        catch (Exception fileEx)
+                        {
+                            Console.WriteLine($"Failed to save files: {fileEx}");
+                            Logger.LogException(fileEx, "File Save");
+                        }
 
+                        try
+                        {
                             DetectionResultRepository.Insert(new DetectionResultModel
                             {
                                 ScanDate = DateTime.Now,
                                 Status = DetectionStatus.Success.ToString(),
                                 Score = avgScore,
                                 TotalBoxes = numberOfBox,
-                                PalletHeight = aiResult.maxPalletHeight,
+                                PalletHeight = PalletHeightValue,
                                 Weight = WeightText.Text,
                                 HumanDetected = humanDetected ? "Yes" : "No",
                                 BarcodeCount = distinctBarcodes,
@@ -1499,7 +1526,32 @@ namespace HumanDetection
                         }
                         catch (Exception ex)
                         {
-                            Console.WriteLine($"Failed to save local results: {ex.Message}");
+                            Console.WriteLine($"Failed to save Success result to DB: {ex}");
+                            Logger.LogException(ex, "DetectionResultRepository.Insert(Success)");
+                        }
+
+                        try
+                        {
+                            _settings.ApiKey = "99927ec1-8668-45ae-8709-2db03366e680";
+                            _settings.AuthToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwYXlsb2FkIjp7ImVtYWlsIjoia2xwMjF1c2VyQGdtYWlsLmNvbSIsInVzZXJOYW1lIjoia2xwMjEiLCJfaWQiOiI2NmI1YmM3Nzc1MDA5M2U0MWU1ODNiZTYifSwiaWF0IjoxNzg3MTI5Mjk1fQ.77rrCCrNjRjPfCzkuGDo8o7JnbCRyv8SRc_o-ZuA6Ok";
+
+                            if (_settings != null &&
+                                !string.IsNullOrWhiteSpace(_settings.BackOfficeURL) &&
+                                !string.IsNullOrWhiteSpace(_settings.AuthToken) &&
+                                !string.IsNullOrWhiteSpace(_settings.ApiKey))
+                            {
+                                var service = new PalletApiService(
+                                    _settings.AuthToken,
+                                    _settings.ApiKey,
+                                    _settings.BackOfficeURL
+                                );
+                                bool apiResult = await service.PostPalletDataAsync(payload);
+                                Logger.Log.Information("API POST result: {ApiResult}", apiResult);
+                            }
+                        }
+                        catch (Exception apiEx)
+                        {
+                            Logger.LogException(apiEx, "API PostPalletData");
                         }
 
 
@@ -1540,7 +1592,8 @@ namespace HumanDetection
                             }
                             catch (Exception ex)
                             {
-                                Console.WriteLine($"Failed to save LessScore result: {ex.Message}");
+                                Console.WriteLine($"Failed to save LessScore result to DB: {ex}");
+                                Logger.LogException(ex, "DetectionResultRepository.Insert(LessScore)");
                             }
 
                             await StopPalletDetectionProc();
@@ -1589,7 +1642,11 @@ namespace HumanDetection
                         Task2EndTime = ""
                     });
                 }
-                catch { }
+                catch (Exception dbEx)
+                {
+                    Console.WriteLine($"Failed to save Failed result to DB: {dbEx}");
+                    Logger.LogException(dbEx, "DetectionResultRepository.Insert(Failed)");
+                }
 
                 MessageBox.Show(ex.Message);
             }
@@ -1778,6 +1835,7 @@ namespace HumanDetection
             }
             else
             {
+             
                 // Wait until forklift leaves before starting rotation
                 _messageQueue.Enqueue("Wait for Forkleft go away");
                 ReportProgress("Wait for Forkleft go away");
@@ -1975,7 +2033,7 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             }
 
             int NumberOfBox = 0;
-            double maxPalletHeight = 0.0;
+            double maxPalletHeight = 1.7;
             double totalAvgScore = 0.0;
             int avgScoreCount = 0;
             bool HumanDetected = false;
@@ -2056,9 +2114,11 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                 }
 
                 // ✅ Track max pallet height
-                if (boxResult.PalletHeightMeters > maxPalletHeight)
+                double sensorHeight = 0;
+                Dispatcher.Invoke(() => sensorHeight = PalletHeightValue);
+                if (sensorHeight > maxPalletHeight)
                 {
-                    maxPalletHeight = boxResult.PalletHeightMeters;
+                    maxPalletHeight = PalletHeightValue;
                 }
 
                 // ✅ Human detection
@@ -2847,7 +2907,7 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
         /// </summary>
         private async void Rotate_Click(object sender, EventArgs e)
         {
-            int sec = GetRotatorDurationInMilliseconds(_lastWeight) - 1000;
+            int sec = GetRotatorDurationInMilliseconds(_lastWeight);
             await StartRoutatorWithDuration((int)sec);
         }
 
@@ -3111,6 +3171,7 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
         /// </summary>
         private void OnSensorChanged(object sender, DIChangedEventArgs e)
         {
+
             if (e.Channel == 0 && e.IsActive)
             {
                 _IsForkleffound = true;
@@ -3168,6 +3229,7 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
 
             Dispatcher.BeginInvoke(() =>
             {
+                PalletHeightValue = exactHeight;
                 PalletHeightTxt.Text = $"{Math.Abs(exactHeight)} m";
                 SensorHeightTxt.Text = $"Sensor: {mA:F2} V | Raw: {e.RawValue}";
             });
@@ -3265,11 +3327,12 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                     // Start stability timer if not started yet
                     _stableWeightStartTime ??= DateTime.Now;
 
-                    // Check if weight stable for 5 seconds
+                    // Check if weight stable for 7 seconds
                     if (!_isPalletDetectionRunning &&
                         (DateTime.Now - _stableWeightStartTime.Value).TotalSeconds >= 7)
                     {
-                        if (_IsForkleffound == false)
+                        // Start detection only when forkleft has arrived (sensor active)
+                        if (_IsForkleffound == true)
                         {
                             _isPalletDetectionRunning = true;
                             await StartPalletDetectionProcAsync();

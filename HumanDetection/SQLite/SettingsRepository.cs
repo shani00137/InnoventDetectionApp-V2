@@ -11,12 +11,13 @@ namespace SQLite
             private static SqliteConnection GetConnection()
                 => new SqliteConnection(DatabaseConnection());
 
-            private static string DatabaseConnection()
-                => new SqliteConnectionStringBuilder
-                {
-                    DataSource = DbPaths.DbFile,
-                    Mode = SqliteOpenMode.ReadWriteCreate
-                }.ToString();
+        private static string DatabaseConnection()
+            => new SqliteConnectionStringBuilder
+            {
+                DataSource = DbPaths.DbFile,
+                Mode = SqliteOpenMode.ReadWriteCreate,
+                Cache = SqliteCacheMode.Shared
+            }.ToString();
 
         // READ (Get first row – only one settings record)
         public static AppSettings GetSettings()
@@ -24,8 +25,8 @@ namespace SQLite
             using var con = GetConnection();
             con.Open();
 
-            var cmd = con.CreateCommand();
-            cmd.CommandText = @"SELECT Id, ComPort, MoxIP, RoutatorTimer, ConfidenceLevel, DatabaseURL, BackOfficeURL 
+            using var cmd = con.CreateCommand();
+            cmd.CommandText = @"SELECT Id, ComPort, MoxIP, RoutatorTimer, ConfidenceLevel, DatabaseURL, BackOfficeURL, AuthToken, ApiKey 
                         FROM Settings 
                         LIMIT 1";
 
@@ -55,7 +56,15 @@ namespace SQLite
 
                 BackOfficeURL = reader.IsDBNull(6)
                     ? string.Empty
-                    : reader.GetString(6)
+                    : reader.GetString(6),
+
+                AuthToken = reader.IsDBNull(7)
+                    ? string.Empty
+                    : reader.GetString(7),
+
+                ApiKey = reader.IsDBNull(8)
+                    ? string.Empty
+                    : reader.GetString(8)
             };
         }
 
@@ -65,11 +74,11 @@ namespace SQLite
                 using var con = GetConnection();
                 con.Open();
 
-                var cmd = con.CreateCommand();
+                using var cmd = con.CreateCommand();
                 cmd.CommandText = @"
                 INSERT INTO Settings 
-                (ComPort, MoxIP, ConfidenceLevel, DatabaseURL, BackOfficeURL,RoutatorTimer)
-                VALUES (@ComPort,@MoxIP,@Confidence,@Db,@Back,@Timer)";
+                (ComPort, MoxIP, ConfidenceLevel, DatabaseURL, BackOfficeURL,RoutatorTimer, AuthToken, ApiKey)
+                VALUES (@ComPort,@MoxIP,@Confidence,@Db,@Back,@Timer,@AuthToken,@ApiKey)";
 
                 cmd.Parameters.AddWithValue("@ComPort", s.ComPort);
                 cmd.Parameters.AddWithValue("@MoxIP", s.MoxIP);
@@ -77,6 +86,8 @@ namespace SQLite
                 cmd.Parameters.AddWithValue("@Db", s.DatabaseURL);
                 cmd.Parameters.AddWithValue("@Back", s.BackOfficeURL);
                 cmd.Parameters.AddWithValue("@Timer", s.RoutatorTimer);
+                cmd.Parameters.AddWithValue("@AuthToken", s.AuthToken ?? string.Empty);
+                cmd.Parameters.AddWithValue("@ApiKey", s.ApiKey ?? string.Empty);
 
             cmd.ExecuteNonQuery();
             }
@@ -87,7 +98,7 @@ namespace SQLite
                 using var con = GetConnection();
                 con.Open();
 
-                var cmd = con.CreateCommand();
+                using var cmd = con.CreateCommand();
                 cmd.CommandText = @"
                 UPDATE Settings SET
                     ComPort=@ComPort,
@@ -95,7 +106,9 @@ namespace SQLite
                     ConfidenceLevel=@Confidence,
                     DatabaseURL=@Db,
                     BackOfficeURL=@Back,
-                    RoutatorTimer=@Time
+                    RoutatorTimer=@Time,
+                    AuthToken=@AuthToken,
+                    ApiKey=@ApiKey
                 WHERE Id=@Id";
 
                 cmd.Parameters.AddWithValue("@Id", s.Id);
@@ -105,6 +118,8 @@ namespace SQLite
                 cmd.Parameters.AddWithValue("@Db", s.DatabaseURL);
                 cmd.Parameters.AddWithValue("@Back", s.BackOfficeURL);
                  cmd.Parameters.AddWithValue("@Time", s.RoutatorTimer);
+                cmd.Parameters.AddWithValue("@AuthToken", s.AuthToken ?? string.Empty);
+                cmd.Parameters.AddWithValue("@ApiKey", s.ApiKey ?? string.Empty);
 
 
             cmd.ExecuteNonQuery();
@@ -114,7 +129,7 @@ namespace SQLite
             using var con = GetConnection();
             con.Open();
 
-            var cmd = con.CreateCommand();
+            using var cmd = con.CreateCommand();
             cmd.CommandText = @"
                 UPDATE Settings SET                   
                     ConfidenceLevel=@Confidence              
@@ -132,7 +147,7 @@ namespace SQLite
             using var con = GetConnection();
             con.Open();
 
-            var cmd = con.CreateCommand();
+            using var cmd = con.CreateCommand();
             cmd.CommandText = @"
         UPDATE Settings SET                   
             RoutatorTimer=@Timer             
@@ -151,7 +166,7 @@ namespace SQLite
             using var con = GetConnection();
             con.Open();
 
-            var cmd = con.CreateCommand();
+            using var cmd = con.CreateCommand();
             cmd.CommandText = "SELECT Id, RuleName, Rule FROM Rules ORDER BY Id DESC";
 
             using var reader = cmd.ExecuteReader();
@@ -174,7 +189,7 @@ namespace SQLite
             using var con = GetConnection();
             con.Open();
 
-            var cmd = con.CreateCommand();
+            using var cmd = con.CreateCommand();
             cmd.CommandText = @"
                 INSERT INTO Rules (RuleName, Rule)
                 VALUES (@name, @rule)";
@@ -191,7 +206,7 @@ namespace SQLite
             using var con = GetConnection();
             con.Open();
 
-            var cmd = con.CreateCommand();
+            using var cmd = con.CreateCommand();
             cmd.CommandText = "DELETE FROM Rules WHERE Id=@id";
             cmd.Parameters.AddWithValue("@id", id);
 

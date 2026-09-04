@@ -55,11 +55,10 @@ namespace HumanDetection
         /// Populates the summary shown when the process completes.
         /// Pass null/empty for any field that wasn't available.
         /// </summary>
-        public void SetTiming(string capture, string exposure, string human, string ocr, string total)
+        public void SetTiming(string capture, string boxCounting, string ocr, string total)
         {
             if (TimingCapture != null) TimingCapture.Text = string.IsNullOrEmpty(capture) ? "--" : capture;
-            if (TimingExposure != null) TimingExposure.Text = string.IsNullOrEmpty(exposure) ? "--" : exposure;
-            if (TimingHuman != null) TimingHuman.Text = string.IsNullOrEmpty(human) ? "--" : human;
+            if (TimingBoxCounting != null) TimingBoxCounting.Text = string.IsNullOrEmpty(boxCounting) ? "--" : boxCounting;
             if (TimingOcr != null) TimingOcr.Text = string.IsNullOrEmpty(ocr) ? "--" : ocr;
             if (TimingTotal != null) TimingTotal.Text = string.IsNullOrEmpty(total) ? "--" : total;
         }

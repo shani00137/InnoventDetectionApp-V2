@@ -14,7 +14,8 @@ namespace SQLite
             => new SqliteConnectionStringBuilder
             {
                 DataSource = DbPaths.DbFile,
-                Mode = SqliteOpenMode.ReadWriteCreate
+                Mode = SqliteOpenMode.ReadWriteCreate,
+                Cache = SqliteCacheMode.Shared
             }.ToString();
 
         public static void Insert(DetectionResultModel r)
@@ -22,7 +23,7 @@ namespace SQLite
             using var con = GetConnection();
             con.Open();
 
-            var cmd = con.CreateCommand();
+            using var cmd = con.CreateCommand();
             cmd.CommandText = @"
                 INSERT INTO DetectionResults
                 (ScanDate, Status, Score, TotalBoxes, PalletHeight, Weight,
@@ -35,8 +36,8 @@ namespace SQLite
                  @OCRResult, @EntryTime, @ExitTime, @ImagesPath, @AnnotatedPath, @ResultFilePath, @Attempts,
                  @Task1StartTime, @Task1EndTime, @Task2StartTime, @Task2EndTime)";
 
-            cmd.Parameters.AddWithValue("@ScanDate", r.ScanDate);
-            cmd.Parameters.AddWithValue("@Status", r.Status);
+            cmd.Parameters.AddWithValue("@ScanDate", r.ScanDate.ToString("yyyy-MM-dd HH:mm:ss"));
+            cmd.Parameters.AddWithValue("@Status", r.Status ?? "");
             cmd.Parameters.AddWithValue("@Score", r.Score);
             cmd.Parameters.AddWithValue("@TotalBoxes", r.TotalBoxes);
             cmd.Parameters.AddWithValue("@PalletHeight", r.PalletHeight);
@@ -68,7 +69,7 @@ namespace SQLite
             using var con = GetConnection();
             con.Open();
 
-            var cmd = con.CreateCommand();
+            using var cmd = con.CreateCommand();
             cmd.CommandText = "SELECT * FROM DetectionResults ORDER BY Id DESC";
 
             using var reader = cmd.ExecuteReader();
@@ -87,7 +88,7 @@ namespace SQLite
             using var con = GetConnection();
             con.Open();
 
-            var cmd = con.CreateCommand();
+            using var cmd = con.CreateCommand();
             cmd.CommandText = "SELECT * FROM DetectionResults WHERE Status=@status ORDER BY Id DESC";
             cmd.Parameters.AddWithValue("@status", status);
 
@@ -107,7 +108,7 @@ namespace SQLite
             using var con = GetConnection();
             con.Open();
 
-            var cmd = con.CreateCommand();
+            using var cmd = con.CreateCommand();
             cmd.CommandText = "SELECT * FROM DetectionResults WHERE ScanDate >= @from AND ScanDate <= @to ORDER BY Id DESC";
             cmd.Parameters.AddWithValue("@from", from);
             cmd.Parameters.AddWithValue("@to", to);
@@ -126,7 +127,7 @@ namespace SQLite
             using var con = GetConnection();
             con.Open();
 
-            var cmd = con.CreateCommand();
+            using var cmd = con.CreateCommand();
             cmd.CommandText = "SELECT * FROM DetectionResults WHERE Id=@id";
             cmd.Parameters.AddWithValue("@id", id);
 
@@ -142,7 +143,7 @@ namespace SQLite
             using var con = GetConnection();
             con.Open();
 
-            var cmd = con.CreateCommand();
+            using var cmd = con.CreateCommand();
             cmd.CommandText = "DELETE FROM DetectionResults WHERE Id=@id";
             cmd.Parameters.AddWithValue("@id", id);
 

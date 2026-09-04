@@ -77,23 +77,19 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
                         <TextBlock Grid.Row="0" Grid.Column="0" Text="Picture Capture" Foreground="#8B949E" FontSize="13"/>
                         <TextBlock x:Name="TimingCapture" Grid.Row="0" Grid.Column="1" Text="--" Foreground="#FFFFFF" FontSize="13" FontWeight="SemiBold"/>
 
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Exposure Time" Foreground="#8B949E" FontSize="13"/>
-                        <TextBlock x:Name="TimingExposure" Grid.Row="1" Grid.Column="1" Text="--" Foreground="#00E108" FontSize="13" FontWeight="SemiBold"/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Box Counting Model" Foreground="#8B949E" FontSize="13"/>
+                        <TextBlock x:Name="TimingBoxCounting" Grid.Row="1" Grid.Column="1" Text="--" Foreground="#FFFFFF" FontSize="13" FontWeight="SemiBold"/>
 
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Human Detection" Foreground="#8B949E" FontSize="13"/>
-                        <TextBlock x:Name="TimingHuman" Grid.Row="2" Grid.Column="1" Text="--" Foreground="#FFFFFF" FontSize="13" FontWeight="SemiBold"/>
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="OCR Service" Foreground="#8B949E" FontSize="13"/>
+                        <TextBlock x:Name="TimingOcr" Grid.Row="2" Grid.Column="1" Text="--" Foreground="#FFFFFF" FontSize="13" FontWeight="SemiBold"/>
 
-                        <TextBlock Grid.Row="3" Grid.Column="0" Text="OCR" Foreground="#8B949E" FontSize="13"/>
-                        <TextBlock x:Name="TimingOcr" Grid.Row="3" Grid.Column="1" Text="--" Foreground="#FFFFFF" FontSize="13" FontWeight="SemiBold"/>
-
-                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Total Process" Foreground="#FBBF24" FontSize="13" FontWeight="Bold" Margin="0,6,0,0"/>
-                        <TextBlock x:Name="TimingTotal" Grid.Row="4" Grid.Column="1" Text="--" VerticalAlignment="Center" Foreground="#FFFFFF" FontSize="13" FontWeight="SemiBold" Margin="0,6,0,0"/>
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Total Process" Foreground="#FBBF24" FontSize="13" FontWeight="Bold" Margin="0,6,0,0"/>
+                        <TextBlock x:Name="TimingTotal" Grid.Row="3" Grid.Column="1" Text="--" VerticalAlignment="Center" Foreground="#FFFFFF" FontSize="13" FontWeight="SemiBold" Margin="0,6,0,0"/>
                     </Grid>
                 </StackPanel>
             </Border>

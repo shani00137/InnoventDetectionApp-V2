@@ -83,6 +83,8 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
 
                             </Grid.RowDefinitions>
 
@@ -193,6 +195,32 @@
                             </Border>
                             <Border Margin="5,10,5,5" Grid.Row="6" BorderThickness="1" BorderBrush="White" CornerRadius="12" >
                                 <StackPanel Orientation="Vertical" Margin="0,10,0,0">
+                                    <TextBlock Text="Auth Token" FontSize="20" 
+                      
+                     Foreground="White" 
+                     FontWeight="Medium" 
+                     Margin="10,0,5,20" />
+                                    <StackPanel Margin="10,0,10,10" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" >
+                                        <TextBox Name="AuthTokenTxt"  Style="{StaticResource MaterialDesignOutlinedTextBox}" BorderThickness="1"  Padding="5" Width="500" Height="40" Foreground="White"  materialDesign:HintAssist.Hint="Bearer Auth Token"/>
+
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                            <Border Margin="5,10,5,5" Grid.Row="7" BorderThickness="1" BorderBrush="White" CornerRadius="12" >
+                                <StackPanel Orientation="Vertical" Margin="0,10,0,0">
+                                    <TextBlock Text="API Key" FontSize="20" 
+                      
+                     Foreground="White" 
+                     FontWeight="Medium" 
+                     Margin="10,0,5,20" />
+                                    <StackPanel Margin="10,0,10,10" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" >
+                                        <TextBox Name="ApiKeyTxt"  Style="{StaticResource MaterialDesignOutlinedTextBox}" BorderThickness="1"  Padding="5" Width="500" Height="40" Foreground="White"  materialDesign:HintAssist.Hint="x-api-key value"/>
+
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                            <Border Margin="5,10,5,5" Grid.Row="8" BorderThickness="1" BorderBrush="White" CornerRadius="12" >
+                                <StackPanel Orientation="Vertical" Margin="0,10,0,0">
                                     <TextBlock Text="Routator Timer(Sec)" FontSize="20" 
  
                                     Foreground="White" 
@@ -204,12 +232,7 @@
                                     </StackPanel>
                                 </StackPanel>
                             </Border>
-                            <Border Margin="5,10,5,5"
-                                    Grid.Row="7"
-                                    BorderThickness="1"
-                                    BorderBrush="White"
-                                    CornerRadius="12">
-
+                            <Border Margin="5,10,5,5" Grid.Row="9" BorderThickness="1" BorderBrush="White" CornerRadius="12" >
                                 <StackPanel Orientation="Vertical" Margin="0,10,0,10">
                                     <StackPanel Orientation="Horizontal">
 
@@ -314,7 +337,7 @@
 
 
 
-                            <Border Margin="5,10,5,5" Grid.Row="8" BorderThickness="1" BorderBrush="White" CornerRadius="12" >
+                            <Border Margin="5,10,5,5" Grid.Row="10" BorderThickness="1" BorderBrush="White" CornerRadius="12" >
                                 <StackPanel Orientation="Vertical" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="0,10,0,0">
                                   
                                     <Border HorizontalAlignment="Left" CornerRadius="15" Margin="10,5,0,10">

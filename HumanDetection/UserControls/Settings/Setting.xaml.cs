@@ -39,6 +39,8 @@ namespace UserControls.Settings
             SecurityLock.Text = _settings.MoxIP;
             DBConnectionURL.Text = _settings.DatabaseURL;
             BackOfficeURL.Text = _settings.BackOfficeURL;
+            AuthTokenTxt.Text = _settings.AuthToken;
+            ApiKeyTxt.Text = _settings.ApiKey;
             RoutatorTimerTxt.Text = _settings.RoutatorTimer.ToString();
 
             if (int.TryParse(_settings.ConfidenceLevel, out int val))
@@ -61,7 +63,9 @@ namespace UserControls.Settings
                 DatabaseURL = DBConnectionURL.Text,
                 BackOfficeURL = BackOfficeURL.Text,
                 ConfidenceLevel = ((int)MinSlider.Value).ToString(),
-                RoutatorTimer = rotatorTimer
+                RoutatorTimer = rotatorTimer,
+                AuthToken = AuthTokenTxt.Text,
+                ApiKey = ApiKeyTxt.Text
             };
 
             if (_settings == null)
