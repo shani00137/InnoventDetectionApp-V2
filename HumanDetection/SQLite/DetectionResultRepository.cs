@@ -29,12 +29,12 @@ namespace SQLite
                 (ScanDate, Status, Score, TotalBoxes, PalletHeight, Weight,
                  HumanDetected, BarcodeCount, BarcodeList, DateCount, DateList,
                  OCRResult, EntryTime, ExitTime, ImagesPath, AnnotatedPath, ResultFilePath, Attempts,
-                 Task1StartTime, Task1EndTime, Task2StartTime, Task2EndTime)
+                 Task1StartTime, Task1EndTime, Task2StartTime, Task2EndTime, Remark)
                 VALUES
                 (@ScanDate, @Status, @Score, @TotalBoxes, @PalletHeight, @Weight,
                  @HumanDetected, @BarcodeCount, @BarcodeList, @DateCount, @DateList,
                  @OCRResult, @EntryTime, @ExitTime, @ImagesPath, @AnnotatedPath, @ResultFilePath, @Attempts,
-                 @Task1StartTime, @Task1EndTime, @Task2StartTime, @Task2EndTime)";
+                 @Task1StartTime, @Task1EndTime, @Task2StartTime, @Task2EndTime, @Remark)";
 
             cmd.Parameters.AddWithValue("@ScanDate", r.ScanDate.ToString("yyyy-MM-dd HH:mm:ss"));
             cmd.Parameters.AddWithValue("@Status", r.Status ?? "");
@@ -58,6 +58,7 @@ namespace SQLite
             cmd.Parameters.AddWithValue("@Task1EndTime", r.Task1EndTime ?? "");
             cmd.Parameters.AddWithValue("@Task2StartTime", r.Task2StartTime ?? "");
             cmd.Parameters.AddWithValue("@Task2EndTime", r.Task2EndTime ?? "");
+            cmd.Parameters.AddWithValue("@Remark", r.Remark ?? "");
 
             cmd.ExecuteNonQuery();
         }
@@ -176,7 +177,8 @@ namespace SQLite
                 Task1StartTime = reader.IsDBNull(19) ? "" : reader.GetString(19),
                 Task1EndTime = reader.IsDBNull(20) ? "" : reader.GetString(20),
                 Task2StartTime = reader.IsDBNull(21) ? "" : reader.GetString(21),
-                Task2EndTime = reader.IsDBNull(22) ? "" : reader.GetString(22)
+                Task2EndTime = reader.IsDBNull(22) ? "" : reader.GetString(22),
+                Remark = reader.IsDBNull(23) ? "" : reader.GetString(23)
             };
         }
     }

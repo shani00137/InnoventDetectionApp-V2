@@ -145,6 +145,7 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
                         <DataGridTextColumn Header="Score" Binding="{Binding Score, StringFormat={}{0:P0}}" Width="70" />
+                        <DataGridTextColumn Header="Remark" Binding="{Binding Remark}" Width="220" />
                         <DataGridTextColumn Header="Boxes" Binding="{Binding TotalBoxes}" Width="60" />
                         <DataGridTextColumn Header="Height(m)" Binding="{Binding PalletHeight, StringFormat={}{0:F2}}" Width="80" />
                         <DataGridTextColumn Header="Weight" Binding="{Binding Weight}" Width="80" />

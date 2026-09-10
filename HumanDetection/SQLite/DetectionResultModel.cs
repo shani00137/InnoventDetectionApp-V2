@@ -34,6 +34,7 @@ namespace SQLite
         public string Task1EndTime { get; set; }
         public string Task2StartTime { get; set; }
         public string Task2EndTime { get; set; }
+        public string Remark { get; set; }
 
         public string Task1TimeRange => string.IsNullOrEmpty(Task1StartTime) ? "" : $"{Task1StartTime} - {Task1EndTime}";
         public string Task2TimeRange => string.IsNullOrEmpty(Task2StartTime) ? "" : $"{Task2StartTime} - {Task2EndTime}";

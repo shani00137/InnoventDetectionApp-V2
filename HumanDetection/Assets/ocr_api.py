@@ -17,90 +17,7 @@ app = Flask(__name__)
 # CONFIG
 # -----------------------------
 MAX_SIZE = 1024
-DATE_REGEX = r'''(?xi)
-    \b
-    (?:
-        # FORMAT 1: DD.MM.YYYY  DD/MM/YYYY  DD-MM-YYYY  DD MM YYYY
-        (?:0?[1-9]|[12]\d|3[01])
-        [.\-/\s]
-        (?:0?[1-9]|1[0-2])
-        [.\-/\s]
-        (?:19|20)\d{2}
-
-        |
-        # FORMAT 2: YYYY.MM.DD  YYYY/MM/DD  YYYY-MM-DD
-        (?:19|20)\d{2}
-        [.\-/]
-        (?:0?[1-9]|1[0-2])
-        [.\-/]
-        (?:0?[1-9]|[12]\d|3[01])
-
-        |
-        # FORMAT 3: DD.MM.YY  DD/MM/YY  DD-MM-YY
-        (?:0?[1-9]|[12]\d|3[01])
-        [.\-/]
-        (?:0?[1-9]|1[0-2])
-        [.\-/]
-        \d{2}
-
-        |
-        # FORMAT 4: MM/DD/YYYY  MM-DD-YYYY  (US style)
-        (?:0?[1-9]|1[0-2])
-        [/\-]
-        (?:0?[1-9]|[12]\d|3[01])
-        [/\-]
-        (?:19|20)\d{2}
-
-        |
-        # FORMAT 5: DD MMM YYYY  e.g. 15 JAN 2024  15-JAN-2024
-        (?:0?[1-9]|[12]\d|3[01])
-        [\s.\-/]?
-        (?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)
-        [\s.\-/]?
-        (?:19|20)\d{2}
-
-        |
-        # FORMAT 6: MMM DD YYYY  e.g. JAN 15 2024
-        (?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)
-        [\s.\-/]?
-        (?:0?[1-9]|[12]\d|3[01])
-        [\s.\-/]?
-        (?:19|20)\d{2}
-
-        |
-        # FORMAT 7: YYYY MMM DD  e.g. 2024 JAN 15
-        (?:19|20)\d{2}
-        [\s.\-/]?
-        (?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)
-        [\s.\-/]?
-        (?:0?[1-9]|[12]\d|3[01])
-
-        |
-        # FORMAT 8: DDMMYYYY compact (no separator)
-        (?:0[1-9]|[12]\d|3[01])
-        (?:0[1-9]|1[0-2])
-        (?:19|20)\d{2}
-
-        |
-        # FORMAT 9: YYYYMMDD ISO compact (no separator)
-        (?:19|20)\d{2}
-        (?:0[1-9]|1[0-2])
-        (?:0[1-9]|[12]\d|3[01])
-
-        |
-        # FORMAT 10: MM/YY  MM.YY  MM-YY  (expiry shorthand on labels)
-        (?:0?[1-9]|1[0-2])
-        [.\-/]
-        \d{2}
-
-        |
-        # FORMAT 11: MM/YYYY  MM.YYYY  (longer expiry shorthand)
-        (?:0?[1-9]|1[0-2])
-        [.\-/]
-        (?:19|20)\d{2}
-    )
-    \b
-'''
+DATE_REGEX = r'\b\d{2}[./-]\d{2}[./-]\d{4}\b'
 
 # -----------------------------
 # OCR INIT (GPU AUTO)
@@ -122,10 +39,6 @@ ocr.ocr(dummy)
 # -----------------------------
 # HELPERS
 # -----------------------------
-def extract_dates(text):
-    return re.findall(DATE_REGEX, text)
-
-
 def resize_image_np(img):
     h, w = img.shape[:2]
     max_dim = max(h, w)
@@ -143,21 +56,78 @@ def mono8_to_rgb(img):
 
 def extract_barcodes(img_rgb):
     barcodes = []
-    for obj in decode(img_rgb):
-        barcodes.append(obj.data.decode("utf-8"))
+    try:
+        for obj in decode(img_rgb):
+            barcodes.append(obj.data.decode("utf-8", errors="ignore"))
+    except Exception:
+        pass  # barcode decoding is skipped when it fails — never a hard error
     return barcodes
 
 
-def extract_possible_barcodes(texts):
-    barcodes = []
+def extract_dates(text):
+    """Extracts dates from OCR text without missing any plausible date."""
+    if not text:
+        return []
 
-    for t in texts:
-        cleaned = re.sub(r'\D', '', t)
+    # OCR often reads date separators inconsistently (· | \ _ , ;).
+    # Normalize them so dates with unusual separators are still found.
+    normalized = re.sub(r"[·|\\_,;]", ".", text)
+    normalized = re.sub(r"\s+", " ", normalized)
 
-        if len(cleaned) >= 7:
-            barcodes.append(cleaned)
+    found = [m for m in re.findall(DATE_REGEX, normalized) if m]
 
-    return barcodes
+    # Broad fallback: catch compact/atypical numeric dates the primary regex
+    # might skip, e.g. 5-10-2024 written with unusual spacing.
+    for m in re.finditer(r"\b(\d{1,4})[-./](\d{1,2})[-./](\d{1,4})\b", normalized):
+        raw = m.group(0)
+        if raw in found:
+            continue
+        if likely_date(*m.groups()):
+            found.append(raw)
+
+    # De-duplicate while preserving order
+    seen = set()
+    unique = []
+    for d in found:
+        if d not in seen:
+            seen.add(d)
+            unique.append(d)
+
+    return unique
+
+
+def likely_date(a, b, c):
+    """Checks whether a day/month/year triple looks like a real date."""
+    parts = (a, b, c)
+    short = [p for p in parts if len(p) in (1, 2)]
+    long = [p for p in parts if len(p) == 4]
+
+    # Case 1: YYYY-MM-DD or D-M-YYYY (one 4-digit year + two day/month fields)
+    if len(long) == 1 and len(short) == 2:
+        year = int(long[0])
+        if not (1900 <= year <= 2100):
+            return False
+        if not all(1 <= int(p) <= 31 for p in short):
+            return False
+        return any(1 <= int(p) <= 12 for p in short)
+
+    # Case 2: DD-MM-YY with a 2-digit year (all three fields are short)
+    if len(short) == 3:
+        if not all(1 <= int(p) <= 31 for p in short):
+            return False
+        return any(1 <= int(p) <= 12 for p in short) and any(int(p) >= 5 for p in short)
+
+    return False
+
+
+def _box_to_list(box):
+    """Converts a PaddleOCR polygon to a JSON-safe list."""
+    if box is None:
+        return None
+    try:
+        return [[round(float(x), 1), round(float(y), 1)] for x, y in box]
+    except Exception:
+        return None
 
 
 def process_image_np(img_np):
@@ -172,42 +142,64 @@ def process_image_np(img_np):
     # OCR
     result = ocr.ocr(img_np)
 
-    # Collect text
+    # Collect text + per-line confidence + the raw PaddleOCR result (boxes too)
     texts = []
+    details = []
+    raw_result = []
     for item in result:
         if isinstance(item, dict):
-            texts.extend(item.get("rec_texts", []))
+            rec_texts = item.get("rec_texts", []) or []
+            rec_scores = item.get("rec_scores", []) or []
+            rec_boxes = (item.get("rec_boxes") or
+                         item.get("dt_polys") or
+                         item.get("det_polys") or [])
+            texts.extend(rec_texts)
+            for i, t in enumerate(rec_texts):
+                conf = None
+                if i < len(rec_scores):
+                    try:
+                        conf = round(float(rec_scores[i]), 4)
+                    except Exception:
+                        conf = None
+                box = _box_to_list(rec_boxes[i]) if i < len(rec_boxes) else None
+                details.append({"text": t, "confidence": conf})
+                raw_result.append({"box": box, "text": t, "confidence": conf})
         elif isinstance(item, list):
             for entry in item:
                 try:
-                    _, (text, _) = entry
+                    box, (text, confidence) = entry
                     texts.append(text)
+                    conf = round(float(confidence), 4)
+                    details.append({"text": text, "confidence": conf})
+                    raw_result.append({"box": _box_to_list(box), "text": text, "confidence": conf})
                 except Exception:
                     pass
 
-    # Dates
+    # Dates (deduplicated across lines so nothing is missed twice or dropped)
     dates = []
+    seen_dates = set()
     for t in texts:
-        dates.extend(extract_dates(t))
+        for d in extract_dates(t):
+            if d not in seen_dates:
+                seen_dates.add(d)
+                dates.append(d)
 
     # -----------------------------
     # BARCODE DETECTION
     # -----------------------------
 
-    # Barcodes from image
-    barcodes_image = extract_barcodes(img_np)
-
-    # Barcodes from OCR text
-    barcodes_text = extract_possible_barcodes(texts)
-
-    # Combine both
-    barcodes = list(set(barcodes_image + barcodes_text))
+    # Only REAL decoded barcodes are returned. The human-readable text printed
+    # under a barcode is OCR text, not a barcode — it is never counted here.
+    # If the barcode is missing or not readable, the list is simply empty (skip).
+    barcodes = list(set(extract_barcodes(img_np)))
 
     elapsed = round(time.time() - start, 3)
 
     return {
         "text_count": len(texts),
         "raw_text": texts,
+        "details": details,
+        "raw_result": raw_result,
         "dates": dates,
         "date_count": len(dates),
         "barcodes": barcodes,

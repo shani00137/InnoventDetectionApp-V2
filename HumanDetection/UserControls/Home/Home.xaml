@@ -841,11 +841,14 @@ Margin="0">
                 </Grid>
             </Border>
             <!-- Loading Overlay -->
+            <!-- Non-blocking: IsHitTestVisible=False lets all clicks pass through
+                 so Stop and navigation stay usable while the checklist shows -->
             <Grid x:Name="LoadingOverlay"
       Grid.RowSpan="2"
       Panel.ZIndex="999"
       Background="#CC000000"
-      Visibility="Visible">
+      IsHitTestVisible="False"
+      Visibility="Collapsed">
 
                 <Border Background="#333"
             CornerRadius="10"

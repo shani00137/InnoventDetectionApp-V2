@@ -117,7 +117,8 @@ namespace SQLite
                             Task1StartTime TEXT,
                             Task1EndTime TEXT,
                             Task2StartTime TEXT,
-                            Task2EndTime TEXT
+                            Task2EndTime TEXT,
+                            Remark TEXT
                         );";
                     cmd.ExecuteNonQuery();
                 }
@@ -135,7 +136,8 @@ namespace SQLite
                         "Task1StartTime TEXT",
                         "Task1EndTime TEXT",
                         "Task2StartTime TEXT",
-                        "Task2EndTime TEXT"
+                        "Task2EndTime TEXT",
+                        "Remark TEXT"
                     };
 
                     foreach (var def in columnDefs)

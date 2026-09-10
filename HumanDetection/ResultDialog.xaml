@@ -66,6 +66,19 @@
                                                                Text="{Binding EndTime, StringFormat='{}{0:hh:mm:ss tt}'}"/>
                                                 </StackPanel>
 
+                                                <!-- Pallet Status + Remarks -->
+                                                <Border CornerRadius="6" Background="#0D1117" BorderBrush="#30363D"
+                                                        BorderThickness="1" Margin="12,8,12,0" Padding="10,8">
+                                                    <StackPanel>
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <materialIcons:MaterialIcon Kind="CheckCircleOutline" Width="18" Height="18" Foreground="#8B949E"/>
+                                                            <TextBlock Margin="8,0,0,0" Foreground="#8B949E" FontSize="12" FontWeight="SemiBold" Text="Pallet Status"/>
+                                                            <TextBlock Margin="10,0,0,0" Text="{Binding PalletStatus}" FontSize="13" FontWeight="Bold" Foreground="#58A6FF"/>
+                                                        </StackPanel>
+                                                        <TextBlock Text="{Binding Remark}" Foreground="#D29922" FontSize="12" TextWrapping="Wrap" Margin="26,4,0,0"/>
+                                                    </StackPanel>
+                                                </Border>
+
                                                 <!-- Metric Cards Row 1: Human, Boxes, Dup Barcode, Expiry -->
                                                 <Grid Margin="6,8,6,0">
                                                     <Grid.ColumnDefinitions>

@@ -27,6 +27,8 @@ namespace Model
         public List<OcrGridItem>? GridItems { get; set; }
         public int? LableCount { get; set; }
         public int? DateCount { get; set; }
+        public string? PalletStatus { get; set; }
+        public string? Remark { get; set; }
 
 
     }

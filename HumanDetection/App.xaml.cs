@@ -1,4 +1,5 @@
-﻿using System;
+﻿using HumanDetection.Services;
+using System;
 using System.IO;
 using System.Text;
 using System.Windows;
@@ -50,6 +51,12 @@ namespace HumanDetection
             Database.Initialize();
             SetupGlobalExceptionHandling();
             base.OnStartup(e);
+
+            // Show the splash screen first; it loads all global resources
+            // (AI models, Moxa, weight machine, OCR) before the main window opens.
+            var splash = new SplashScreen();
+            MainWindow = splash;
+            splash.Show();
         }
 
         private void SetupGlobalExceptionHandling()
@@ -75,6 +82,11 @@ namespace HumanDetection
 
         protected override void OnExit(ExitEventArgs e)
         {
+            // Release globally-shared native resources (ONNX inference sessions,
+            // OCR python process) before the process exits.
+            try { AppModels.Unload(); } catch { }
+            try { OcrProcessService.Current.Shutdown(); } catch { }
+
             Log.CloseAndFlush();
             base.OnExit(e);
         }

@@ -4,7 +4,7 @@
              xmlns:local="clr-namespace:HumanDetection"
              xmlns:reports="clr-namespace:UserControls.Reports"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
-             StartupUri="MainWindow.xaml">
+             ShutdownMode="OnMainWindowClose">
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>

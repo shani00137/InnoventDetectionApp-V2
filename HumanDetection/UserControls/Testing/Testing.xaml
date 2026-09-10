@@ -6,199 +6,256 @@
       xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes" 
       xmlns:materialIcons="clr-namespace:Material.Icons.WPF;assembly=Material.Icons.WPF"
       mc:Ignorable="d" 
-      d:DesignHeight="450" d:DesignWidth="800"
+      d:DesignHeight="700" d:DesignWidth="1000"
       Title="Testing">
 
     <Page.Resources>
         <Style x:Key="TestBorder" TargetType="Border">
             <Setter Property="Background" Value="#09090B"/>
-            <Setter Property="CornerRadius" Value="12"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="BorderBrush" Value="#222228"/>
-            <Setter Property="Padding" Value="12"/>
-        </Style>
-        <Style x:Key="MetricCard" TargetType="Border">
-            <Setter Property="Background" Value="#09090B"/>
             <Setter Property="CornerRadius" Value="10"/>
             <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#222228"/>
+            <Setter Property="Padding" Value="10"/>
+        </Style>
+        <Style x:Key="MetricCard" TargetType="Border">
+            <Setter Property="Background" Value="#111113"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="BorderBrush" Value="#1C3A54"/>
-            <Setter Property="Margin" Value="4"/>
-            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Margin" Value="3"/>
+            <Setter Property="Padding" Value="10,8"/>
+        </Style>
+        <Style x:Key="SectionLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="2,0,0,6"/>
+        </Style>
+        <Style x:Key="IconButton" TargetType="Button" BasedOn="{StaticResource RoundButton}">
+            <Setter Property="Width" Value="36"/>
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="3,0,3,0"/>
+            <Setter Property="ToolTip" Value="{Binding Content, RelativeSource={RelativeSource Self}}"/>
         </Style>
     </Page.Resources>
 
     <Grid Background="Black">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Header -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="15,10">
-            <materialIcons:MaterialIcon Kind="FlaskOutline" Width="22" Height="22" Margin="0,2,8,0" Foreground="White"/>
-            <TextBlock Text="DETECTION TESTING" FontSize="20" Foreground="White" FontWeight="Medium" VerticalAlignment="Center"/>
-        </StackPanel>
+        <!-- Header + Icon Buttons (right-aligned) -->
+        <Border Grid.Row="0" Margin="10,6,10,4" Padding="10,6" CornerRadius="8"
+                Background="#09090B" BorderBrush="#222228" BorderThickness="1">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                            VerticalAlignment="Center" Margin="10,0,0,0">
+                    <Button x:Name="SelectImagesBtn" Style="{StaticResource IconButton}"
+                            Click="SelectImagesBtn_Click" ToolTip="Select Images">
+                        <materialIcons:MaterialIcon Kind="FolderImage" Width="18" Height="18" Foreground="White"/>
+                    </Button>
+                    <Button x:Name="StartProcessBtn" Style="{StaticResource IconButton}"
+                            Click="StartProcessBtn_Click" IsEnabled="False" ToolTip="Start Process">
+                        <materialIcons:MaterialIcon Kind="PlayCircle" Width="18" Height="18" Foreground="White"/>
+                    </Button>
+                    <Button x:Name="ClearBtn" Style="{StaticResource IconButton}"
+                            Click="ClearBtn_Click" ToolTip="Clear All">
+                        <materialIcons:MaterialIcon Kind="DeleteOutline" Width="18" Height="18" Foreground="White"/>
+                    </Button>
+                    <TextBlock x:Name="ProgressTxt" Text="" Foreground="#60A5FA" FontSize="11"
+                               VerticalAlignment="Center" Margin="10,0,0,0"/>
+                    <TextBlock Text="Time:" Foreground="#9CA3AF" FontSize="11"
+                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                    <TextBlock x:Name="TimeTxt" Text="-" Foreground="#4ADE80" FontSize="12" FontWeight="SemiBold"
+                               VerticalAlignment="Center" Margin="3,0,0,0"/>
+                </StackPanel>
 
-        <!-- Image Upload + Start -->
-        <Border Grid.Row="1" Style="{StaticResource TestBorder}" Margin="10,0,10,8">
-            <StackPanel>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="SelectImagesBtn" Width="160" Height="42" Click="SelectImagesBtn_Click"
-                            Style="{StaticResource RoundButton}">
-                        <StackPanel Orientation="Horizontal">
-                            <materialIcons:MaterialIcon Kind="FolderImage" Width="18" Height="18" Margin="0,0,6,0" Foreground="White"/>
-                            <TextBlock Text="Select Images" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Button>
-                    <TextBlock x:Name="SelectedCountTxt" Text="Select 4 to 5 images" Foreground="#9CA3AF" FontSize="13"
+                    <materialIcons:MaterialIcon Kind="FlaskOutline" Width="20" Height="20"
+                                               Margin="0,0,8,0" Foreground="White"/>
+                    <TextBlock Text="DETECTION TESTING" FontSize="18" Foreground="White"
+                               FontWeight="Medium" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="SelectedCountTxt" Text="" Foreground="#9CA3AF" FontSize="11"
                                VerticalAlignment="Center" Margin="12,0,0,0"/>
-                    <Button x:Name="StartProcessBtn" Width="140" Height="42" Margin="15,0,0,0"
-                            Click="StartProcessBtn_Click" IsEnabled="False"
-                            Style="{StaticResource RoundButton}">
-                        <StackPanel Orientation="Horizontal">
-                            <materialIcons:MaterialIcon Kind="PlayCircle" Width="18" Height="18" Margin="0,0,6,0" Foreground="White"/>
-                            <TextBlock Text="Start Process" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Button>
-                    <TextBlock x:Name="ProgressTxt" Text="" Foreground="#60A5FA" FontSize="13"
-                               VerticalAlignment="Center" Margin="18,0,0,0"/>
-                    <TextBlock Text="Time: " Foreground="#9CA3AF" FontSize="13" VerticalAlignment="Center" Margin="15,0,0,0"/>
-                    <TextBlock x:Name="TimeTxt" Text="-" Foreground="#4ADE80" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" Margin="3,0,0,0"/>
                 </StackPanel>
-
-                <StackPanel Orientation="Horizontal" Margin="0,10,0,0" HorizontalAlignment="Right">
-                    <Button x:Name="ClearBtn" Width="110" Height="36" Click="ClearBtn_Click"
-                            Style="{StaticResource RoundButton}">
-                        <StackPanel Orientation="Horizontal">
-                            <materialIcons:MaterialIcon Kind="DeleteOutline" Width="16" Height="16" Margin="0,0,6,0" Foreground="White"/>
-                            <TextBlock Text="Clear All" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Button>
-                </StackPanel>
-
-                <TextBlock Text="Selected Images" Foreground="White" FontSize="12" FontWeight="SemiBold" Margin="2,12,0,6"/>
-                <ItemsControl x:Name="ImagesList" Height="150">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <UniformGrid Columns="5"/>
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Border Margin="3" Background="#111113" CornerRadius="8" BorderBrush="#222228" BorderThickness="1">
-                                <Grid>
-                                    <Image Source="{Binding}" Stretch="Uniform" Margin="4"/>
-                                    <Border VerticalAlignment="Bottom" HorizontalAlignment="Left" Background="#66000000"
-                                            CornerRadius="4" Padding="4,1" Margin="4">
-                                        <TextBlock Text="{Binding Index}" Foreground="White" FontSize="10"/>
-                                    </Border>
-                                </Grid>
-                            </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </StackPanel>
+            </DockPanel>
         </Border>
 
-        <!-- Results -->
-        <Grid Grid.Row="2" Margin="10,0,10,8">
+        <!-- Content: 2-column top + full-width bottom -->
+        <Grid Grid.Row="1" Margin="10,0,10,8">
             <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="1.2*"/>
             </Grid.RowDefinitions>
 
-            <!-- Metric cards -->
-            <Grid Grid.Row="0" Margin="0,0,0,5">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-
-                <Border Grid.Column="0" Style="{StaticResource MetricCard}">
-                    <StackPanel>
-                        <TextBlock Text="SCORE" Foreground="#60A5FA" FontSize="11" FontWeight="SemiBold" Opacity="0.8"/>
-                        <TextBlock x:Name="ScoreTxt" Text="-" Foreground="White" FontSize="22" FontWeight="Bold"/>
-                    </StackPanel>
-                </Border>
-                <Border Grid.Column="1" Style="{StaticResource MetricCard}">
-                    <StackPanel>
-                        <TextBlock Text="BOXES" Foreground="#60A5FA" FontSize="11" FontWeight="SemiBold" Opacity="0.8"/>
-                        <TextBlock x:Name="BoxesTxt" Text="-" Foreground="White" FontSize="22" FontWeight="Bold"/>
-                    </StackPanel>
-                </Border>
-                <Border Grid.Column="2" Style="{StaticResource MetricCard}">
-                    <StackPanel>
-                        <TextBlock Text="HEIGHT (m)" Foreground="#60A5FA" FontSize="11" FontWeight="SemiBold" Opacity="0.8"/>
-                        <TextBlock x:Name="HeightTxt" Text="-" Foreground="White" FontSize="22" FontWeight="Bold"/>
-                    </StackPanel>
-                </Border>
-                <Border Grid.Column="3" Style="{StaticResource MetricCard}">
-                    <StackPanel>
-                        <TextBlock Text="HUMAN" Foreground="#60A5FA" FontSize="11" FontWeight="SemiBold" Opacity="0.8"/>
-                        <TextBlock x:Name="HumanTxt" Text="-" Foreground="White" FontSize="22" FontWeight="Bold"/>
-                    </StackPanel>
-                </Border>
-                <Border Grid.Column="4" Style="{StaticResource MetricCard}">
-                    <StackPanel>
-                        <TextBlock Text="BARCODES" Foreground="#60A5FA" FontSize="11" FontWeight="SemiBold" Opacity="0.8"/>
-                        <TextBlock x:Name="BarcodesTxt" Text="-" Foreground="White" FontSize="22" FontWeight="Bold"/>
-                    </StackPanel>
-                </Border>
-                <Border Grid.Column="5" Style="{StaticResource MetricCard}">
-                    <StackPanel>
-                        <TextBlock Text="DATES" Foreground="#60A5FA" FontSize="11" FontWeight="SemiBold" Opacity="0.8"/>
-                        <TextBlock x:Name="DatesTxt" Text="-" Foreground="White" FontSize="22" FontWeight="Bold"/>
-                    </StackPanel>
-                </Border>
-            </Grid>
-
-            <!-- Annotated + OCR -->
-            <Grid Grid.Row="1">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-
-                <Border Grid.Column="0" Style="{StaticResource TestBorder}" Margin="4">
-                    <DockPanel>
-                        <TextBlock DockPanel.Dock="Top" Text="ANNOTATED IMAGES" Foreground="White" FontSize="12" FontWeight="SemiBold" Margin="2,0,0,8"/>
-                        <ScrollViewer VerticalScrollBarVisibility="Auto">
-                            <ItemsControl x:Name="AnnotatedList">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <UniformGrid Columns="2"/>
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border Margin="3" Background="#111113" CornerRadius="6" BorderBrush="#222228" BorderThickness="1">
-                                            <Image Source="{Binding}" Stretch="Uniform" Margin="4"/>
+            <!-- 1. Selected Images (top-left) -->
+            <Border Grid.Row="0" Grid.Column="0" Style="{StaticResource TestBorder}">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="SELECTED IMAGES" Style="{StaticResource SectionLabel}"/>
+                    <ItemsControl x:Name="ImagesList">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <UniformGrid Columns="2"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Style="{StaticResource RoundButton}" Background="#111113"
+                                        BorderBrush="#222228" BorderThickness="1" Padding="0" Margin="3"
+                                        ToolTip="Click to view annotated image"
+                                        Click="Thumbnail_Click" Tag="{Binding Index}">
+                                    <Grid>
+                                        <Image Source="{Binding Image}" Stretch="Uniform" Margin="3"/>
+                                        <Border VerticalAlignment="Bottom" HorizontalAlignment="Left" Background="#66000000"
+                                                CornerRadius="4" Padding="4,1" Margin="3">
+                                            <TextBlock Text="{Binding Index}" Foreground="White" FontSize="10"/>
                                         </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </ScrollViewer>
-                    </DockPanel>
-                </Border>
+                                        <Border VerticalAlignment="Bottom" HorizontalAlignment="Right" Background="#33000000"
+                                                CornerRadius="4" Padding="3,1" Margin="3"
+                                                Visibility="{Binding HasResult, FallbackValue=Collapsed}">
+                                            <materialIcons:MaterialIcon Kind="EyeOutline" Width="12" Height="12" Foreground="White"/>
+                                        </Border>
+                                    </Grid>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </DockPanel>
+            </Border>
 
-                <Border Grid.Column="1" Style="{StaticResource TestBorder}" Margin="4">
-                    <DockPanel>
-                        <TextBlock DockPanel.Dock="Top" Text="OCR / BARCODE / DATE RESULT" Foreground="White" FontSize="12" FontWeight="SemiBold" Margin="2,0,0,8"/>
-                        <TextBox x:Name="OCRResultBox" TextWrapping="Wrap" IsReadOnly="True" Background="#111113"
-                                 Foreground="#D1D5DB" BorderBrush="#222228" BorderThickness="1"
-                                 VerticalScrollBarVisibility="Auto" FontSize="12"/>
-                    </DockPanel>
-                </Border>
-            </Grid>
+            <!-- 2. Detection Results (top-right) -->
+            <Border Grid.Row="0" Grid.Column="1" Style="{StaticResource TestBorder}">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="DETECTION RESULTS" Style="{StaticResource SectionLabel}"/>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <Border Grid.Row="0" Grid.Column="0" Style="{StaticResource MetricCard}">
+                                    <StackPanel>
+                                        <TextBlock Text="SCORE" Foreground="#60A5FA" FontSize="10" FontWeight="SemiBold" Opacity="0.8"/>
+                                        <TextBlock x:Name="ScoreTxt" Text="-" Foreground="White" FontSize="20" FontWeight="Bold"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Row="0" Grid.Column="1" Style="{StaticResource MetricCard}">
+                                    <StackPanel>
+                                        <TextBlock Text="BOXES" Foreground="#60A5FA" FontSize="10" FontWeight="SemiBold" Opacity="0.8"/>
+                                        <TextBlock x:Name="BoxesTxt" Text="-" Foreground="White" FontSize="20" FontWeight="Bold"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource MetricCard}">
+                                    <StackPanel>
+                                        <TextBlock Text="HEIGHT (m)" Foreground="#60A5FA" FontSize="10" FontWeight="SemiBold" Opacity="0.8"/>
+                                        <TextBlock x:Name="HeightTxt" Text="-" Foreground="White" FontSize="20" FontWeight="Bold"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource MetricCard}">
+                                    <StackPanel>
+                                        <TextBlock Text="HUMAN" Foreground="#60A5FA" FontSize="10" FontWeight="SemiBold" Opacity="0.8"/>
+                                        <TextBlock x:Name="HumanTxt" Text="-" Foreground="White" FontSize="20" FontWeight="Bold"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Row="2" Grid.Column="0" Style="{StaticResource MetricCard}">
+                                    <StackPanel>
+                                        <TextBlock Text="BARCODES" Foreground="#60A5FA" FontSize="10" FontWeight="SemiBold" Opacity="0.8"/>
+                                        <TextBlock x:Name="BarcodesTxt" Text="-" Foreground="White" FontSize="20" FontWeight="Bold"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Row="2" Grid.Column="1" Style="{StaticResource MetricCard}">
+                                    <StackPanel>
+                                        <TextBlock Text="DATES" Foreground="#60A5FA" FontSize="10" FontWeight="SemiBold" Opacity="0.8"/>
+                                        <TextBlock x:Name="DatesTxt" Text="-" Foreground="White" FontSize="20" FontWeight="Bold"/>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+
+                            <!-- Pallet status banner -->
+                            <Border x:Name="StatusBanner" Margin="3,8,3,0" CornerRadius="6" Padding="8,6" Background="#0D1117">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <materialIcons:MaterialIcon x:Name="StatusIcon" Kind="CheckCircleOutline" Width="16" Height="16"
+                                                                    Foreground="#4ADE80" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Status:" Foreground="#9CA3AF" FontSize="11" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                        <TextBlock x:Name="StatusTxt" Text="-" Foreground="White" FontSize="12" FontWeight="Bold" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                    </StackPanel>
+                                    <TextBlock x:Name="RemarkTxt" Text="-" Foreground="#D29922" FontSize="11" Margin="22,3,0,0" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <!-- Horizontal GridSplitter (top | middle) -->
+            <GridSplitter Grid.Row="1" Grid.ColumnSpan="2" Height="5"
+                          HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                          Background="#222228" Margin="10,2,10,2"/>
+
+            <!-- 3. Annotated Images (full width middle) -->
+            <Border Grid.Row="2" Grid.ColumnSpan="2" Style="{StaticResource TestBorder}">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="ANNOTATED IMAGES" Style="{StaticResource SectionLabel}"/>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl x:Name="AnnotatedList">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Columns="4"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Style="{StaticResource RoundButton}" Background="#111113"
+                                            BorderBrush="#222228" BorderThickness="1" Padding="0" Margin="3"
+                                            ToolTip="Click to view annotated image"
+                                            Click="AnnotatedThumbnail_Click" Tag="{Binding Index}"
+                                            Cursor="Hand">
+                                        <Grid>
+                                            <Image Source="{Binding Image}" Stretch="Uniform" Margin="3"/>
+                                            <Border VerticalAlignment="Bottom" HorizontalAlignment="Left" Background="#66000000"
+                                                    CornerRadius="4" Padding="4,1" Margin="3">
+                                                <TextBlock Text="{Binding Index}" Foreground="White" FontSize="10"/>
+                                            </Border>
+                                        </Grid>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <!-- Horizontal GridSplitter (middle | bottom) -->
+            <GridSplitter Grid.Row="3" Grid.ColumnSpan="2" Height="5"
+                          HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                          Background="#222228" Margin="10,2,10,2"/>
+
+            <!-- 4. OCR / Barcode / Date (full width bottom) -->
+            <Border Grid.Row="4" Grid.ColumnSpan="2" Style="{StaticResource TestBorder}">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="OCR / BARCODE / DATE" Style="{StaticResource SectionLabel}"/>
+                    <TextBox x:Name="OCRResultBox" TextWrapping="Wrap" IsReadOnly="True" Background="#111113"
+                             Foreground="#D1D5DB" BorderBrush="#222228" BorderThickness="1"
+                             VerticalScrollBarVisibility="Auto" FontSize="11"/>
+                </DockPanel>
+            </Border>
         </Grid>
 
         <!-- Loading Overlay -->
-        <Grid x:Name="LoadingOverlay" Grid.RowSpan="3" Background="#CC0A0A0A" Visibility="Collapsed"
+        <Grid x:Name="LoadingOverlay" Grid.RowSpan="2" Background="#CC0A0A0A" Visibility="Collapsed"
               Panel.ZIndex="999">
             <Border Background="#111113" CornerRadius="14" BorderBrush="#222228" BorderThickness="1"
                     Padding="30,20" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -225,6 +282,77 @@
                     </Grid>
                     <TextBlock x:Name="OverlayProgressTxt" Text="Processing..." Foreground="White" FontSize="14"
                                Margin="0,12,0,0" HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Preview Overlay Dialog (annotated image) -->
+        <Grid x:Name="PreviewOverlay" Grid.RowSpan="2" Background="#E6000000" Visibility="Collapsed"
+              Panel.ZIndex="1000" MouseLeftButtonDown="PreviewOverlay_BackdropClick">
+            <Border x:Name="PreviewDialogCard" Width="820" MinWidth="480"
+                    Background="#121216" CornerRadius="14" BorderBrush="#33333C" BorderThickness="1"
+                    Padding="20" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="40" ShadowDepth="0" Opacity="0.6" Color="#000000"/>
+                </Border.Effect>
+                <StackPanel>
+                    <!-- Header -->
+                    <Grid Margin="0,0,0,14">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Border Width="34" Height="34" CornerRadius="8" Background="#1B2536"
+                                    BorderBrush="#2C3E5A" BorderThickness="1" Margin="0,0,10,0"
+                                    VerticalAlignment="Center">
+                                <materialIcons:MaterialIcon Kind="ImageSearch" Width="18" Height="18"
+                                                            Foreground="#60A5FA" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock x:Name="PreviewCaptionTxt" Text="Annotated Image" Foreground="White"
+                                           FontSize="15" FontWeight="SemiBold"/>
+                                <TextBlock x:Name="PreviewSubTxt" Text="" Foreground="#9CA3AF" FontSize="11"
+                                           Margin="0,2,0,0"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <Button x:Name="ClosePreviewBtn" Width="32" Height="32" Padding="0"
+                                HorizontalAlignment="Right" VerticalAlignment="Top"
+                                Click="ClosePreviewBtn_Click" ToolTip="Close"
+                                Style="{StaticResource RoundButton}" Background="#1B1B20" BorderBrush="#2E2E35">
+                            <materialIcons:MaterialIcon Kind="Close" Width="16" Height="16" Foreground="#D1D5DB"/>
+                        </Button>
+                    </Grid>
+
+                    <!-- Image area -->
+                    <Border Background="#0A0A0D" CornerRadius="10" BorderBrush="#1E1E24" BorderThickness="1"
+                            Padding="6" MaxHeight="520">
+                        <Grid>
+                            <Image x:Name="PreviewImage" MaxWidth="760" MaxHeight="500" Stretch="Uniform"
+                                   Margin="4"/>
+                            <TextBlock x:Name="PreviewImageEmptyTxt" Text="No annotated image available"
+                                       Foreground="#6B7280" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       FontSize="13" Visibility="Collapsed"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- Footer buttons -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                        <Button x:Name="SavePreviewBtn" Height="34" Margin="0,0,10,0" Padding="16,0"
+                                Click="SavePreviewBtn_Click" ToolTip="Save this annotated image to disk"
+                                Style="{StaticResource RoundButton}" Background="#1B2536" BorderBrush="#2C3E5A">
+                            <StackPanel Orientation="Horizontal">
+                                <materialIcons:MaterialIcon Kind="DownloadOutline" Width="15" Height="15"
+                                                            Foreground="#60A5FA" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Save" Foreground="White" FontSize="12" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="DialogCloseBtn" Height="34" Padding="20,0" IsDefault="True"
+                                Click="ClosePreviewBtn_Click"
+                                Style="{StaticResource RoundButton}" Background="#1F2937" BorderBrush="#374151">
+                            <StackPanel Orientation="Horizontal">
+                                <materialIcons:MaterialIcon Kind="Close" Width="15" Height="15"
+                                                            Foreground="#D1D5DB" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Close" Foreground="White" FontSize="12" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
                 </StackPanel>
             </Border>
         </Grid>

@@ -1,4 +1,5 @@
 ﻿using Basler.Pylon;
+using HumanDetection.Services;
 using Microsoft.ML.OnnxRuntime;
 using OpenCvSharp;
 using OpenCvSharp.Extensions;
@@ -110,6 +111,15 @@ namespace UserControls.LivePreview
 
         private void LoadModels()
         {
+            // Reuse the globally-loaded models when available (loaded by the splash).
+            if (AppModels.IsLoaded)
+            {
+                _scorerBoxCountingModel = AppModels.BoxCounting;
+                _scorerHumanModel = AppModels.HumanDetection;
+                _font = AppModels.AnnotationFont;
+                return;
+            }
+
             var sessionOptions = new SessionOptions();
             try
             {

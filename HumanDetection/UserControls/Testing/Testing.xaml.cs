@@ -1,4 +1,6 @@
 using HumanDetection.Model;
+using HumanDetection.Services;
+using HumanDetection;
 using Microsoft.ML.OnnxRuntime;
 using Model;
 using Newtonsoft.Json;
@@ -36,6 +38,9 @@ namespace UserControls.Testing
     {
         private readonly ObservableCollection<TestImageItem> _imageItems = new();
 
+        // Annotated image per 1-based thumbnail label (rebuilt after each run).
+        private readonly Dictionary<int, BitmapImage> _annotatedByIndex = new();
+
         private YoloScorer<YoloCocoP5Model> _scorerHumanModel;
         private YoloScorer<YoloBoxCountingModel> _scorerBoxCountingModel;
 
@@ -43,6 +48,16 @@ namespace UserControls.Testing
         {
             InitializeComponent();
             ImagesList.ItemsSource = _imageItems;
+            KeyDown += OnPreviewKeyDown;
+        }
+
+        private void OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Escape && PreviewOverlay.Visibility == Visibility.Visible)
+            {
+                ClosePreviewDialog();
+                e.Handled = true;
+            }
         }
 
         private void SelectImagesBtn_Click(object sender, RoutedEventArgs e)
@@ -215,6 +230,46 @@ namespace UserControls.Testing
                     .OrderBy(v => v)
                     .ToList();
 
+                // ========================================================
+                // PALLET STATUS EVALUATION (same rules as Home page)
+                // ========================================================
+                // Missing date or missing SKU does NOT fail the pallet here.
+                // Those checks only apply when a date / SKU is actually found.
+                // 1) Height must NOT exceed 1.7 m
+                // 2) Box counting confidence must be >= 70%
+                // 3) If dates found: exactly 2 required (expiry + manufacturing)
+                // 4) If SKU found: same SKU on every label crop
+                // ========================================================
+                bool boxConfidenceOk = aiResult.AvScore >= 0.70;
+                bool heightOk = aiResult.maxPalletHeight <= 1.7;
+                var skuResults = ExtractSkuCodes(ocrResults);
+                bool hasDate = distinctDates >= 1;
+                bool hasSku = skuResults.DistinctSkus.Count >= 1;
+
+                var failReasons = new List<string>();
+                if (!heightOk)
+                    failReasons.Add("Pallet height exceeds 1.7m");
+                if (!boxConfidenceOk)
+                    failReasons.Add("Box counting confidence below 70%");
+                if (hasDate && distinctDates != 2)
+                {
+                    failReasons.Add(distinctDates < 2
+                        ? "Expected exactly 2 dates (expiry + manufacturing)"
+                        : "More than 2 dates detected (expected one expiry + one manufacturing)");
+                }
+                if (hasSku && (skuResults.CropsWithoutSku > 0 || skuResults.DistinctSkus.Count > 1))
+                {
+                    failReasons.Add(skuResults.CropsWithoutSku > 0
+                        ? "SKU code missing on one or more labels"
+                        : "SKU codes do not match across labels");
+                }
+
+                bool palletOk = failReasons.Count == 0;
+                string palletStatus = palletOk ? "Success" : "Failed";
+                string palletRemark = palletOk
+                    ? "OK"
+                    : string.Join(" | ", failReasons);
+
                 // Stop the total timer before displaying.
                 totalStopwatch.Stop();
 
@@ -234,6 +289,9 @@ namespace UserControls.Testing
                 sb.AppendLine($"Distinct Barcodes: {distinctBarcodes} ({string.Join(", ", distinctBarcodeList)})");
                 sb.AppendLine($"Distinct Dates: {distinctDates} ({allDatesList})");
                 sb.AppendLine();
+                sb.AppendLine($"Pallet Status: {palletStatus}");
+                sb.AppendLine($"Remark: {palletRemark}");
+                sb.AppendLine();
                 foreach (var r in ocrResults)
                     sb.AppendLine(OcrResultToString(r));
 
@@ -246,13 +304,29 @@ namespace UserControls.Testing
                 HumanTxt.Text = aiResult.HumanDetected ? "Yes" : "No";
                 BarcodesTxt.Text = distinctBarcodes.ToString();
                 DatesTxt.Text = distinctDates.ToString();
-                OCRResultBox.Text = sb.ToString();
+
+                // Pallet status banner
+                StatusTxt.Text = palletStatus;
+                RemarkTxt.Text = palletRemark;
+                StatusIcon.Kind = palletOk
+                    ? Material.Icons.MaterialIconKind.CheckCircleOutline
+                    : Material.Icons.MaterialIconKind.AlertCircleOutline;
+                StatusIcon.Foreground = palletOk
+                    ? System.Windows.Media.Brushes.LightGreen
+                    : System.Windows.Media.Brushes.OrangeRed;
+                StatusBanner.Background = palletOk
+                    ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x0D, 0x1B, 0x12))
+                    : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x22, 0x14, 0x12));
+
+                string ocrSummary = sb.ToString();
+                OCRResultBox.Text = ocrSummary;
 
                 // Annotated images
-                var annotatedCollection = new ObservableCollection<BitmapImage>();
+                _annotatedByIndex.Clear();
+                var annotatedCollection = new ObservableCollection<AnnotatedImageItem>();
                 if (aiResult.AnnotatedImages != null)
                 {
-                    foreach (var bytes in aiResult.AnnotatedImages)
+                    foreach (var (index, bytes) in aiResult.AnnotatedImages)
                     {
                         using var ms = new MemoryStream(bytes);
                         var bmp = new BitmapImage();
@@ -261,10 +335,24 @@ namespace UserControls.Testing
                         bmp.StreamSource = ms;
                         bmp.EndInit();
                         bmp.Freeze();
-                        annotatedCollection.Add(bmp);
+
+                        // Remember by the 1-based thumbnail label.
+                        if (index >= 0 && index < _imageItems.Count)
+                        {
+                            int label = _imageItems[index].Index;
+                            _imageItems[index].HasResult = true;
+                            _annotatedByIndex[label] = bmp;
+                            annotatedCollection.Add(new AnnotatedImageItem { Index = label, Image = bmp });
+                        }
+                        else
+                        {
+                            annotatedCollection.Add(new AnnotatedImageItem { Index = index, Image = bmp });
+                        }
                     }
                 }
                 AnnotatedList.ItemsSource = annotatedCollection;
+                ImagesList.ItemsSource = null;
+                ImagesList.ItemsSource = _imageItems;
 
                 // ---- Save result to back office API (auto) ----
                 var tokens = new[]
@@ -285,7 +373,7 @@ namespace UserControls.Testing
                     productionDate = null,
                     exipreDate = allDatesList,
                     barCode = string.Join(", ", distinctBarcodeList),
-                    palletCondition = aiResult.AvScore >= 0.7 ? "Good" : "Rejected",
+                    palletCondition = palletOk ? "Good" : "Rejected",
                     humenDetection = aiResult.HumanDetected ? "Yes" : "No",
                     image = null
                 };
@@ -296,6 +384,51 @@ namespace UserControls.Testing
                     "https://adp-backend-demo.ashybay-437ca219.uaenorth.azurecontainerapps.io/core/thing-type/66b9a073b241574cd76f0616/adpPallet");
 
                 await Task.Run(() => service.PostPalletDataAsync(payload));
+
+                // ---- Save result to local DB (same traceability as Home) ----
+                try
+                {
+                    // Requirement: a failed pallet is saved with the failure remark.
+                    // "Failed" unless the ONLY failing condition was the box-counting
+                    // confidence, in which case the historic "LessScore" status is kept.
+                    bool confidenceSoleFailure = failReasons.Count == 1 &&
+                                                 failReasons[0].Contains("confidence", StringComparison.OrdinalIgnoreCase);
+                    string failedStatus = confidenceSoleFailure
+                        ? DetectionStatus.LessScore.ToString()
+                        : DetectionStatus.Failed.ToString();
+
+                    DetectionResultRepository.Insert(new DetectionResultModel
+                    {
+                        ScanDate = startTime,
+                        Status = palletOk ? DetectionStatus.Success.ToString() : failedStatus,
+                        Score = aiResult.AvScore,
+                        TotalBoxes = aiResult.NumberOfBox,
+                        PalletHeight = aiResult.maxPalletHeight,
+                        Weight = "",
+                        HumanDetected = aiResult.HumanDetected ? "Yes" : "No",
+                        BarcodeCount = distinctBarcodes,
+                        BarcodeList = string.Join(", ", distinctBarcodeList),
+                        DateCount = distinctDates,
+                        DateList = allDatesList,
+                        OCRResult = ocrSummary,
+                        EntryTime = startTime.ToString("HH:mm:ss"),
+                        ExitTime = DateTime.Now.ToString("HH:mm:ss"),
+                        ImagesPath = "",
+                        AnnotatedPath = "",
+                        ResultFilePath = "",
+                        Attempts = 0,
+                        Task1StartTime = boxStopwatch.Elapsed.TotalSeconds.ToString("0.00"),
+                        Task1EndTime = "",
+                        Task2StartTime = ocrStopwatch.Elapsed.TotalSeconds.ToString("0.00"),
+                        Task2EndTime = "",
+                        Remark = palletRemark
+                    });
+                }
+                catch (Exception dbEx)
+                {
+                    Console.WriteLine($"Failed to save Testing result to DB: {dbEx}");
+                    Logger.LogException(dbEx, "DetectionResultRepository.Insert(Testing)");
+                }
 
                 ProgressTxt.Text = "Detection complete";
             }
@@ -317,6 +450,7 @@ namespace UserControls.Testing
         private void ClearBtn_Click(object sender, RoutedEventArgs e)
         {
             _imageItems.Clear();
+            _annotatedByIndex.Clear();
             ImagesList.ItemsSource = null;
             ImagesList.ItemsSource = _imageItems;
             AnnotatedList.ItemsSource = null;
@@ -330,7 +464,102 @@ namespace UserControls.Testing
             OCRResultBox.Text = "";
             TimeTxt.Text = "-";
             ProgressTxt.Text = "";
+            StatusTxt.Text = "-";
+            RemarkTxt.Text = "-";
+            StatusIcon.Kind = Material.Icons.MaterialIconKind.CheckCircleOutline;
+            StatusIcon.Foreground = System.Windows.Media.Brushes.LightGreen;
+            StatusBanner.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x0D, 0x11, 0x17));
             StartProcessBtn.IsEnabled = false;
+        }
+
+        private BitmapImage _currentPreviewBitmap;
+
+        private void Thumbnail_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement fe && fe.Tag is int index)
+            {
+                ShowAnnotatedPreview(index);
+            }
+        }
+
+        private void AnnotatedThumbnail_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement fe && fe.Tag is int index)
+            {
+                ShowAnnotatedPreview(index);
+            }
+        }
+
+        private void ShowAnnotatedPreview(int index)
+        {
+            if (_annotatedByIndex.TryGetValue(index, out var bmp))
+            {
+                _currentPreviewBitmap = bmp;
+                PreviewImage.Source = bmp;
+                PreviewImageEmptyTxt.Visibility = Visibility.Collapsed;
+                PreviewCaptionTxt.Text = $"Annotated Image #{index}";
+                PreviewSubTxt.Text = $"Camera {index} • {bmp.PixelWidth} × {bmp.PixelHeight} px";
+                PreviewOverlay.Visibility = Visibility.Visible;
+                SavePreviewBtn.IsEnabled = true;
+            }
+            else
+            {
+                MessageBox.Show("No annotated result for image #" + index +
+                    ". Run the process first.", "Testing",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+
+        private void PreviewOverlay_BackdropClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            // Close only when clicking the dark backdrop, not the dialog card.
+            if (e.OriginalSource == PreviewOverlay)
+            {
+                ClosePreviewDialog();
+            }
+        }
+
+        private void ClosePreviewBtn_Click(object sender, RoutedEventArgs e)
+        {
+            ClosePreviewDialog();
+        }
+
+        private void ClosePreviewDialog()
+        {
+            PreviewOverlay.Visibility = Visibility.Collapsed;
+            PreviewImage.Source = null;
+            _currentPreviewBitmap = null;
+        }
+
+        private void SavePreviewBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentPreviewBitmap == null) return;
+
+            var dialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Save Annotated Image",
+                Filter = "PNG Image|*.png|JPEG Image|*.jpg|Bitmap Image|*.bmp",
+                DefaultExt = ".png",
+                FileName = $"annotated_{DateTime.Now:yyyyMMdd_HHmmss}.png"
+            };
+
+            if (dialog.ShowDialog() == true)
+            {
+                try
+                {
+                    var encoder = new PngBitmapEncoder();
+                    encoder.Frames.Add(BitmapFrame.Create(_currentPreviewBitmap));
+                    using var fs = new FileStream(dialog.FileName, FileMode.Create);
+                    encoder.Save(fs);
+                    MessageBox.Show("Image saved successfully.", "Testing",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Failed to save image:\n" + ex.Message, "Testing",
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
         }
 
         private CameraPosition MapPosition(int index) => index switch
@@ -344,37 +573,20 @@ namespace UserControls.Testing
 
         private async Task<bool> LoadModelsAsync()
         {
-            return await Task.Run(() =>
+            bool ok = await AppModels.LoadAsync();
+            if (ok)
             {
-                try
-                {
-                    var sessionOptions = new SessionOptions();
-                    try { sessionOptions.AppendExecutionProvider_DML(); }
-                    catch { sessionOptions.AppendExecutionProvider_CPU(); }
-
-                    var modelPathBox = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets/Weights/customBoxCount.onnx");
-                    if (!File.Exists(modelPathBox)) throw new FileNotFoundException("BoxCount model missing");
-                    _scorerBoxCountingModel = new YoloScorer<YoloBoxCountingModel>(modelPathBox, sessionOptions);
-
-                    var modelPathHuman = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets/Weights/yolov5s.onnx");
-                    if (!File.Exists(modelPathHuman)) throw new FileNotFoundException("Human detection model missing");
-                    _scorerHumanModel = new YoloScorer<YoloCocoP5Model>(modelPathHuman, sessionOptions);
-
-                    return true;
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine("Model load error: " + ex.Message);
-                    return false;
-                }
-            });
+                _scorerBoxCountingModel = AppModels.BoxCounting;
+                _scorerHumanModel = AppModels.HumanDetection;
+            }
+            return ok;
         }
 
-        private async Task<(double AvScore, bool HumanDetected, int NumberOfBox, List<byte[]> OCRBytes, double maxPalletHeight, List<byte[]> AnnotatedImages)>
+        private async Task<(double AvScore, bool HumanDetected, int NumberOfBox, List<byte[]> OCRBytes, double maxPalletHeight, List<(int Index, byte[] Image)> AnnotatedImages)>
             RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
         {
             if (capturedImages == null || capturedImages.Count < 1)
-                return (0.0, false, 0, new List<byte[]>(), 0, new List<byte[]>());
+                return (0.0, false, 0, new List<byte[]>(), 0, new List<(int, byte[])>());
 
             // Read settings once (avoids repeated DB reads per image)
             double confidenceThreshold = 0.0;
@@ -396,9 +608,10 @@ namespace UserControls.Testing
             bool humanDetected = false;
 
             var ocrResults = new System.Collections.Concurrent.ConcurrentBag<byte[]>();
-            var annotatedImages = new System.Collections.Concurrent.ConcurrentBag<byte[]>();
+            var annotatedImages = new Dictionary<int, byte[]>();
             var frontBoxes = new List<YoloPrediction>();
             var topBoxes = new List<YoloPrediction>();
+            var rightBoxes = new List<YoloPrediction>();
             var lockObj = new object();
 
             // Process all images SEQUENTIALLY.
@@ -406,8 +619,9 @@ namespace UserControls.Testing
             // concurrent Run() calls; parallel inference corrupts GPU memory and
             // throws AccessViolationException. Awaited (sequential) inference
             // matches the working Home page behavior.
-            foreach (var captured in capturedImages)
+            for (int camIndex = 0; camIndex < capturedImages.Count; camIndex++)
             {
+                var captured = capturedImages[camIndex];
                 PalletSide side = MapPalletSide(captured.Position);
                 using var image = BitmapImageToImageSharp(captured.Image);
 
@@ -431,21 +645,24 @@ namespace UserControls.Testing
                     if (boxResult.BoxesImages != null)
                         foreach (var b in boxResult.BoxesImages) ocrResults.Add(b);
                     if (boxResult.AnnotatedImage != null)
-                        annotatedImages.Add(boxResult.AnnotatedImage);
+                        annotatedImages[camIndex] = boxResult.AnnotatedImage;
 
                     if (side == PalletSide.Front) frontBoxes = boxResult.BoxPredictions ?? new();
                     if (side == PalletSide.Top) topBoxes = boxResult.BoxPredictions ?? new();
+                    if (side == PalletSide.Right) rightBoxes = boxResult.BoxPredictions ?? new();
                 }
             }
 
             double finalAverageScore = avgScoreCount > 0 ? totalAvgScore / avgScoreCount : 0.0;
 
-            int topBoxCount = topBoxes.Count();
-            int frontRows = BoxCountingService.CountTopRows(frontBoxes);
-            numberOfBox = topBoxCount == 0 ? 1 : topBoxCount * frontRows;
+            // Box count via the DEPTH method (Testing screen only):
+            // front + top + right views are combined to estimate how many boxes
+            // the pallet is wide, deep and tall.
+            numberOfBox = CountBoxesWithDepth(frontBoxes, topBoxes, rightBoxes);
 
             return (finalAverageScore, humanDetected, numberOfBox,
-                    ocrResults.ToList(), maxPalletHeight, annotatedImages.ToList());
+                    ocrResults.ToList(), maxPalletHeight,
+                    annotatedImages.OrderBy(k => k.Key).Select(kv => (kv.Key, kv.Value)).ToList());
         }
 
         private PalletSide MapPalletSide(CameraPosition position) => position switch
@@ -457,6 +674,88 @@ namespace UserControls.Testing
             CameraPosition.Top => PalletSide.Top,
             _ => PalletSide.Front
         };
+
+        /// <summary>
+        /// Depth method box count (Testing screen only).
+        /// Uses the front, top and right views:
+        ///   width  = boxes per column across the front view
+        ///   depth  = box columns visible from the right view,
+        ///            cross-checked against the rows seen in the top view
+        ///   layers = box rows stacked in the front view
+        ///   total  = width * depth * layers
+        /// Falls back to the top-view based estimate when a view is missing.
+        /// </summary>
+        private static int CountBoxesWithDepth(
+            List<YoloPrediction> frontBoxes,
+            List<YoloPrediction> topBoxes,
+            List<YoloPrediction> rightBoxes)
+        {
+            int frontCols = GroupCount(frontBoxes, byX: true);   // width (boxes across)
+            int frontLayers = GroupCount(frontBoxes, byX: false); // layers (boxes tall)
+            int topCols = GroupCount(topBoxes, byX: true);       // width from top face
+            int topRows = GroupCount(topBoxes, byX: false);      // depth from top face
+            int rightCols = GroupCount(rightBoxes, byX: true);   // depth from right view
+            int rightLayers = GroupCount(rightBoxes, byX: false);
+
+            // Depth: number of boxes deep into the pallet.
+            int depthFromTop = topRows;
+            int depthFromRight = rightCols;
+            int depth;
+            if (depthFromTop > 0 && depthFromRight > 0)
+                depth = (int)Math.Round((depthFromTop + depthFromRight) / 2.0);
+            else if (depthFromTop > 0) depth = depthFromTop;
+            else if (depthFromRight > 0) depth = depthFromRight;
+            else depth = 0;
+
+            int width = frontCols > 0 ? frontCols : topCols;
+            int layers = frontLayers > 0 ? frontLayers : rightLayers;
+
+            int total = width > 0 && depth > 0 && layers > 0
+                ? width * depth * layers
+                : 0;
+
+            // Fallback: previous top-view based estimate.
+            if (total <= 0)
+            {
+                int legacyWidth = topCols > 0 ? topCols : 1;
+                int legacyDepth = topRows > 0 ? topRows : 1;
+                int legacyLayers = Math.Max(frontLayers != 0 ? frontLayers : rightLayers, 1);
+                return legacyWidth * legacyDepth * legacyLayers;
+            }
+
+            return total;
+        }
+
+        /// <summary>
+        /// Counts how many columns (byX = true) or rows (byX = false) the detected
+        /// boxes form, grouping boxes whose centers are closer than half a box size.
+        /// </summary>
+        private static int GroupCount(List<YoloPrediction> boxes, bool byX)
+        {
+            if (boxes == null || boxes.Count == 0)
+                return 0;
+
+            var centers = (byX
+                    ? boxes.Select(b => b.Rectangle.X + b.Rectangle.Width / 2f)
+                    : boxes.Select(b => b.Rectangle.Y + b.Rectangle.Height / 2f))
+                .OrderBy(v => v)
+                .ToList();
+
+            float avgSize = byX
+                ? boxes.Average(b => b.Rectangle.Width)
+                : boxes.Average(b => b.Rectangle.Height);
+            float tolerance = Math.Max(avgSize * 0.45f, 1f);
+
+            int groups = 1;
+            float last = centers[0];
+            for (int i = 1; i < centers.Count; i++)
+            {
+                if (centers[i] - last > tolerance)
+                    groups++;
+                last = centers[i];
+            }
+            return groups;
+        }
 
         private async Task<ImagePredictionResult> RunBoxCountingModelAsync(Image<Rgba32> originalImage, PalletSide side, double confidenceThreshold = 0.0)
         {
@@ -692,9 +991,56 @@ namespace UserControls.Testing
             }
             return sb.ToString();
         }
+
+        /// <summary>
+        /// Extracts SKU codes (SKU:/Product:/Item:) from each OCR label crop and reports
+        /// how many text-carrying crops exist, how many lack a SKU, and the distinct SKUs found.
+        /// </summary>
+        private static (int CropsWithText, int CropsWithoutSku, List<string> DistinctSkus) ExtractSkuCodes(List<OcrImageResult> ocrResults)
+        {
+            var regex = new System.Text.RegularExpressions.Regex(@"(?:SKU|Product|Item)\s*[:\-]?\s*([A-Z0-9\-_]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            var distinctSkus = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            int cropsWithText = 0;
+            int cropsWithoutSku = 0;
+
+            foreach (var res in ocrResults)
+            {
+                if (res?.raw_text == null || res.raw_text.Count == 0)
+                    continue;
+
+                cropsWithText++;
+                bool cropHasSku = false;
+                foreach (var text in res.raw_text)
+                {
+                    if (string.IsNullOrWhiteSpace(text))
+                        continue;
+                    foreach (System.Text.RegularExpressions.Match m in regex.Matches(text))
+                    {
+                        string val = m.Groups[1].Value.Trim();
+                        if (string.IsNullOrEmpty(val))
+                            continue;
+                        cropHasSku = true;
+                        if (seen.Add(val))
+                            distinctSkus.Add(val);
+                    }
+                }
+                if (!cropHasSku)
+                    cropsWithoutSku++;
+            }
+
+            return (cropsWithText, cropsWithoutSku, distinctSkus);
+        }
     }
 
     public class TestImageItem
+    {
+        public int Index { get; set; } = 0;
+        public BitmapImage Image { get; set; }
+        public bool HasResult { get; set; } = false;
+    }
+
+    public class AnnotatedImageItem
     {
         public int Index { get; set; } = 0;
         public BitmapImage Image { get; set; }

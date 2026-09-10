@@ -99,6 +99,7 @@ namespace HumanDetection.Utilites.PalletAPI
                     { "barCode", payload.barCode },
                     { "palletCondition", payload.palletCondition },
                     { "humenDetection", payload.humenDetection },
+                    { "remark", payload.remark ?? "" },
                     { "image", "https://adp-backend-demo.ashybay-437ca219.uaenorth.azurecontainerapps.io/core"+"/"+payload.image }
                 };
 

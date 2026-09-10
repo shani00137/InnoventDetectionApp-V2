@@ -8,6 +8,7 @@ using HumanDetection.Model;
 using HumanDetection.Utilites.Animation;
 using HumanDetection.Utilites.Audio;
 using HumanDetection.Utilites.PalletAPI;
+using HumanDetection.Services;
 using MaterialDesignThemes.Wpf;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.VisualBasic.ApplicationServices;
@@ -369,6 +370,8 @@ namespace HumanDetection
         /// </summary>
         public async Task PrepareAllDevicesAndModels()
         {
+            // Non-blocking loading checklist: shows model/weight/Moxa/OCR status while
+            // the UI stays interactive (IsHitTestVisible=False so clicks pass through).
             LoadingOverlay.Visibility = Visibility.Visible;
 
             bool modelOk = await RunModelCheck(AiLoading, AiCheck, AiError, LoadModelsAsync);
@@ -437,7 +440,6 @@ namespace HumanDetection
                 ProgressTxt.Text = "Weight scale not detected!";
                 //return; // stop startup if critical
             }
-
 
             if (!_isPageUnloaded)
                 LoadingOverlay.Visibility = Visibility.Collapsed;
@@ -626,26 +628,9 @@ namespace HumanDetection
         /// </summary>
         public async Task<bool> StartFlaskApiAsync()
         {
-            try
-            {
-                KillProcessesUsingPort(5000);
-                //KillProcessesUsingPort(5001);
-
-                // Start BOTH APIs
-                var ocrProcess = StartPythonApi("ocr_api.py");
-                //var palletProcess = StartPythonApi("pallet_api.py");
-
-                // Wait for both APIs
-                bool ocrAlive = await WaitForApiAsync("http://127.0.0.1:5000/ocr");
-                //bool palletAlive = await WaitForApiAsync("http://127.0.0.1:5001/predict");
-
-                return ocrAlive;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine("Flask start error: " + ex.Message);
-                return false;
-            }
+            // OCR is owned globally by OcrProcessService — the splash screen starts
+            // it once. This simply ensures it is up without killing/restarting it.
+            return await OcrProcessService.Current.EnsureStartedAsync();
         }
 
         /// <summary>
@@ -766,60 +751,19 @@ namespace HumanDetection
 
         /// <summary>
         /// Loads the YOLO ONNX models (box counting + human detection) and the annotation font.
+        /// Models are loaded ONCE by the splash screen and shared app-wide (AppModels),
+        /// so this is a fast no-op when they are already available.
         /// </summary>
         private async Task<bool> LoadModelsAsync()
         {
-            return await Task.Run(() =>
+            bool ok = await AppModels.LoadAsync();
+            if (ok)
             {
-                try
-                {
-
-                    var sessionOptions = new Microsoft.ML.OnnxRuntime.SessionOptions();
-
-                    try
-                    {
-                        sessionOptions.AppendExecutionProvider_DML();
-                    }
-                    catch
-                    {
-                        sessionOptions.AppendExecutionProvider_CPU();
-                    }
-
-                    var modelPathBoxCounting =
-                        System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
-                        "Assets/Weights/customBoxCount.onnx");
-
-                    if (!File.Exists(modelPathBoxCounting))
-                        throw new FileNotFoundException("BoxCount model missing");
-
-                    _scorerBoxCountingModel =
-                        new YoloScorer<YoloBoxCountingModel>(modelPathBoxCounting, sessionOptions);
-
-                    var modelPathHumanDetection =
-                        System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
-                        "Assets/Weights/yolov5s.onnx");
-
-                    if (!File.Exists(modelPathHumanDetection))
-                        throw new FileNotFoundException("Human detection model missing");
-
-                    _scorerHumanModel =
-                        new YoloScorer<YoloCocoP5Model>(modelPathHumanDetection, sessionOptions);
-
-                    var fontPath = @"C:\Windows\Fonts\consola.ttf";
-                    if (!File.Exists(fontPath))
-                        throw new FileNotFoundException("Font missing");
-
-                    _font = new SixLabors.Fonts.Font(
-                        new FontCollection().Add(fontPath), 16);
-
-                    return true;
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine("Model load error: " + ex.Message);
-                    return false;
-                }
-            });
+                _scorerBoxCountingModel = AppModels.BoxCounting;
+                _scorerHumanModel = AppModels.HumanDetection;
+                _font = AppModels.AnnotationFont;
+            }
+            return ok;
         }
         #endregion
 
@@ -877,6 +821,17 @@ namespace HumanDetection
         /// <summary>
         /// Stops the pallet detection process: turns off blower/rotator and shows the success dialog.
         /// </summary>
+        public void CloseImageDialog(bool force = false)
+        {
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (force || !_isPalletDetectionRunning)
+                {
+                    ImageDialogHost.IsOpen = false;
+                }
+            });
+        }
+
         public async Task StopPalletDetectionProc()
         {
             _isPalletDetectionRunning = false;
@@ -1296,6 +1251,61 @@ namespace HumanDetection
                                        .ToList();
                     string barcodeList = string.Join(", ", distinctBarcodeItems);
 
+                    // ========================================================
+                    // PALLET STATUS EVALUATION
+                    // ========================================================
+                    // If no date or no SKU is found → FAILED immediately.
+                    // Only when a date AND a SKU are found do we apply the
+                    // decision rules below.
+                    // 1) Height must NOT exceed 1.7 m
+                    // 2) Box counting confidence must be >= 70%
+                    // 3) Exactly 2 dates required: expiry + manufacturing
+                    // 4) Every label crop must carry the same SKU code
+                    // ========================================================
+                    bool boxConfidenceOk = avgScore >= 0.70;
+                    var skuResults = ExtractSkuCodes(ocrResultList);
+                    bool hasDate = distinctDates >= 1;
+                    bool hasSku = skuResults.DistinctSkus.Count >= 1;
+
+                    var failReasons = new List<string>();
+                    if (!hasDate || !hasSku)
+                    {
+                        if (!hasDate)
+                            failReasons.Add("No date found on labels");
+                        if (!hasSku)
+                            failReasons.Add("No SKU code found on labels");
+                    }
+                    else
+                    {
+                        bool heightOk = aiResult.maxPalletHeight <= 1.7;
+                        bool datesOk = distinctDates == 2;
+                        bool skuOk = skuResults.CropsWithoutSku == 0 &&
+                                     skuResults.DistinctSkus.Count == 1;
+
+                        if (!heightOk)
+                            failReasons.Add("Pallet height exceeds 1.7m");
+                        if (!boxConfidenceOk)
+                            failReasons.Add("Box counting confidence below 70%");
+                        if (!datesOk)
+                        {
+                            failReasons.Add(distinctDates < 2
+                                ? "Expected exactly 2 dates (expiry + manufacturing)"
+                                : "More than 2 dates detected (expected one expiry + one manufacturing)");
+                        }
+                        if (!skuOk)
+                        {
+                            failReasons.Add(skuResults.CropsWithoutSku > 0
+                                ? "SKU code missing on one or more labels"
+                                : "SKU codes do not match across labels");
+                        }
+                    }
+
+                    bool palletOk = failReasons.Count == 0;
+                    string palletStatus = palletOk ? "Success" : "Failed";
+                    string palletRemark = palletOk
+                        ? "OK"
+                        : string.Join(" | ", failReasons);
+
                     if (distinctDates >= 3)
                     {
                         await StartBuzzlerWithDuration(2000, 1);
@@ -1363,7 +1373,9 @@ namespace HumanDetection
                                 .ToList(),
                             GridItems = gridItems,
                             LableCount = LableCount,
-                            DateCount = distinctDates
+                            DateCount = distinctDates,
+                            PalletStatus = palletStatus,
+                            Remark = palletRemark
 
                         };
                         AddResult(obj, false);
@@ -1372,14 +1384,14 @@ namespace HumanDetection
 
                     });
                     string ResultTooPost = $"AvgScore {avgScore} TotalWight {WeightText.Text} OCRResponse:{OCRResultInString}";
-                    if (avgScore >= 0.60)
+                    if (palletOk)
                     {
                         detectionPassed = true;
                         var request = new ResultRequestModel
                         {
                             ResutlModelList = ResultDataList.ToList(),
                         };
-                        _messageQueue.Enqueue("70% score found..  result are saved");
+                        _messageQueue.Enqueue("All pallet conditions met.. result are saved");
                         // 🔥 POST TO API
                         string imageUrl = "";
                         try
@@ -1428,11 +1440,13 @@ namespace HumanDetection
 
                             barCode = barcodeList,
 
-                            palletCondition = avgScore >= 0.7 ? "Good" : "Rejected",
+                            palletCondition = palletOk ? "Good" : "Rejected",
 
                             humenDetection = humanDetected ? "Yes" : "No",
 
-                            image = imageUrl
+                            image = imageUrl,
+
+                            remark = palletRemark
                         };
 
                         await StopPalletDetectionProc();
@@ -1476,8 +1490,10 @@ namespace HumanDetection
                                 $"Date: {DateTime.Now:yyyy-MM-dd HH:mm:ss}\r\n" +
                                 $"Score: {avgScore * 100:0}%\r\n" +
                                 $"Human Detected: {humanDetected}\r\n" +
-                                $"Number of Boxes: {numberOfBox}\r\n" +
+                                $"TotalBoxes: {numberOfBox}\r\n" +
                                 $"Pallet Height: {PalletHeightTxt.Text}m\r\n" +
+                                $"Pallet Status: {palletStatus}\r\n" +
+                                $"Remarks: {palletRemark}\r\n" +
                                 $"Weight: {WeightText.Text}\r\n" +
                                 $"Entry Time: {EntryTimeTxt.Text}\r\n" +
                                 $"Exit Time: {ExitTimeTxt.Text}\r\n" +
@@ -1521,7 +1537,8 @@ namespace HumanDetection
                                 Task1StartTime = task1Start,
                                 Task1EndTime = task1End,
                                 Task2StartTime = task2Start,
-                                Task2EndTime = task2End
+                                Task2EndTime = task2End,
+                                Remark = palletRemark
                             });
                         }
                         catch (Exception ex)
@@ -1559,15 +1576,24 @@ namespace HumanDetection
                     }
                     else
                     {
-                        _messageQueue.Enqueue("System has found score less then 70, process restart..");
+                        _messageQueue.Enqueue("Pallet conditions not met.. process restart..");
                         if (attempTaken >= 3)
                         {
                             try
                             {
+                                // Requirement: a failed pallet is saved with the failure remark.
+                                // "Failed" unless the ONLY failing condition was the box-counting
+                                // confidence, in which case the historic "LessScore" status is kept.
+                                bool confidenceSoleFailure = failReasons.Count == 1 &&
+                                                             failReasons[0].Contains("confidence", StringComparison.OrdinalIgnoreCase);
+                                string failedStatus = confidenceSoleFailure
+                                    ? DetectionStatus.LessScore.ToString()
+                                    : DetectionStatus.Failed.ToString();
+
                                 DetectionResultRepository.Insert(new DetectionResultModel
                                 {
                                     ScanDate = DateTime.Now,
-                                    Status = DetectionStatus.LessScore.ToString(),
+                                    Status = failedStatus,
                                     Score = avgScore,
                                     TotalBoxes = numberOfBox,
                                     PalletHeight = aiResult.maxPalletHeight,
@@ -1587,13 +1613,14 @@ namespace HumanDetection
                                     Task1StartTime = task1Start,
                                     Task1EndTime = task1End,
                                     Task2StartTime = task2Start,
-                                    Task2EndTime = task2End
+                                    Task2EndTime = task2End,
+                                    Remark = palletRemark
                                 });
                             }
                             catch (Exception ex)
                             {
-                                Console.WriteLine($"Failed to save LessScore result to DB: {ex}");
-                                Logger.LogException(ex, "DetectionResultRepository.Insert(LessScore)");
+                                Console.WriteLine($"Failed to save Failed result to DB: {ex}");
+                                Logger.LogException(ex, "DetectionResultRepository.Insert(Failed)");
                             }
 
                             await StopPalletDetectionProc();
@@ -1639,7 +1666,8 @@ namespace HumanDetection
                         Task1StartTime = "",
                         Task1EndTime = "",
                         Task2StartTime = "",
-                        Task2EndTime = ""
+                        Task2EndTime = "",
+                        Remark = "System error: " + ex.Message
                     });
                 }
                 catch (Exception dbEx)
@@ -2760,6 +2788,10 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                     resultModel.DateList = input.DateList;
                 if (input.BarcodeListItems != null)
                     resultModel.BarcodeListItems = input.BarcodeListItems;
+                if (!string.IsNullOrWhiteSpace(input.PalletStatus))
+                    resultModel.PalletStatus = input.PalletStatus;
+                if (!string.IsNullOrWhiteSpace(input.Remark))
+                    resultModel.Remark = input.Remark;
 
             }
             // 🔹 ADD NEW RESULT
@@ -2780,7 +2812,9 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
                     Score = input.Score,
                     HumanDetect = string.IsNullOrWhiteSpace(input.HumanDetect)
                                     ? "No"
-                                    : input.HumanDetect
+                                    : input.HumanDetect,
+                    PalletStatus = input.PalletStatus,
+                    Remark = input.Remark
                 });
             }
         }
@@ -2828,6 +2862,46 @@ RunAllAIDetectionsAsync(List<CapturedCameraImage> capturedImages)
             }
 
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Extracts SKU codes (SKU:/Product:/Item:) from each OCR label crop and reports
+        /// how many text-carrying crops exist, how many lack a SKU, and the distinct SKUs found.
+        /// </summary>
+        private static (int CropsWithText, int CropsWithoutSku, List<string> DistinctSkus) ExtractSkuCodes(List<OcrImageResult> ocrResults)
+        {
+            var regex = new Regex(@"(?:SKU|Product|Item)\s*[:\-]?\s*([A-Z0-9\-_]+)", RegexOptions.IgnoreCase);
+            var distinctSkus = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            int cropsWithText = 0;
+            int cropsWithoutSku = 0;
+
+            foreach (var res in ocrResults)
+            {
+                if (res?.raw_text == null || res.raw_text.Count == 0)
+                    continue;
+
+                cropsWithText++;
+                bool cropHasSku = false;
+                foreach (var text in res.raw_text)
+                {
+                    if (string.IsNullOrWhiteSpace(text))
+                        continue;
+                    foreach (Match m in regex.Matches(text))
+                    {
+                        string val = m.Groups[1].Value.Trim();
+                        if (string.IsNullOrEmpty(val))
+                            continue;
+                        cropHasSku = true;
+                        if (seen.Add(val))
+                            distinctSkus.Add(val);
+                    }
+                }
+                if (!cropHasSku)
+                    cropsWithoutSku++;
+            }
+
+            return (cropsWithText, cropsWithoutSku, distinctSkus);
         }
         #endregion
 

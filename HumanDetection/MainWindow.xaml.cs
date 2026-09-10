@@ -1,5 +1,4 @@
-﻿
-using ACGPUIO;
+﻿using ACGPUIO;
 using Basler.Pylon;
 using Dynamsoft.Core;
 using Dynamsoft.CVR;
@@ -11,16 +10,12 @@ using HumanDetection.Utilites.Audio;
 using MaterialDesignThemes.Wpf;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.VisualBasic.ApplicationServices;
+using System;
 using System.Drawing;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
-
-
-
-
-
-
+using System.Windows.Media.Animation;
 
 namespace HumanDetection
 {
@@ -37,13 +32,10 @@ namespace HumanDetection
         {
             InitializeComponent();
             MaximizeRestoreButton_Click(null, null);
-            var homePage = new Uri("UserControls/Home/Home.xaml", UriKind.Relative);
 
-            MainFrame.Navigate(homePage);
-
-
-            //  LoadCamera();
-
+            // The app lands on the Dashboard after the splash screen finishes
+            // loading all global resources (models, weight, Moxa, OCR).
+            MainFrame.Navigate(new Uri("UserControls/Dashboard/Dashboard.xaml", UriKind.Relative));
         }
 
         /// <summary>
@@ -62,8 +54,32 @@ namespace HumanDetection
                 return false;
             }
 
+            // Close any open modal dialog on the Home page so it doesn't
+            // block navigation (e.g. the "Process Complete" success dialog
+            // uses a DialogHost whose scrim covers the whole window).
+            if (MainFrame.Content is Home h)
+            {
+                h.CloseImageDialog(force: true);
+            }
+
             navigateAction();
             return true;
+        }
+
+        /// <summary>
+        /// Navigates the main frame with a smooth fade-in transition.
+        /// </summary>
+        private void NavigateTo(Uri uri)
+        {
+            MainFrame.Navigate(uri);
+            var fadeIn = new DoubleAnimation
+            {
+                From = 0,
+                To = 1,
+                Duration = TimeSpan.FromMilliseconds(320),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            MainFrame.BeginAnimation(OpacityProperty, fadeIn);
         }
 
         private void NavConfirmYes_Click(object sender, RoutedEventArgs e)
@@ -106,6 +122,15 @@ namespace HumanDetection
             navigateAction();
         }
 
+        #region Public Navigation APIs (used by Dashboard etc.)
+
+        public void NavigateToHome() => NavToHomePage_Click(null, null);
+        public void NavigateToReports() => NavToReportsPage_Click(null, null);
+        public void NavigateToSettings() => NavToSettingPage_Click(null, null);
+        public void NavigateToMoxaStatus() => NavToMoxaStatusPage_Click(null, null);
+
+        #endregion
+
         #region Window UI Controls
         private void MinimizeButton_Click(object sender, RoutedEventArgs e)
         {
@@ -144,6 +169,8 @@ namespace HumanDetection
 
         private void ResetNavButtons()
         {
+            DashboardNavBtn.Foreground = new SolidColorBrush(Colors.White);
+            DashboardNavBtn.Background = new SolidColorBrush(Colors.Transparent);
             HomeNavBtn.Foreground = new SolidColorBrush(Colors.White);
             HomeNavBtn.Background = new SolidColorBrush(Colors.Transparent);
             SettingNavBtn.Foreground = new SolidColorBrush(Colors.White);
@@ -156,13 +183,25 @@ namespace HumanDetection
             MoxaStatusNavBtn.Background = new SolidColorBrush(Colors.Transparent);
         }
 
+        private void NavToDashboardPage_Click(object sender, RoutedEventArgs e)
+        {
+            TryNavigate(
+                new Uri("UserControls/Dashboard/Dashboard.xaml", UriKind.Relative),
+                () =>
+                {
+                    NavigateTo(new Uri("UserControls/Dashboard/Dashboard.xaml", UriKind.Relative));
+                    ResetNavButtons();
+                    DashboardNavBtn.Foreground = new SolidColorBrush(NavForegroundColor);
+                    DashboardNavBtn.Background = new SolidColorBrush(NavBackgroundColor);
+                });
+        }
         private void NavToHomePage_Click(object sender, RoutedEventArgs e)
         {
             TryNavigate(
                 new Uri("UserControls/Home/Home.xaml", UriKind.Relative),
                 () =>
                 {
-                    MainFrame.Navigate(new Uri("UserControls/Home/Home.xaml", UriKind.Relative));
+                    NavigateTo(new Uri("UserControls/Home/Home.xaml", UriKind.Relative));
                     ResetNavButtons();
                     HomeNavBtn.Foreground = new SolidColorBrush(NavForegroundColor);
                     HomeNavBtn.Background = new SolidColorBrush(NavBackgroundColor);
@@ -174,7 +213,7 @@ namespace HumanDetection
                 new Uri("UserControls/Settings/Setting.xaml", UriKind.Relative),
                 () =>
                 {
-                    MainFrame.Navigate(new Uri("UserControls/Settings/Setting.xaml", UriKind.Relative));
+                    NavigateTo(new Uri("UserControls/Settings/Setting.xaml", UriKind.Relative));
                     ResetNavButtons();
                     SettingNavBtn.Foreground = new SolidColorBrush(NavForegroundColor);
                     SettingNavBtn.Background = new SolidColorBrush(NavBackgroundColor);
@@ -186,7 +225,7 @@ namespace HumanDetection
                 new Uri("UserControls/Reports/ReportPage.xaml", UriKind.Relative),
                 () =>
                 {
-                    MainFrame.Navigate(new Uri("UserControls/Reports/ReportPage.xaml", UriKind.Relative));
+                    NavigateTo(new Uri("UserControls/Reports/ReportPage.xaml", UriKind.Relative));
                     ResetNavButtons();
                     ReportsNavBtn.Foreground = new SolidColorBrush(NavForegroundColor);
                     ReportsNavBtn.Background = new SolidColorBrush(NavBackgroundColor);
@@ -198,7 +237,7 @@ namespace HumanDetection
                 new Uri("UserControls/LivePreview/LivePreview.xaml", UriKind.Relative),
                 () =>
                 {
-                    MainFrame.Navigate(new Uri("UserControls/LivePreview/LivePreview.xaml", UriKind.Relative));
+                    NavigateTo(new Uri("UserControls/LivePreview/LivePreview.xaml", UriKind.Relative));
                     ResetNavButtons();
                 });
         }
@@ -208,7 +247,7 @@ namespace HumanDetection
                 new Uri("UserControls/Testing/Testing.xaml", UriKind.Relative),
                 () =>
                 {
-                    MainFrame.Navigate(new Uri("UserControls/Testing/Testing.xaml", UriKind.Relative));
+                    NavigateTo(new Uri("UserControls/Testing/Testing.xaml", UriKind.Relative));
                     ResetNavButtons();
                     TestingNavBtn.Foreground = new SolidColorBrush(NavForegroundColor);
                     TestingNavBtn.Background = new SolidColorBrush(NavBackgroundColor);
@@ -220,7 +259,7 @@ namespace HumanDetection
                 new Uri("UserControls/MoxaStatus/MoxaStatus.xaml", UriKind.Relative),
                 () =>
                 {
-                    MainFrame.Navigate(new Uri("UserControls/MoxaStatus/MoxaStatus.xaml", UriKind.Relative));
+                    NavigateTo(new Uri("UserControls/MoxaStatus/MoxaStatus.xaml", UriKind.Relative));
                     ResetNavButtons();
                     MoxaStatusNavBtn.Foreground = new SolidColorBrush(NavForegroundColor);
                     MoxaStatusNavBtn.Background = new SolidColorBrush(NavBackgroundColor);

@@ -156,6 +156,7 @@ namespace UserControls.Reports
                     $"Report #{result.Id}\n" +
                     $"Date: {result.ScanDate:yyyy-MM-dd HH:mm:ss}\n" +
                     $"Status: {result.Status}\n" +
+                    $"Remark: {result.Remark}\n" +
                     $"Score: {result.Score:P0}\n" +
                     $"Total Boxes: {result.TotalBoxes}\n" +
                     $"Pallet Height: {result.PalletHeight:F2}m\n" +

@@ -54,6 +54,14 @@
                     <Image Source="/Images/innovent.ico" Width="20" Height="20" Margin="0,0,5,0"/>
                     <!-- Application title -->
                     <TextBlock Text="Vistion AI" Foreground="White" FontSize="14" VerticalAlignment="Center"/>
+                <Button x:Name="DashboardNavBtn" Click="NavToDashboardPage_Click" Background="Transparent" Width="120" Height="32" Foreground="White" Margin="0" Padding="10,0"
+         BorderBrush="Transparent" BorderThickness="0">
+                    <StackPanel Orientation="Horizontal">
+                        <materialIcons:MaterialIcon Kind="ViewDashboardOutline" Width="20" Height="20" Margin="0,0,5,0"/>
+                        <TextBlock Text="Dashboard"  VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+
                 <Button x:Name="HomeNavBtn" Click="NavToHomePage_Click" Background="Transparent" Width="100" Height="32" Foreground="White" Margin="0" Padding="10,0"
          BorderBrush="Transparent" BorderThickness="0">
                     <StackPanel Orientation="Horizontal">

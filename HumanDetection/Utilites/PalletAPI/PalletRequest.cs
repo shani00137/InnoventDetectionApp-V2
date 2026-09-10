@@ -19,5 +19,6 @@ namespace Utilites.PalletAPI
         public string palletCondition { get; set; }
         public string humenDetection { get; set; }
         public string image { get; set; }
+        public string remark { get; set; }
     }
 }
